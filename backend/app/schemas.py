@@ -1,3 +1,4 @@
+# type: ignore
 # Portions of this code are adapted from [A2A] (https://github.com/google/A2A)
 # Licensed under the Apache License 2.0
 from typing import Union, Any
