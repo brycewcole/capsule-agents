@@ -1,3 +1,4 @@
 {
     "python.defaultInterpreterPath": "./backend/.venv/bin/python",
+    "python.analysis.typeCheckingMode": "standard",
 }
