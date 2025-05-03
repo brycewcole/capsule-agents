@@ -30,3 +30,15 @@ env/
 # FastAPI / Uvicorn logs
 *.log
 uvicorn.log
+
+*.db
+
+# Next.js build output
+.next/
+out/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+package-lock.json
+yarn.lock
+.pnpm-debug.log*
