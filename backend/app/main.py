@@ -49,12 +49,28 @@ app.add_middleware(
 @app.get("/health", tags=["Health"])
 async def health():
     """
-    Health check: quick up/down probe
+    Health check endpoint to verify if the API is running.
+
+    Returns:
+        dict: A status message indicating the API is operational
+
+    Example response:
+    ```json
+    {
+        "status": "ok"
+    }
+    ```
     """
     return {"status": "ok"}
 
 
 def get_agent() -> Agent:
+    """
+    Creates and returns a configured agent instance.
+
+    Returns:
+        Agent: A Google ADK Agent instance configured with the default model.
+    """
     return Agent(
         name="weather_agent",
         model=MODEL_GEMINI_2_0_FLASH,
@@ -65,7 +81,22 @@ def get_agent() -> Agent:
 @app.get("/.well-known/agent.json", response_model=AgentCard, tags=["Agent"])
 async def agent_card(service: AgentService = Depends(AgentService)):
     """
-    Agent Card: metadata & capabilities
+    Returns the Agent Card containing metadata and capabilities information.
+
+    The Agent Card defines the agent's identity, capabilities, and available actions
+    following Agent-to-Agent (A2A) protocol specifications.
+
+    Returns:
+        AgentCard: A structured object containing agent details and capabilities
+
+    Example response:
+    ```json
+    {
+        "name": "weather_agent",
+        "description": "This agent handles weather-related queries",
+        "capabilities": [...]
+    }
+    ```
     """
     agent_card = await service.get_agent_card()
     return JSONResponse(content=agent_card.model_dump(exclude_none=True))
@@ -73,6 +104,31 @@ async def agent_card(service: AgentService = Depends(AgentService)):
 
 @app.post("/", tags=["JSON-RPC"])
 async def rpc_root(request: Request, service: Annotated[AgentService, Depends()]):
+    """
+    Main JSON-RPC endpoint supporting Agent-to-Agent (A2A) protocol operations.
+
+    This endpoint handles multiple types of JSON-RPC requests:
+    - SendTask: Create a new task for the agent to process
+    - GetTask: Retrieve the current status and result of a task
+    - CancelTask: Terminate a running task
+    - SetTaskPushNotification: Configure push notification settings for a task
+    - GetTaskPushNotification: Retrieve current push notification settings
+    - SendTaskStreaming: Create a task and receive updates via server-sent events
+    - TaskResubscription: Reconnect to an existing task stream
+
+    Parameters:
+        request (Request): The raw HTTP request containing a JSON-RPC payload
+        service (AgentService): Service for handling agent operations (injected)
+
+    Returns:
+        JSON response or streaming response depending on the request type
+
+    Status Codes:
+        200: Successful operation
+        400: Invalid JSON-RPC request format
+        404: Method not found or task not found
+        500: Internal server error
+    """
     raw = await request.body()
     try:
         rpc_req = A2ARequest.validate_python(json.loads(raw))
