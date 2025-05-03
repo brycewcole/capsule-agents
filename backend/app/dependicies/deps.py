@@ -1,8 +1,10 @@
 from typing import Annotated
 from fastapi import Depends
-from google.adk.sessions import InMemorySessionService, BaseSessionService
+from google.adk.sessions import BaseSessionService
 from google.adk.runners import Runner
 from google.adk.agents import Agent
+
+from backend.app.services.sqlite_session_service import SQLiteSessionService
 
 
 def model() -> str:
@@ -16,7 +18,7 @@ def session_service() -> BaseSessionService:
     """
     Returns the session service to be used for the agent.
     """
-    return InMemorySessionService()
+    return SQLiteSessionService("./sessions.db")
 
 
 def agent(model: Annotated[str, Depends(model)]) -> Agent:

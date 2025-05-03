@@ -3,14 +3,16 @@ import json
 import uuid
 import time
 from typing import Any, Optional
+
 from google.adk.events.event import Event
-from google.adk.sessions import BaseSessionService, Session
-from google.adk.sessions.state import State
 from google.adk.sessions.base_session_service import (
+    BaseSessionService,
     GetSessionConfig,
     ListSessionsResponse,
     ListEventsResponse,
 )
+from google.adk.sessions.session import Session
+from google.adk.sessions.state import State
 
 
 def _extract_state_delta(state: dict[str, Any]):
@@ -37,56 +39,70 @@ def _merge_state(app_state, user_state, session_state):
 
 class SQLiteSessionService(BaseSessionService):
     def __init__(self, db_path: str):
-        self.conn = sqlite3.connect(db_path, detect_types=sqlite3.PARSE_DECLTYPES)
-        self.conn.row_factory = sqlite3.Row
-        # turn on foreign keys
-        self.conn.execute("PRAGMA foreign_keys = ON")
-        self._create_tables()
+        self.db_path = db_path
+        # create or migrate schema
+        conn = self._get_conn()
+        self._create_tables(conn)
+        conn.commit()
+        conn.close()
 
-    def _create_tables(self):
-        c = self.conn.cursor()
+    def _get_conn(self):
+        conn = sqlite3.connect(
+            self.db_path,
+            detect_types=sqlite3.PARSE_DECLTYPES,
+            check_same_thread=False,
+        )
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA foreign_keys = ON")
+        return conn
 
+    def _create_tables(self, conn):
+        c = conn.cursor()
+        # sessions with single‑column PK
         c.execute("""
         CREATE TABLE IF NOT EXISTS sessions (
-            app_name TEXT,
-            user_id  TEXT,
-            id       TEXT PRIMARY KEY,
-            state    TEXT,
+            app_name    TEXT,
+            user_id     TEXT,
+            id          TEXT PRIMARY KEY,
+            state       TEXT,
             create_time REAL,
             update_time REAL
-        )""")
-
+        )
+        """)
+        # events referencing sessions(id)
         c.execute("""
         CREATE TABLE IF NOT EXISTS events (
-            id                      TEXT PRIMARY KEY,
-            app_name                TEXT,
-            user_id                 TEXT,
-            session_id              TEXT,
-            invocation_id           TEXT,
-            author                  TEXT,
-            branch                  TEXT,
-            timestamp               REAL,
-            content                 TEXT,
-            actions                 TEXT,
-            long_running_tool_ids   TEXT,
-            grounding_metadata      TEXT,
-            partial                 INTEGER,
-            turn_complete           INTEGER,
-            error_code              TEXT,
-            error_message           TEXT,
-            interrupted             INTEGER,
-            FOREIGN KEY(app_name, user_id, session_id)
-              REFERENCES sessions(app_name, user_id, id)
+            id                    TEXT PRIMARY KEY,
+            app_name              TEXT,
+            user_id               TEXT,
+            session_id            TEXT,
+            invocation_id         TEXT,
+            author                TEXT,
+            branch                TEXT,
+            timestamp             REAL,
+            content               TEXT,
+            actions               TEXT,
+            long_running_tool_ids TEXT,
+            grounding_metadata    TEXT,
+            partial               INTEGER,
+            turn_complete         INTEGER,
+            error_code            TEXT,
+            error_message         TEXT,
+            interrupted           INTEGER,
+            FOREIGN KEY(session_id)
+              REFERENCES sessions(id)
               ON DELETE CASCADE
-        )""")
-
+        )
+        """)
+        # app_states
         c.execute("""
         CREATE TABLE IF NOT EXISTS app_states (
             app_name    TEXT PRIMARY KEY,
             state       TEXT,
             update_time REAL
-        )""")
-
+        )
+        """)
+        # user_states
         c.execute("""
         CREATE TABLE IF NOT EXISTS user_states (
             app_name    TEXT,
@@ -94,9 +110,8 @@ class SQLiteSessionService(BaseSessionService):
             state       TEXT,
             update_time REAL,
             PRIMARY KEY(app_name, user_id)
-        )""")
-
-        self.conn.commit()
+        )
+        """)
 
     def create_session(
         self,
@@ -108,9 +123,10 @@ class SQLiteSessionService(BaseSessionService):
     ) -> Session:
         sid = session_id or str(uuid.uuid4())
         now = time.time()
+        conn = self._get_conn()
+        c = conn.cursor()
 
-        c = self.conn.cursor()
-        # load or initialize app & user state
+        # load or init app_state
         c.execute("SELECT state FROM app_states WHERE app_name = ?", (app_name,))
         row = c.fetchone()
         app_state = json.loads(row["state"]) if row else {}
@@ -120,6 +136,7 @@ class SQLiteSessionService(BaseSessionService):
                 (app_name, json.dumps({}), now),
             )
 
+        # load or init user_state
         c.execute(
             "SELECT state FROM user_states WHERE app_name = ? AND user_id = ?",
             (app_name, user_id),
@@ -132,12 +149,11 @@ class SQLiteSessionService(BaseSessionService):
                 (app_name, user_id, json.dumps({}), now),
             )
 
-        # extract deltas
+        # extract & apply deltas
         app_delta, user_delta, sess_delta = _extract_state_delta(state or {})
-
-        # apply & persist
         app_state.update(app_delta)
         user_state.update(user_delta)
+
         c.execute(
             "UPDATE app_states SET state = ?, update_time = ? WHERE app_name = ?",
             (json.dumps(app_state), now, app_name),
@@ -150,10 +166,13 @@ class SQLiteSessionService(BaseSessionService):
         # insert session
         session_state = sess_delta
         c.execute(
-            "INSERT INTO sessions(app_name, user_id, id, state, create_time, update_time) VALUES (?,?,?,?,?,?)",
+            "INSERT INTO sessions(app_name, user_id, id, state, create_time, update_time) "
+            "VALUES (?,?,?,?,?,?)",
             (app_name, user_id, sid, json.dumps(session_state), now, now),
         )
-        self.conn.commit()
+
+        conn.commit()
+        conn.close()
 
         merged = _merge_state(app_state, user_state, session_state)
         return Session(
@@ -172,16 +191,19 @@ class SQLiteSessionService(BaseSessionService):
         session_id: str,
         config: Optional[GetSessionConfig] = None,
     ) -> Optional[Session]:
-        c = self.conn.cursor()
+        conn = self._get_conn()
+        c = conn.cursor()
+
         c.execute(
             "SELECT * FROM sessions WHERE app_name = ? AND user_id = ? AND id = ?",
             (app_name, user_id, session_id),
         )
         row = c.fetchone()
         if not row:
+            conn.close()
             return None
 
-        # pull events
+        # fetch events
         q = """
           SELECT * FROM events
            WHERE session_id = ?
@@ -189,20 +211,21 @@ class SQLiteSessionService(BaseSessionService):
            ORDER BY timestamp ASC
            {limit}
         """
-        after_clause = ""
-        if config and config.after_timestamp:
-            after_clause = f"AND timestamp < {config.after_timestamp}"
-        limit_clause = ""
-        if config and config.num_recent_events:
-            limit_clause = f"LIMIT {config.num_recent_events}"
-        c.execute(
-            q.format(after=after_clause, limit=limit_clause),
-            (session_id,),
+        after = (
+            f"AND timestamp < {config.after_timestamp}"
+            if config and config.after_timestamp
+            else ""
         )
+        limit = (
+            f"LIMIT {config.num_recent_events}"
+            if config and config.num_recent_events
+            else ""
+        )
+        c.execute(q.format(after=after, limit=limit), (session_id,))
         ev_rows = c.fetchall()
 
-        # load states
-        def load_state(table, keys):
+        # load app & user states
+        def _load_state(table):
             if table == "app_states":
                 c.execute(
                     "SELECT state FROM app_states WHERE app_name = ?", (app_name,)
@@ -215,12 +238,11 @@ class SQLiteSessionService(BaseSessionService):
             r = c.fetchone()
             return json.loads(r["state"]) if r else {}
 
-        app_state = load_state("app_states", (app_name,))
-        user_state = load_state("user_states", (app_name, user_id))
+        app_state = _load_state("app_states")
+        user_state = _load_state("user_states")
         session_state = json.loads(row["state"])
 
         merged = _merge_state(app_state, user_state, session_state)
-
         session = Session(
             app_name=app_name,
             user_id=user_id,
@@ -229,7 +251,7 @@ class SQLiteSessionService(BaseSessionService):
             last_update_time=row["update_time"],
         )
 
-        # build Event objects
+        # build events list
         events = []
         for e in ev_rows:
             events.append(
@@ -253,66 +275,87 @@ class SQLiteSessionService(BaseSessionService):
                 )
             )
         session.events = events
+
+        conn.close()
         return session
 
     def list_sessions(self, *, app_name: str, user_id: str) -> ListSessionsResponse:
-        c = self.conn.cursor()
+        conn = self._get_conn()
+        c = conn.cursor()
         c.execute(
             "SELECT id, update_time FROM sessions WHERE app_name = ? AND user_id = ?",
             (app_name, user_id),
         )
-        sessions = [
-            Session(
-                app_name=app_name,
-                user_id=user_id,
-                id=r["id"],
-                state={},
-                last_update_time=r["update_time"],
-            )
-            for r in c.fetchall()
-        ]
-        return ListSessionsResponse(sessions=sessions)
+        resp = ListSessionsResponse(
+            sessions=[
+                Session(
+                    app_name=app_name,
+                    user_id=user_id,
+                    id=r["id"],
+                    state={},
+                    last_update_time=r["update_time"],
+                )
+                for r in c.fetchall()
+            ]
+        )
+        conn.close()
+        return resp
 
     def delete_session(self, *, app_name: str, user_id: str, session_id: str) -> None:
-        self.conn.execute(
+        conn = self._get_conn()
+        conn.execute(
             "DELETE FROM sessions WHERE app_name = ? AND user_id = ? AND id = ?",
             (app_name, user_id, session_id),
         )
-        self.conn.commit()
+        conn.commit()
+        conn.close()
 
     def append_event(self, session: Session, event: Event) -> Event:
-        # merge in-memory first
+        # update in‑memory
         super().append_event(session, event)
 
         now = time.time()
-        c = self.conn.cursor()
+        conn = self._get_conn()
+        c = conn.cursor()
 
-        # update session state
-        c.execute(
-            "SELECT state FROM sessions WHERE id = ?",
-            (session.id,),
-        )
+        # update sessions.state
+        c.execute("SELECT state FROM sessions WHERE id = ?", (session.id,))
         row = c.fetchone()
         base_state = json.loads(row["state"]) if row else {}
-
         if event.actions and event.actions.state_delta:
             _, _, sess_delta = _extract_state_delta(event.actions.state_delta)
             base_state.update(sess_delta)
-
         c.execute(
             "UPDATE sessions SET state = ?, update_time = ? WHERE id = ?",
             (json.dumps(base_state), now, session.id),
+        )
+
+        # ensure content exists
+        if not event.content:
+            raise ValueError("Event content cannot be empty.")
+
+        # prepare dicts
+        content_dict = (
+            event.content.model_dump(exclude_none=True)
+            if hasattr(event.content, "model_dump")
+            else event.content.dict(exclude_none=True)
+        )
+        actions_dict = (
+            event.actions.model_dump(exclude_none=True)
+            if event.actions and hasattr(event.actions, "model_dump")
+            else (event.actions.dict(exclude_none=True) if event.actions else None)
         )
 
         # insert event row
         c.execute(
             """
             INSERT INTO events(
-                id, app_name, user_id, session_id, invocation_id, author, branch,
-                timestamp, content, actions, long_running_tool_ids,
+                id, app_name, user_id, session_id,
+                invocation_id, author, branch, timestamp,
+                content, actions, long_running_tool_ids,
                 grounding_metadata, partial, turn_complete,
                 error_code, error_message, interrupted
-            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
             """,
             (
                 event.id,
@@ -323,17 +366,11 @@ class SQLiteSessionService(BaseSessionService):
                 event.author,
                 event.branch,
                 event.timestamp,
-                json.dumps(event.content) if event.content is not None else None,
-                json.dumps(
-                    event.actions.dict()
-                    if hasattr(event.actions, "dict")
-                    else event.actions
-                )
-                if event.actions is not None
-                else None,
+                json.dumps(content_dict),
+                json.dumps(actions_dict) if actions_dict is not None else None,
                 json.dumps(list(event.long_running_tool_ids or [])),
                 json.dumps(event.grounding_metadata)
-                if event.grounding_metadata is not None
+                if event.grounding_metadata
                 else None,
                 int(bool(event.partial)),
                 int(bool(event.turn_complete)),
@@ -342,7 +379,9 @@ class SQLiteSessionService(BaseSessionService):
                 int(bool(event.interrupted)),
             ),
         )
-        self.conn.commit()
+
+        conn.commit()
+        conn.close()
         return event
 
     def list_events(
@@ -352,32 +391,36 @@ class SQLiteSessionService(BaseSessionService):
         user_id: str,
         session_id: str,
     ) -> ListEventsResponse:
-        # very similar to get_session’s event fetch, but no session object
-        c = self.conn.cursor()
+        conn = self._get_conn()
+        c = conn.cursor()
         c.execute(
-            "SELECT * FROM events WHERE app_name = ? AND user_id = ? AND session_id = ? ORDER BY timestamp ASC",
+            "SELECT * FROM events WHERE app_name = ? AND user_id = ? AND session_id = ? "
+            "ORDER BY timestamp ASC",
             (app_name, user_id, session_id),
         )
         rows = c.fetchall()
-        evs = [
-            Event(
-                id=r["id"],
-                author=r["author"],
-                branch=r["branch"],
-                invocation_id=r["invocation_id"],
-                content=json.loads(r["content"] or "null"),
-                actions=json.loads(r["actions"] or "null"),
-                timestamp=r["timestamp"],
-                long_running_tool_ids=set(
-                    json.loads(r["long_running_tool_ids"] or "[]")
-                ),
-                grounding_metadata=json.loads(r["grounding_metadata"] or "null"),
-                partial=bool(r["partial"]),
-                turn_complete=bool(r["turn_complete"]),
-                error_code=r["error_code"],
-                error_message=r["error_message"],
-                interrupted=bool(r["interrupted"]),
-            )
-            for r in rows
-        ]
-        return ListEventsResponse(events=evs)
+        evs = ListEventsResponse(
+            events=[
+                Event(
+                    id=r["id"],
+                    author=r["author"],
+                    branch=r["branch"],
+                    invocation_id=r["invocation_id"],
+                    content=json.loads(r["content"] or "null"),
+                    actions=json.loads(r["actions"] or "null"),
+                    timestamp=r["timestamp"],
+                    long_running_tool_ids=set(
+                        json.loads(r["long_running_tool_ids"] or "[]")
+                    ),
+                    grounding_metadata=json.loads(r["grounding_metadata"] or "null"),
+                    partial=bool(r["partial"]),
+                    turn_complete=bool(r["turn_complete"]),
+                    error_code=r["error_code"],
+                    error_message=r["error_message"],
+                    interrupted=bool(r["interrupted"]),
+                )
+                for r in rows
+            ]
+        )
+        conn.close()
+        return evs

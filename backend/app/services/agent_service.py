@@ -1,24 +1,25 @@
 from datetime import datetime
+from google.adk.runners import Runner
+from typing import Annotated, Dict
+from fastapi import Depends
+from google.genai import types
+from backend.app.dependicies.deps import runner
+from backend.app.schemas import Task, TaskIdParams, TaskPushNotificationConfig
 from backend.app.schemas import (
     AgentCapabilities,
     AgentCard,
-    Task,
-    TaskIdParams,
-    TaskPushNotificationConfig,
     TaskQueryParams,
     TaskSendParams,
     TaskState,
     TaskStatus,
-    Message,
-    Artifact,
-    TextPart,
 )
 
 
 class AgentService:
-    def __init__(self, store, push_store):
-        self.store = store  # Dict[str, Task]
-        self.push_store = push_store  # Dict[str, PushNotificationConfig]
+    def __init__(self, runner: Annotated[Runner, Depends(runner)]):
+        self.store: Dict[str, Task] = {}
+        self.push_store: Dict[str, TaskPushNotificationConfig] = {}
+        self.runner = runner
 
     async def send_task(self, params: TaskSendParams) -> Task:
         # Create a new task and store it
@@ -31,25 +32,47 @@ class AgentService:
                 timestamp=datetime.now(),
             ),
             artifacts=[],
-            history=[params.message],
+            history=[],
             metadata=params.metadata,
         )
+        # Ensure history is initialized as a list
+        if task.history is None:
+            task.history = []
         self.store[params.id] = task
-        task.artifacts = []
-        # Simulate agent invocation (replace with real agent logic)
-        # Here, just echo the user message as agent response
-        first_part = params.message.parts[0]
-        text = first_part.text if isinstance(first_part, TextPart) else "Non-text part"
-        agent_response = Message(
-            role="agent",
-            parts=[TextPart(text="Task received: " + text)],
+
+        # Prepare the user's message in ADK format
+        query = params.message.parts[0].text if params.message.parts else ""
+        content = types.Content(role="user", parts=[types.Part(text=query)])
+        session = self.runner.session_service.get_session(
+            app_name=self.runner.app_name,
+            user_id=params.sessionId,
+            session_id=params.sessionId,
         )
-        task.status = TaskStatus(
-            state=TaskState.COMPLETED,
-            message=agent_response,
-            timestamp=datetime.now(),
-        )
-        task.artifacts.append(Artifact(parts=agent_response.parts, index=0))
+        if session is None:
+            session = self.runner.session_service.create_session(
+                app_name=self.runner.app_name,
+                user_id=params.sessionId,
+                state={},
+                session_id=params.sessionId,
+            )
+
+        # Track state changes and responses
+        async for event in self.runner.run_async(
+            user_id=params.sessionId, session_id=params.sessionId, new_message=content
+        ):
+            # Update task history with each event message if present
+            if event:
+                task.history.append(event)
+            # Update task status on final response
+            if event.is_final_response():
+                if event.content and event.content.parts:
+                    task.status.state = TaskState.COMPLETED
+                    task.status.message = event.content
+                    task.status.timestamp = datetime.now()
+                break
+
+        # Store the updated task
+        self.store[params.id] = task
         return task
 
     async def get_task(self, params: TaskQueryParams) -> Task:
@@ -66,7 +89,7 @@ class AgentService:
         return task
 
     async def set_push(self, params: TaskPushNotificationConfig):
-        self.push_store[params.id] = params.pushNotificationConfig
+        self.push_store[params.id] = params
         return params
 
     async def get_push(self, params: TaskIdParams):
