@@ -32,6 +32,13 @@ def agent(model: Annotated[str, Depends(model)]) -> Agent:
     )
 
 
+def database_url() -> str:
+    """
+    Returns the database URL to be used for the application.
+    """
+    return "./sessions.db"
+
+
 def runner(
     session_service: Annotated[BaseSessionService, Depends(session_service)],
     agent: Annotated[Agent, Depends(agent)],
