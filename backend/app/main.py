@@ -1,7 +1,7 @@
 import json
 import logging
 from typing import Annotated
-from fastapi import Depends, FastAPI, Request
+from fastapi import Body, Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
 from google.adk.agents import Agent
@@ -10,6 +10,7 @@ import os
 
 from pydantic import ValidationError
 
+from backend.app.routers import configure
 from backend.app.schemas import (
     A2ARequest,
     AgentCard,
@@ -36,6 +37,10 @@ MODEL_CLAUDE_SONNET = "anthropic/claude-3-sonnet-20240229"
 app = FastAPI()
 logger = logging.getLogger(__name__)
 load_dotenv(dotenv_path="backend/.env")
+app.include_router(
+    configure.router,
+    tags=["Configure"],
+)
 
 app.add_middleware(
     CORSMiddleware,
@@ -102,32 +107,39 @@ async def agent_card(service: AgentService = Depends(AgentService)):
     return JSONResponse(content=agent_card.model_dump(exclude_none=True))
 
 
-@app.post("/", tags=["JSON-RPC"])
-async def rpc_root(request: Request, service: Annotated[AgentService, Depends()]):
+@app.post(
+    "/",
+    tags=["JSON-RPC"],
+    summary="Main JSON-RPC endpoint supporting Agent-to-Agent (A2A) protocol operations.",
+    description="""
+This endpoint handles multiple types of JSON-RPC requests:
+
+- **SendTask**: Create a new task for the agent to process
+- **GetTask**: Retrieve the current status and result of a task
+- **CancelTask**: Terminate a running task
+- **SetTaskPushNotification**: Configure push notification settings for a task
+- **GetTaskPushNotification**: Retrieve current push notification settings
+- **SendTaskStreaming**: Create a task and receive updates via server-sent events
+- **TaskResubscription**: Reconnect to an existing task stream
+
+**Status Codes**:
+- 200: Successful operation
+- 400: Invalid JSON-RPC request format
+- 404: Method not found or task not found
+- 500: Internal server error
+""",
+    response_description="JSON response or streaming response depending on the request type",
+)
+async def rpc_root(
+    request: Request,
+    service: Annotated[AgentService, Depends()],
+    body: dict = Body(
+        ...,
+        description="JSON-RPC request payload. The structure depends on the method being called.",
+    ),
+):
     """
     Main JSON-RPC endpoint supporting Agent-to-Agent (A2A) protocol operations.
-
-    This endpoint handles multiple types of JSON-RPC requests:
-    - SendTask: Create a new task for the agent to process
-    - GetTask: Retrieve the current status and result of a task
-    - CancelTask: Terminate a running task
-    - SetTaskPushNotification: Configure push notification settings for a task
-    - GetTaskPushNotification: Retrieve current push notification settings
-    - SendTaskStreaming: Create a task and receive updates via server-sent events
-    - TaskResubscription: Reconnect to an existing task stream
-
-    Parameters:
-        request (Request): The raw HTTP request containing a JSON-RPC payload
-        service (AgentService): Service for handling agent operations (injected)
-
-    Returns:
-        JSON response or streaming response depending on the request type
-
-    Status Codes:
-        200: Successful operation
-        400: Invalid JSON-RPC request format
-        404: Method not found or task not found
-        500: Internal server error
     """
     raw = await request.body()
     try:
