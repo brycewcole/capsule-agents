@@ -95,23 +95,15 @@ export default function AgentEditor() {
 
   const handleSave = async () => {
     // Save the agent configuration
+    setIsSaving(true)
+    const startTime = Date.now()
     try {
-      setIsSaving(true)
-      
-      const agentInfo: AgentInfo = {
-        name,
-        description,
-      }
-      
+      const agentInfo: AgentInfo = { name, description }
       await updateAgentInfo(agentInfo)
-      
-      // Note: Currently only saving basic agent info
-      // Model info will need a separate endpoint
       console.log("Model info (not saved to backend yet):", {
         model: selectedModel.id,
         hasApiKey: !!selectedModel.apiKey,
       })
-      
       toast({
         title: "Agent saved",
         description: "Agent configuration has been updated successfully.",
@@ -124,6 +116,12 @@ export default function AgentEditor() {
         variant: "destructive",
       })
     } finally {
+      // Ensure spinner shows for at least 500ms
+      const elapsed = Date.now() - startTime
+      const minDuration = 500
+      if (elapsed < minDuration) {
+        await new Promise(res => setTimeout(res, minDuration - elapsed))
+      }
       setIsSaving(false)
     }
   }
