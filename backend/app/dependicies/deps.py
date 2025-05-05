@@ -1,3 +1,4 @@
+import sqlite3
 from typing import Annotated
 from fastapi import Depends
 from google.adk.sessions import BaseSessionService
@@ -5,6 +6,13 @@ from google.adk.runners import Runner
 from google.adk.agents import Agent
 
 from backend.app.services.sqlite_session_service import SQLiteSessionService
+
+
+def database_url() -> str:
+    """
+    Returns the database URL to be used for the application.
+    """
+    return "./sessions.db"
 
 
 def model() -> str:
@@ -21,22 +29,28 @@ def session_service() -> BaseSessionService:
     return SQLiteSessionService("./sessions.db")
 
 
-def agent(model: Annotated[str, Depends(model)]) -> Agent:
+def agent(
+    model: Annotated[str, Depends(model)],
+    db_url: Annotated[str, Depends(database_url)],
+) -> Agent:
     """
-    Returns the agent to be used for the application.
+    Returns the agent to be used for the application, reading info from the database.
     """
+    conn = sqlite3.connect(db_url, detect_types=sqlite3.PARSE_DECLTYPES)
+    conn.row_factory = sqlite3.Row
+    cursor = conn.execute("SELECT name, description FROM agent_info WHERE key = 1")
+    row = cursor.fetchone()
+    conn.close()
+    if row:
+        name, description = row
+    else:
+        name = "new_capy_agent"
+        description = "Default agent"
     return Agent(
-        name="weather_agent",
+        name=name,
         model=model,
-        description="This agent handles weather-related queries.",
+        description=description,
     )
-
-
-def database_url() -> str:
-    """
-    Returns the database URL to be used for the application.
-    """
-    return "./sessions.db"
 
 
 def runner(
