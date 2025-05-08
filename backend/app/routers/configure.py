@@ -1,34 +1,64 @@
 from typing import Annotated
 from fastapi import APIRouter, Depends
+from pydantic import BaseModel, ConfigDict
+from pydantic.alias_generators import to_camel
 
-from backend.app.configure_schemas import AgentInfo
+from backend.app.configure_schemas import AgentInfo, Model
+from backend.app.dependicies.deps import model_list
 from backend.app.services.configure_service import ConfigureService
 
 router = APIRouter(prefix="/configure", tags=["configure"])
 
 
+class RequestBodyModel(BaseModel):
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
+
+
+class ResponseModel(BaseModel):
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
+
+
+class PutAgentRequestBody(RequestBodyModel):
+    name: str
+    description: str
+    model_name: str
+
+
+class GetAgentResponse(ResponseModel):
+    name: str
+    description: str
+    model_name: str
+    model_parameters: dict
+
+
 # Agent Info Endpoints
-@router.get("/agent", response_model=AgentInfo)
+@router.get("/agent", response_model=GetAgentResponse)
 def get_agent_info(service: Annotated[ConfigureService, Depends()]):
-    return service.get_agent_info()
+    agent_info = service.get_agent_info()
+    return GetAgentResponse(
+        name=agent_info.name,
+        description=agent_info.description,
+        model_name=agent_info.model_name,
+        model_parameters=agent_info.model_parameters,
+    )
 
 
 @router.put("/agent", response_model=AgentInfo)
-def update_agent_info(info: AgentInfo, service: Annotated[ConfigureService, Depends()]):
-    return service.upsert_agent_info(info)
+def update_agent_info(
+    body: PutAgentRequestBody, service: Annotated[ConfigureService, Depends()]
+):
+    agent_info = AgentInfo(
+        name=body.name,
+        description=body.description,
+        model_name=body.model_name,
+        model_parameters={},
+    )
+    return service.upsert_agent_info(agent_info)
 
 
-# # Model Config Endpoints
-# @router.get("/model", response_model=ModelConfig)
-# def get_model_config():
-#     return model_config_db
-
-
-# @router.put("/model", response_model=ModelConfig)
-# def update_model_config(config: ModelConfig):
-#     global model_config_db
-#     model_config_db = config
-#     return model_config_db
+@router.get("/models", response_model=list[Model])
+def get_model_list(models: Annotated[list[Model], Depends(model_list)]):
+    return models
 
 
 # # Mock Config Endpoints

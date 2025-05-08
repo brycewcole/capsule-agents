@@ -4,13 +4,15 @@ from pydantic import BaseModel
 class AgentInfo(BaseModel):
     name: str
     description: str
-
-
-class ModelConfig(BaseModel):
     model_name: str
-    parameters: dict
+    model_parameters: dict
 
 
 class MockConfig(BaseModel):
     enabled: bool
     mock_data: dict
+
+
+class Model(BaseModel):
+    model_name: str
+    display_name: str

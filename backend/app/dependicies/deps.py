@@ -1,11 +1,40 @@
 import sqlite3
+from google.adk.models.lite_llm import LiteLlm
 from typing import Annotated
 from fastapi import Depends
 from google.adk.sessions import BaseSessionService
 from google.adk.runners import Runner
 from google.adk.agents import Agent
 
+from backend.app.configure_schemas import Model
 from backend.app.services.sqlite_session_service import SQLiteSessionService
+
+
+def model_list() -> list[Model]:
+    """
+    Returns a list of available models.
+    """
+    return [
+        Model(
+            model_name="gemini/gemini-2.0-flash",
+            display_name="Gemini 2.0 Flash",
+        ),
+        Model(
+            model_name="openai/gpt-4o",
+            display_name="OpenAI GPT-4o",
+        ),
+    ]
+
+
+def find_model(model_name: str) -> Model:
+    """
+    Returns the model object for the given model name.
+    """
+    models = model_list()
+    for model in models:
+        if model.model_name == model_name:
+            return model
+    raise ValueError(f"Model {model_name} not found in the list of available models.")
 
 
 def database_url() -> str:
@@ -13,13 +42,6 @@ def database_url() -> str:
     Returns the database URL to be used for the application.
     """
     return "./sessions.db"
-
-
-def model() -> str:
-    """
-    Returns the model to be used for the agent.
-    """
-    return "gemini-2.0-flash"
 
 
 def session_service() -> BaseSessionService:
@@ -30,7 +52,6 @@ def session_service() -> BaseSessionService:
 
 
 def agent(
-    model: Annotated[str, Depends(model)],
     db_url: Annotated[str, Depends(database_url)],
 ) -> Agent:
     """
@@ -38,17 +59,17 @@ def agent(
     """
     conn = sqlite3.connect(db_url, detect_types=sqlite3.PARSE_DECLTYPES)
     conn.row_factory = sqlite3.Row
-    cursor = conn.execute("SELECT name, description FROM agent_info WHERE key = 1")
+    cursor = conn.execute(
+        "SELECT name, description, model_name FROM agent_info WHERE key = 1"
+    )
     row = cursor.fetchone()
     conn.close()
-    if row:
-        name, description = row
-    else:
-        name = "new_capy_agent"
-        description = "Default agent"
+    if not row:
+        raise ValueError("Agent info not found")
+    name, description, model_name = row
     return Agent(
         name=name,
-        model=model,
+        model=LiteLlm(model=model_name),
         description=description,
     )
 

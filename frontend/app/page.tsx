@@ -10,7 +10,6 @@ export default function Home() {
       <div className="container mx-auto flex flex-1 flex-col gap-6 p-4 md:flex-row md:p-6 lg:p-8">
         <div className="flex-1 space-y-6">
           <AgentEditor />
-          <MockResponses />
         </div>
         <div className="flex-1 flex flex-col min-h-0">
           <ChatInterface />

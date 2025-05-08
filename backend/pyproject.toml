@@ -10,6 +10,7 @@ dependencies = [
     "uvicorn[standard]>=0.20.0",
     "sse-starlette>=0.1.0",
     "google-genai>=1.11.0",
+    "litellm>=1.68.1",
 ]
 
 [tool.pyright]

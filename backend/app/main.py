@@ -4,7 +4,6 @@ from typing import Annotated
 from fastapi import Body, Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
-from google.adk.agents import Agent
 from dotenv import load_dotenv
 import os
 
@@ -28,19 +27,24 @@ from backend.app.schemas import (
     TaskResubscriptionRequest,
 )
 from backend.app.services.agent_service import AgentService
+from fastapi.exceptions import RequestValidationError
 
-
-MODEL_GEMINI_2_0_FLASH = "gemini-2.0-flash"
-MODEL_GPT_4O = "openai/gpt-4o"
-MODEL_CLAUDE_SONNET = "anthropic/claude-3-sonnet-20240229"
 
 app = FastAPI()
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    logger.error(f"Validation error: {exc}", exc_info=True)
+    return JSONResponse(
+        status_code=422,
+        content={"detail": exc.errors()},
+    )
+
+
 logger = logging.getLogger(__name__)
 load_dotenv(dotenv_path="backend/.env")
-app.include_router(
-    configure.router,
-    tags=["Configure"],
-)
+app.include_router(configure.router)
 
 app.add_middleware(
     CORSMiddleware,
@@ -67,20 +71,6 @@ async def health():
     ```
     """
     return {"status": "ok"}
-
-
-def get_agent() -> Agent:
-    """
-    Creates and returns a configured agent instance.
-
-    Returns:
-        Agent: A Google ADK Agent instance configured with the default model.
-    """
-    return Agent(
-        name="weather_agent",
-        model=MODEL_GEMINI_2_0_FLASH,
-        description="This agent handles weather-related queries.",
-    )
 
 
 @app.get("/.well-known/agent.json", response_model=AgentCard, tags=["Agent"])
