@@ -16,8 +16,8 @@ def model_list() -> list[Model]:
     """
     return [
         Model(
-            model_name="gemini/gemini-2.0-flash",
-            display_name="Gemini 2.0 Flash",
+            model_name="gemini/gemini-2.5-flash-preview-04-17",
+            display_name="Gemini 2.5 Flash Preview",
         ),
         Model(
             model_name="openai/gpt-4o",

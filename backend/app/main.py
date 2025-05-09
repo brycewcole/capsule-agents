@@ -7,6 +7,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from dotenv import load_dotenv
 import os
 
+from fastapi.staticfiles import StaticFiles
 from pydantic import ValidationError
 
 from backend.app.routers import configure
@@ -31,6 +32,10 @@ from fastapi.exceptions import RequestValidationError
 
 
 app = FastAPI()
+
+# Mount the Next.js static export at the /editor endpoint
+# This will serve the index.html from static directory when accessing /editor
+app.mount("/editor", StaticFiles(directory="static", html=True), name="editor")
 
 
 @app.exception_handler(RequestValidationError)

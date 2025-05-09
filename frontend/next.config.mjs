@@ -9,6 +9,10 @@ const nextConfig = {
   images: {
     unoptimized: true,
   },
+  output: 'export',
+  basePath: '/editor',
+  assetPrefix: '/editor/',
+  trailingSlash: true,
 }
 
 export default nextConfig
