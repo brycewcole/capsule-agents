@@ -1,4 +1,4 @@
-# ─── Stage 1: Build Vite + React frontend ─────────────────────────────
+# ─── Stage 1: Build Next.js frontend ─────────────────────────────
 FROM node:24-alpine AS frontend-builder
 
 # 1) create a non-root user for consistent file ownership
@@ -9,7 +9,7 @@ WORKDIR /home/app/frontend
 
 # 2) copy only package manifests and install deps
 COPY --chown=app:app frontend/package.json frontend/package-lock.json ./
-RUN npm ci
+RUN npm ci --legacy-peer-deps
 
 # 3) copy the rest of your source and build
 COPY --chown=app:app frontend/ ./
@@ -34,18 +34,17 @@ COPY backend/ ./backend
 FROM uv-base AS runtime
 ENV PYTHONPATH=/app
 
-# Install Node.js runtime for serving Vite static build
-RUN apt-get update && apt-get install -y curl ca-certificates \ 
-    && curl -fsSL https://deb.nodesource.com/setup_24.x | bash - \ 
-    && apt-get install -y nodejs && rm -rf /var/lib/apt/lists/*
+# Create static directory for the Next.js frontend
+RUN mkdir -p ./static
 
-# Copy Vite static build to serve from FastAPI
-WORKDIR /app
-COPY --from=frontend-builder /home/app/frontend/dist ./static
+# Copy Next.js static export to the static directory for the /editor endpoint
+COPY --from=frontend-builder /home/app/frontend/out/ ./static/
 
-EXPOSE 8000
+EXPOSE 3000
 
 RUN uv add fastapi-cli && uv sync --locked
 
-# Update to JSON array format for proper signal handling
-CMD ["uv", "run", "fastapi", "run", "--reload", "backend/app/main.py", "--host", "0.0.0.0", "--port", "8000"]
+# use uv to invoke the FastAPI plugin
+ENTRYPOINT ["uv", "run", "fastapi", "run", \
+    "--reload", "backend/app/main.py", \
+    "--host", "0.0.0.0", "--port", "80"]
