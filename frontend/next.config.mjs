@@ -9,10 +9,7 @@ const nextConfig = {
   images: {
     unoptimized: true,
   },
-  output: 'export',
-  basePath: '/editor',
-  assetPrefix: '/editor/',
-  trailingSlash: true,
+  // SSR mode (removed output/export settings)
 }
 
 export default nextConfig
