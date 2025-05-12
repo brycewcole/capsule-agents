@@ -6,23 +6,13 @@ import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Save, Loader2, Plus, Edit, Trash } from "lucide-react"
+import { Save, Loader2, Edit, Trash } from "lucide-react"
 import { Separator } from "@/components/ui/separator"
 import { toast } from "sonner"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { getAgentInfo, getAvailableModels, updateAgentInfo, type AgentInfo, type Tool } from "@/lib/api"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-
-// Import Dialog components
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog"
+import { ToolDialog } from "./tool-dialog"
 
 export type Model = {
   model_name: string      // maps to model_name from backend
@@ -38,7 +28,6 @@ export default function AgentEditor() {
   const [availableModels, setAvailableModels] = useState<{id: string; name: string}[]>([])
   const [tools, setTools] = useState<Tool[]>([])
   const [showToolForm, setShowToolForm] = useState(false)
-  // const [currentTool, setCurrentTool] = useState<Tool | null>(null)
   const [editIndex, setEditIndex] = useState<number | null>(null)
   
   // New state for tool form
@@ -238,75 +227,22 @@ export default function AgentEditor() {
         <div className="space-y-4">
           <div className="flex justify-between items-center">
             <Label>Tools</Label>
-            <Dialog open={showToolForm} onOpenChange={(open) => {
-              setShowToolForm(open);
-              if (!open) resetToolForm();
-            }}>
-              <DialogTrigger asChild>
-                <Button 
-                  variant="outline" 
-                  size="sm" 
-                >
-                  <Plus className="h-4 w-4 mr-1" /> Add Tool
-                </Button>
-              </DialogTrigger>
-              <DialogContent className="max-w-lg">
-                <DialogHeader>
-                  <DialogTitle>{editIndex !== null ? 'Edit Tool' : 'Add Tool'}</DialogTitle>
-                  <DialogDescription>
-                    {editIndex !== null 
-                      ? 'Update the tool details below.' 
-                      : 'Enter the details of the new tool you want to add.'}
-                  </DialogDescription>
-                </DialogHeader>
-                <div className="space-y-4">
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <Label htmlFor="tool-name">Name</Label>
-                      <Input 
-                        id="tool-name" 
-                        value={toolName} 
-                        onChange={e => setToolName(e.target.value)} 
-                        placeholder="weather_forecast"
-                      />
-                    </div>
-                    <div>
-                      <Label htmlFor="tool-type">Type</Label>
-                      <Input 
-                        id="tool-type" 
-                        value={toolType} 
-                        onChange={e => setToolType(e.target.value)} 
-                        placeholder="function"
-                      />
-                    </div>
-                  </div>
-                  <div>
-                    <Label htmlFor="tool-schema">Schema (JSON)</Label>
-                    <Textarea 
-                      id="tool-schema" 
-                      value={toolSchema} 
-                      onChange={e => setToolSchema(e.target.value)} 
-                      placeholder='{"properties":{"location":{"type":"string"},"days":{"type":"number"}},"required":["location"]}'
-                      rows={5}
-                    />
-                  </div>
-                </div>
-                <DialogFooter>
-                  <Button 
-                    variant="secondary" 
-                    onClick={() => setShowToolForm(false)}
-                  >
-                    Cancel
-                  </Button>
-                  <Button 
-                    onClick={addTool}
-                    disabled={!toolName || !toolType}
-                  >
-                    {editIndex !== null ? 'Update Tool' : 'Add Tool'}
-                  </Button>
-                </DialogFooter>
-              </DialogContent>
-            </Dialog>
+            <ToolDialog
+              open={showToolForm}
+              onOpenChange={(open) => {
+                setShowToolForm(open);
+                if (!open) resetToolForm();
+              }}
+              toolName={toolName}
+              setToolName={setToolName}
+              toolType={toolType}
+              setToolType={setToolType}
+              toolSchema={toolSchema}
+              setToolSchema={setToolSchema}
+              editIndex={editIndex}
+              onSubmit={addTool}
+              onCancel={() => setShowToolForm(false)}
+            />
           </div>
 
           {/* Tools Table */}
