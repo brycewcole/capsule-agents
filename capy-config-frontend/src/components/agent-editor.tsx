@@ -6,11 +6,23 @@ import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Save, Loader2 } from "lucide-react"
+import { Save, Loader2, Plus, Edit, Trash } from "lucide-react"
 import { Separator } from "@/components/ui/separator"
 import { toast } from "sonner"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { getAgentInfo, getAvailableModels, updateAgentInfo, type AgentInfo } from "@/lib/api"
+import { getAgentInfo, getAvailableModels, updateAgentInfo, type AgentInfo, type Tool } from "@/lib/api"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+
+// Import Dialog components
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog"
 
 export type Model = {
   model_name: string      // maps to model_name from backend
@@ -24,6 +36,15 @@ export default function AgentEditor() {
   const [isLoading, setIsLoading] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
   const [availableModels, setAvailableModels] = useState<{id: string; name: string}[]>([])
+  const [tools, setTools] = useState<Tool[]>([])
+  const [showToolForm, setShowToolForm] = useState(false)
+  // const [currentTool, setCurrentTool] = useState<Tool | null>(null)
+  const [editIndex, setEditIndex] = useState<number | null>(null)
+  
+  // New state for tool form
+  const [toolName, setToolName] = useState("")
+  const [toolType, setToolType] = useState("")
+  const [toolSchema, setToolSchema] = useState("")
 
   const handleSave = async () => {
     setIsSaving(true)
@@ -33,7 +54,8 @@ export default function AgentEditor() {
         name,
         description,
         modelName: selectedModel?.model_name || "",
-        modelParameters: {}
+        modelParameters: {},
+        tools: tools
       }
       await updateAgentInfo(agentInfo)
       toast.success("Agent saved", { description: "Agent configuration has been updated successfully." })
@@ -63,6 +85,7 @@ export default function AgentEditor() {
           model_name: agentInfo.modelName, 
           displayName: agentInfo.modelName
         })
+        setTools(agentInfo.tools || [])
       } catch (error) {
         console.error("Failed to fetch data:", error)
         toast.error("Error fetching data", { description: "Could not load agent or model data from server." })
@@ -92,6 +115,7 @@ export default function AgentEditor() {
         model_name: agentInfo.modelName, 
         displayName: agentInfo.modelName
       })
+      setTools(agentInfo.tools || [])
       toast.success("Reset successful", { description: "Agent data has been reset to saved values." })
     } catch (error) {
       console.error("Failed to fetch agent info:", error)
@@ -99,6 +123,73 @@ export default function AgentEditor() {
     } finally {
       setIsLoading(false)
     }
+  }
+
+  const addTool = () => {
+    try {
+      if (!toolName || !toolType) {
+        toast.error("Invalid tool", { description: "Tool name and type are required." })
+        return
+      }
+
+      // Try to parse the schema as JSON
+      let parsedSchema = {}
+      try {
+        parsedSchema = JSON.parse(toolSchema || '{}')
+      } catch (error) {
+        toast.error("Invalid schema", { description: "The tool schema must be valid JSON." })
+        return
+      }
+
+      const newTool: Tool = {
+        name: toolName,
+        type: toolType,
+        tool_schema: parsedSchema
+      }
+
+      if (editIndex !== null) {
+        // Update existing tool
+        const newTools = [...tools]
+        newTools[editIndex] = newTool
+        setTools(newTools)
+        toast.success("Tool updated", { description: `Tool "${toolName}" has been updated.` })
+      } else {
+        // Add new tool
+        setTools([...tools, newTool])
+        toast.success("Tool added", { description: `Tool "${toolName}" has been added.` })
+      }
+
+      // Reset form
+      resetToolForm()
+    } catch (error) {
+      console.error("Error adding tool:", error)
+      toast.error("Error adding tool", { description: "An error occurred while adding the tool." })
+    }
+  }
+
+  const editTool = (index: number) => {
+    const tool = tools[index]
+    setToolName(tool.name)
+    setToolType(tool.type)
+    setToolSchema(JSON.stringify(tool.tool_schema, null, 2))
+    setEditIndex(index)
+    setShowToolForm(true)
+  }
+
+  const deleteTool = (index: number) => {
+    const newTools = [...tools]
+    const toolName = tools[index].name
+    newTools.splice(index, 1)
+    setTools(newTools)
+    toast.success("Tool removed", { description: `Tool "${toolName}" has been removed.` })
+  }
+
+  const resetToolForm = () => {
+    setToolName("")
+    setToolType("")
+    setToolSchema("")
+    setEditIndex(null)
+    setShowToolForm(false)
   }
 
   if (isLoading) {
@@ -142,6 +233,115 @@ export default function AgentEditor() {
             </SelectContent>
           </Select>
         </div>
+
+        {/* Tools Section */}
+        <div className="space-y-4">
+          <div className="flex justify-between items-center">
+            <Label>Tools</Label>
+            <Dialog open={showToolForm} onOpenChange={(open) => {
+              setShowToolForm(open);
+              if (!open) resetToolForm();
+            }}>
+              <DialogTrigger asChild>
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                >
+                  <Plus className="h-4 w-4 mr-1" /> Add Tool
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="max-w-lg">
+                <DialogHeader>
+                  <DialogTitle>{editIndex !== null ? 'Edit Tool' : 'Add Tool'}</DialogTitle>
+                  <DialogDescription>
+                    {editIndex !== null 
+                      ? 'Update the tool details below.' 
+                      : 'Enter the details of the new tool you want to add.'}
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="space-y-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <Label htmlFor="tool-name">Name</Label>
+                      <Input 
+                        id="tool-name" 
+                        value={toolName} 
+                        onChange={e => setToolName(e.target.value)} 
+                        placeholder="weather_forecast"
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="tool-type">Type</Label>
+                      <Input 
+                        id="tool-type" 
+                        value={toolType} 
+                        onChange={e => setToolType(e.target.value)} 
+                        placeholder="function"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <Label htmlFor="tool-schema">Schema (JSON)</Label>
+                    <Textarea 
+                      id="tool-schema" 
+                      value={toolSchema} 
+                      onChange={e => setToolSchema(e.target.value)} 
+                      placeholder='{"properties":{"location":{"type":"string"},"days":{"type":"number"}},"required":["location"]}'
+                      rows={5}
+                    />
+                  </div>
+                </div>
+                <DialogFooter>
+                  <Button 
+                    variant="secondary" 
+                    onClick={() => setShowToolForm(false)}
+                  >
+                    Cancel
+                  </Button>
+                  <Button 
+                    onClick={addTool}
+                    disabled={!toolName || !toolType}
+                  >
+                    {editIndex !== null ? 'Update Tool' : 'Add Tool'}
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+          </div>
+
+          {/* Tools Table */}
+          {tools.length > 0 ? (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Name</TableHead>
+                  <TableHead>Type</TableHead>
+                  <TableHead className="w-20">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {tools.map((tool, index) => (
+                  <TableRow key={index}>
+                    <TableCell>{tool.name}</TableCell>
+                    <TableCell>{tool.type}</TableCell>
+                    <TableCell className="flex gap-1">
+                      <Button variant="ghost" size="sm" onClick={() => editTool(index)} title="Edit tool">
+                        <Edit className="h-4 w-4" />
+                      </Button>
+                      <Button variant="ghost" size="sm" onClick={() => deleteTool(index)} title="Remove tool">
+                        <Trash className="h-4 w-4" />
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          ) : (
+            <div className="text-center p-4 text-gray-500 border border-dashed rounded-md">
+              No tools configured. Tools can enhance your agent's capabilities.
+            </div>
+          )}
+        </div>
       </CardContent>
       <Separator />
       <CardFooter className="flex justify-end gap-2">
@@ -152,5 +352,4 @@ export default function AgentEditor() {
       </CardFooter>
     </Card>
   )
-
 }

@@ -1,9 +1,9 @@
-from typing import Annotated
+from typing import Annotated, List
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, ConfigDict
 from pydantic.alias_generators import to_camel
 
-from backend.app.configure_schemas import AgentInfo, Model
+from backend.app.configure_schemas import AgentInfo, Model, Tool
 from backend.app.dependicies.deps import model_list
 from backend.app.services.configure_service import ConfigureService
 
@@ -22,6 +22,7 @@ class PutAgentRequestBody(RequestBodyModel):
     name: str
     description: str
     model_name: str
+    tools: List[Tool] = []
 
 
 class GetAgentResponse(ResponseModel):
@@ -29,6 +30,7 @@ class GetAgentResponse(ResponseModel):
     description: str
     model_name: str
     model_parameters: dict
+    tools: List[Tool] = []
 
 
 # Agent Info Endpoints
@@ -40,6 +42,7 @@ def get_agent_info(service: Annotated[ConfigureService, Depends()]):
         description=agent_info.description,
         model_name=agent_info.model_name,
         model_parameters=agent_info.model_parameters,
+        tools=agent_info.tools,
     )
 
 
@@ -47,11 +50,13 @@ def get_agent_info(service: Annotated[ConfigureService, Depends()]):
 def update_agent_info(
     body: PutAgentRequestBody, service: Annotated[ConfigureService, Depends()]
 ):
+    tools = [Tool(**tool.model_dump()) for tool in body.tools]
     agent_info = AgentInfo(
         name=body.name,
         description=body.description,
         model_name=body.model_name,
         model_parameters={},
+        tools=tools,
     )
     return service.upsert_agent_info(agent_info)
 

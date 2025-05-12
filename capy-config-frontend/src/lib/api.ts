@@ -1,6 +1,6 @@
 import { v4 as uuidv4 } from 'uuid';
 
-const API_BASE_URL = 'http://localhost:80';
+const API_BASE_URL = '';
 
 // Types from backend
 type Content = {
@@ -86,12 +86,20 @@ type TaskArtifactUpdateEvent = {
 
 type StreamEventType = TaskStatusUpdateEvent | TaskArtifactUpdateEvent;
 
+// Type for tool definition
+export type Tool = {
+    name: string;
+    type: string;
+    tool_schema: Record<string, any>;
+};
+
 // Types for agent configuration
 export type AgentInfo = {
     name: string;
     description: string;
     modelName: string;
     modelParameters: Record<string, any>;
+    tools?: Tool[];
 };
 
 // Function to send a message to the agent
