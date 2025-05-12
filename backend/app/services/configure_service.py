@@ -13,13 +13,23 @@ class ConfigureService:
     def __init__(self, db_url: Annotated[str, Depends(database_url)]):
         self.db_url = db_url
         conn = self._get_conn()
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS agent_info (
+                key               INTEGER PRIMARY KEY,
+                name              TEXT    NOT NULL,
+                description       TEXT    NOT NULL,
+                model_name        TEXT    NOT NULL,
+                model_parameters  TEXT    NOT NULL
+            )
+        """)
+        conn.commit()
         # insert mock data if it doesn’t exist yet
         row = conn.execute("SELECT 1 FROM agent_info WHERE key = 1").fetchone()
         if not row:
             mock = AgentInfo(
                 name="Mock Agent",
                 description="This is a mock agent",
-                model_name="gemini-2.0-flash",
+                model_name="gemini/gemini-2.5-flash-preview-04-17",
                 model_parameters={},
             )
             conn.execute(
@@ -31,15 +41,6 @@ class ConfigureService:
                     json.dumps(mock.model_parameters),
                 ),
             )
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS agent_info (
-                key               INTEGER PRIMARY KEY,
-                name              TEXT    NOT NULL,
-                description       TEXT    NOT NULL,
-                model_name        TEXT    NOT NULL,
-                model_parameters  TEXT    NOT NULL
-            )
-        """)
         conn.commit()
         conn.close()
 

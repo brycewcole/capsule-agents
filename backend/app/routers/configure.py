@@ -7,7 +7,7 @@ from backend.app.configure_schemas import AgentInfo, Model
 from backend.app.dependicies.deps import model_list
 from backend.app.services.configure_service import ConfigureService
 
-router = APIRouter(prefix="/configure", tags=["configure"])
+router = APIRouter(prefix="/api", tags=["api"])
 
 
 class RequestBodyModel(BaseModel):

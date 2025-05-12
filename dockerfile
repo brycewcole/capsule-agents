@@ -1,24 +1,24 @@
-# ─── Stage 1: Build Next.js frontend ─────────────────────────────
+# ─── Stage 1: Build Vite frontend ────────────────────────────────
 FROM node:24-alpine AS frontend-builder
 
 # 1) create a non-root user for consistent file ownership
 RUN addgroup -S app && adduser -S app -G app
 USER app
 
-WORKDIR /home/app/frontend
+WORKDIR /home/app/capy-config-frontend
 
 # 2) copy only package manifests and install deps
-COPY --chown=app:app frontend/package.json frontend/package-lock.json ./
+COPY --chown=app:app capy-config-frontend/package.json capy-config-frontend/package-lock.json ./
 RUN npm ci --legacy-peer-deps
 
-# 3) copy the rest of your source and build
-COPY --chown=app:app frontend/ ./
+# 3) copy the rest of your source and build with Vite
+COPY --chown=app:app capy-config-frontend/ ./
 RUN npm run build
 
 # ─── Stage 2: Prepare Python/uv environment ───────────────────────
 FROM ghcr.io/astral-sh/uv:bookworm-slim AS uv-base
 
-# Install Rust for Python package dependencies
+# Install Rust for any Python packages that need it
 RUN apt-get update && apt-get install -y rustc cargo && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -34,17 +34,18 @@ COPY backend/ ./backend
 FROM uv-base AS runtime
 ENV PYTHONPATH=/app
 
-# Create static directory for the Next.js frontend
+# Create static directory for the Vite-built assets
 RUN mkdir -p ./static
 
-# Copy Next.js static export to the static directory for the /editor endpoint
-COPY --from=frontend-builder /home/app/frontend/out/ ./static/
+# Copy Vite’s dist/ into static for FastAPI to serve
+COPY --from=frontend-builder /home/app/capy-config-frontend/dist/ ./static/
 
-EXPOSE 3000
+EXPOSE 80
 
+# Ensure fastapi-cli is available and deps are up to date
 RUN uv add fastapi-cli && uv sync --locked
 
-# use uv to invoke the FastAPI plugin
+# Use uv to invoke FastAPI; serving static at “/” via StaticFiles in your main.py
 ENTRYPOINT ["uv", "run", "fastapi", "run", \
     "--reload", "backend/app/main.py", \
     "--host", "0.0.0.0", "--port", "80"]

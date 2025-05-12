@@ -7,6 +7,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from dotenv import load_dotenv
 import os
 
+from fastapi.staticfiles import StaticFiles
 from pydantic import ValidationError
 
 from backend.app.routers import configure
@@ -32,9 +33,12 @@ from fastapi.exceptions import RequestValidationError
 
 app = FastAPI()
 
-# Mount the Next.js static export at the /editor endpoint
-# This will serve the index.html from static directory when accessing /editor
-# app.mount("/editor", StaticFiles(directory="static", html=True), name="editor")
+# Mount specific static asset directories that won't conflict with API routes
+app.mount("/assets", StaticFiles(directory="static/assets"), name="assets")
+app.mount("/editor", StaticFiles(directory="static", html=True), name="editor")
+
+# Also serve vite.svg explicitly
+app.mount("/vite.svg", StaticFiles(directory="static", html=False), name="vite")
 
 
 @app.exception_handler(RequestValidationError)

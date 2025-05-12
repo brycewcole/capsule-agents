@@ -1,6 +1,6 @@
 import { v4 as uuidv4 } from 'uuid';
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+const API_BASE_URL = 'http://localhost:80';
 
 // Types from backend
 type Content = {
@@ -246,7 +246,7 @@ export async function getAgentCard() {
 // Function to get agent configuration
 export async function getAgentInfo(): Promise<AgentInfo> {
     try {
-        const response = await fetch(`${API_BASE_URL}/configure/agent`);
+        const response = await fetch(`${API_BASE_URL}/api/agent`);
 
         if (!response.ok) {
             throw new Error(`HTTP error! status: ${response.status}`);
@@ -262,7 +262,7 @@ export async function getAgentInfo(): Promise<AgentInfo> {
 // Function to update agent configuration
 export async function updateAgentInfo(info: AgentInfo): Promise<AgentInfo> {
     const body: any = { ...info };
-    const response = await fetch(`${API_BASE_URL}/configure/agent`, {
+    const response = await fetch(`${API_BASE_URL}/api/agent`, {
         method: "PUT",
         headers: {
             "Content-Type": "application/json",
@@ -280,7 +280,7 @@ export async function updateAgentInfo(info: AgentInfo): Promise<AgentInfo> {
 // Function to get the list of available models
 export async function getAvailableModels(): Promise<Model[]> {
     try {
-        const response = await fetch(`${API_BASE_URL}/configure/models`);
+        const response = await fetch(`${API_BASE_URL}/api/models`);
 
         if (!response.ok) {
             throw new Error(`HTTP error! status: ${response.status}`);
