@@ -27,8 +27,8 @@ class ConfigureService:
         row = conn.execute("SELECT 1 FROM agent_info WHERE key = 1").fetchone()
         if not row:
             mock = AgentInfo(
-                name="Mock Agent",
-                description="This is a mock agent",
+                name="capy_agent",
+                description="You are a Capybara agent. You are a friendly and helpful assistant.",
                 model_name="gemini/gemini-2.5-flash-preview-04-17",
                 model_parameters={},
             )
