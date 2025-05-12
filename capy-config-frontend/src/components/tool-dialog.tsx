@@ -59,7 +59,7 @@ export function ToolDialog({
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <Label htmlFor="tool-name">Name</Label>
+              <Label htmlFor="tool-name" className="pb-1">Name</Label>
               <Input
                 id="tool-name"
                 value={toolName}
@@ -68,7 +68,7 @@ export function ToolDialog({
               />
             </div>
             <div>
-              <Label htmlFor="tool-type">Type</Label>
+              <Label htmlFor="tool-type" className="pb-1">Type</Label>
               <Input
                 id="tool-type"
                 value={toolType}
@@ -78,7 +78,7 @@ export function ToolDialog({
             </div>
           </div>
           <div>
-            <Label htmlFor="tool-schema">Schema (JSON)</Label>
+            <Label htmlFor="tool-schema" className="pb-1">Schema (JSON)</Label>
             <Textarea
               id="tool-schema"
               value={toolSchema}
