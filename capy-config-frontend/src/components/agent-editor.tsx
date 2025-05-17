@@ -34,6 +34,7 @@ export default function AgentEditor() {
   const [toolName, setToolName] = useState("")
   const [toolType, setToolType] = useState("")
   const [toolSchema, setToolSchema] = useState("")
+  const [agentUrl, setAgentUrl] = useState("") // New state for a2a_call agent URL
 
   const handleSave = async () => {
     setIsSaving(true)
@@ -121,20 +122,36 @@ export default function AgentEditor() {
         return
       }
 
-      // Try to parse the schema as JSON
-      let parsedSchema = {}
-      try {
-        parsedSchema = JSON.parse(toolSchema || '{}')
-      } catch (error) {
-        toast.error("Invalid schema", { description: "The tool schema must be valid JSON." })
-        return
+      let toolDataSchema: Record<string, any> = {};
+
+      if (toolType === "a2a_call") {
+        if (!agentUrl) {
+          toast.error("Invalid tool", { description: "Agent URL is required for a2a_call tool." });
+          return;
+        }
+        try {
+          // Validate URL (basic validation)
+          new URL(agentUrl);
+        } catch (_) {
+          toast.error("Invalid URL", { description: "Please enter a valid Agent URL." });
+          return;
+        }
+        toolDataSchema = { agent_url: agentUrl };
+      } else {
+        // Try to parse the schema as JSON for other tool types
+        try {
+          toolDataSchema = JSON.parse(toolSchema || '{}');
+        } catch (error) {
+          toast.error("Invalid schema", { description: "The tool schema must be valid JSON." });
+          return;
+        }
       }
 
       const newTool: Tool = {
         name: toolName,
         type: toolType,
-        tool_schema: parsedSchema
-      }
+        tool_schema: toolDataSchema,
+      };
 
       if (editIndex !== null) {
         // Update existing tool
@@ -157,13 +174,19 @@ export default function AgentEditor() {
   }
 
   const editTool = (index: number) => {
-    const tool = tools[index]
-    setToolName(tool.name)
-    setToolType(tool.type)
-    setToolSchema(JSON.stringify(tool.tool_schema, null, 2))
-    setEditIndex(index)
-    setShowToolForm(true)
-  }
+    const tool = tools[index];
+    setToolName(tool.name);
+    setToolType(tool.type);
+    if (tool.type === "a2a_call" && tool.tool_schema && typeof tool.tool_schema.agent_url === 'string') {
+      setAgentUrl(tool.tool_schema.agent_url);
+      setToolSchema(""); // Clear generic schema for a2a_call
+    } else {
+      setToolSchema(JSON.stringify(tool.tool_schema || {}, null, 2));
+      setAgentUrl(""); // Clear agentUrl for other types
+    }
+    setEditIndex(index);
+    setShowToolForm(true);
+  };
 
   const deleteTool = (index: number) => {
     const newTools = [...tools]
@@ -174,12 +197,13 @@ export default function AgentEditor() {
   }
 
   const resetToolForm = () => {
-    setToolName("")
-    setToolType("")
-    setToolSchema("")
-    setEditIndex(null)
-    setShowToolForm(false)
-  }
+    setToolName("");
+    setToolType("");
+    setToolSchema("");
+    setAgentUrl(""); // Reset agentUrl
+    setEditIndex(null);
+    setShowToolForm(false);
+  };
 
   const handleAddNewToolClick = () => {
     resetToolForm(); // Clears form state, sets editIndex to null, and calls setShowToolForm(false)

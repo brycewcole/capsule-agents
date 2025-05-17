@@ -9,9 +9,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog"
-import { Plus } from "lucide-react"
 
 interface ToolDialogProps {
   open: boolean
@@ -22,6 +20,8 @@ interface ToolDialogProps {
   setToolType: (type: string) => void
   toolSchema: string
   setToolSchema: (schema: string) => void
+  agentUrl: string // New prop for agent URL
+  setAgentUrl: (url: string) => void // New prop for setting agent URL
   editIndex: number | null
   onSubmit: () => void
   onCancel: () => void
@@ -36,17 +36,22 @@ export function ToolDialog({
   setToolType,
   toolSchema,
   setToolSchema,
+  agentUrl,
+  setAgentUrl,
   editIndex,
   onSubmit,
   onCancel,
 }: ToolDialogProps) {
+  
+  const handleToolTypeChange = (newType: string) => {
+    setToolType(newType);
+    if (newType !== "a2a_call") {
+      setAgentUrl(""); // Clear agentUrl if type is not a2a_call
+    }
+  };
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogTrigger asChild>
-        <Button variant="outline" size="sm">
-          <Plus className="h-4 w-4 mr-1" /> Add Tool
-        </Button>
-      </DialogTrigger>
       <DialogContent className="max-w-lg">
         <DialogHeader>
           <DialogTitle>{editIndex !== null ? 'Edit Tool' : 'Add Tool'}</DialogTitle>
@@ -72,21 +77,34 @@ export function ToolDialog({
               <Input
                 id="tool-type"
                 value={toolType}
-                onChange={e => setToolType(e.target.value)}
-                placeholder="function"
+                onChange={e => handleToolTypeChange(e.target.value)}
+                placeholder="function or a2a_call"
               />
             </div>
           </div>
-          <div>
-            <Label htmlFor="tool-schema" className="pb-1">Schema (JSON)</Label>
-            <Textarea
-              id="tool-schema"
-              value={toolSchema}
-              onChange={e => setToolSchema(e.target.value)}
-              placeholder='{"properties":{"location":{"type":"string"},"days":{"type":"number"}},"required":["location"]}'
-              rows={5}
-            />
-          </div>
+          {toolType === "a2a_call" && (
+            <div>
+              <Label htmlFor="agent-url" className="pb-1">Agent URL</Label>
+              <Input
+                id="agent-url"
+                value={agentUrl}
+                onChange={e => setAgentUrl(e.target.value)}
+                placeholder="http://remote-agent/api/tasks/send"
+              />
+            </div>
+          )}
+          {toolType !== "a2a_call" && (
+            <div>
+              <Label htmlFor="tool-schema" className="pb-1">Schema (JSON)</Label>
+              <Textarea
+                id="tool-schema"
+                value={toolSchema}
+                onChange={e => setToolSchema(e.target.value)}
+                placeholder='{"properties":{"location":{"type":"string"},"days":{"type":"number"}},"required":["location"]}'
+                rows={5}
+              />
+            </div>
+          )}
         </div>
         <DialogFooter>
           <Button variant="secondary" onClick={onCancel}>
