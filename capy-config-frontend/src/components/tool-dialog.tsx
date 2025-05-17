@@ -10,6 +10,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 
 interface ToolDialogProps {
   open: boolean
@@ -74,12 +81,15 @@ export function ToolDialog({
             </div>
             <div>
               <Label htmlFor="tool-type" className="pb-1">Type</Label>
-              <Input
-                id="tool-type"
-                value={toolType}
-                onChange={e => handleToolTypeChange(e.target.value)}
-                placeholder="function or a2a_call"
-              />
+              <Select value={toolType} onValueChange={handleToolTypeChange}>
+                <SelectTrigger id="tool-type">
+                  <SelectValue placeholder="Select tool type" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="function">Function</SelectItem>
+                  <SelectItem value="a2a_call">Agent (a2a)</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
           </div>
           {toolType === "a2a_call" && (
