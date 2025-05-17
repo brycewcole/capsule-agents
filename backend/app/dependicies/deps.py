@@ -70,8 +70,31 @@ def agent(
     name: str = row["name"]
     description: str = row["description"]
     model_name: str = row["model_name"]
+    tools_json: str = row["tools"] # This is a JSON string
+
+    import json # Make sure json is imported
 
     agent_tools = []
+    if tools_json:
+        try:
+            tool_configs = json.loads(tools_json)
+            for config in tool_configs:
+                if config.get("type") == "a2a_call":
+                    tool_schema = config.get("tool_schema", {})
+                    agent_url = tool_schema.get("agent_url")
+                    if agent_url:
+                        # Assuming A2ATool can be instantiated with just agent_url
+                        # and its name/description are inherent or set within A2ATool itself.
+                        # If A2ATool needs name/description from config, adjust here.
+                        agent_tools.append(A2ATool(agent_url=agent_url))
+                    else:
+                        # Handle missing agent_url for a2a_call tool, e.g., log a warning
+                        print(f"Warning: a2a_call tool '{config.get('name')}' is missing agent_url.")
+                # Add logic for other tool types here if needed in the future
+        except json.JSONDecodeError:
+            # Handle error in parsing tools JSON, e.g., log an error
+            print(f"Error: Could not parse tools JSON: {tools_json}")
+
 
     return Agent(
         name=name,
