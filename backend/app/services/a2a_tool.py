@@ -11,7 +11,7 @@ class A2ATool(BaseTool):
         super().__init__(
             name="a2a_call",
             description="Send a single message to remote A2A agent via tasks/send",
-            is_long_running=False,
+            is_long_running=True,
         )
         self.agent_url = agent_url
 
