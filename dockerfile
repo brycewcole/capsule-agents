@@ -43,9 +43,6 @@ COPY --from=frontend-builder /home/app/capy-config-frontend/dist/ ./static/
 
 EXPOSE 80
 
-# Ensure fastapi-cli is available and deps are up to date
-RUN uv add fastapi-cli && uv sync --locked
-
 # Use uv to invoke FastAPI; serving static at “/” via StaticFiles in your main.py
 ENTRYPOINT ["uv", "run", "-m", "uvicorn", "backend.app.main:app", \
     "--reload", "--host", "0.0.0.0", "--port", "80", "--log-config", "log_conf.yaml" ]
