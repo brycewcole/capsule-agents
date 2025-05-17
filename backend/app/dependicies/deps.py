@@ -6,8 +6,6 @@ from fastapi import Depends
 from google.adk.sessions import BaseSessionService
 from google.adk.runners import Runner
 from google.adk.agents import Agent
-import os
-import logging # Add logging import
 
 from backend.app.configure_schemas import Model
 from backend.app.services.sqlite_session_service import SQLiteSessionService
@@ -110,14 +108,3 @@ def runner(
         app_name="weather_tutorial_app",
         session_service=session_service,
     )
-
-
-def a2a_agent_tool(
-    agent_url: str = os.getenv("A2A_AGENT_URL", "http://localhost:8000/a2a"),
-) -> A2ATool:
-    """
-    Returns a configured A2ATool instance pointing at the remote agent URL.
-    """
-    logger = logging.getLogger(__name__)
-    logger.info(f"Configuring A2ATool with agent_url: {agent_url}")
-    return A2ATool(agent_url)

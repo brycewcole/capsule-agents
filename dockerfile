@@ -29,6 +29,7 @@ RUN uv sync --locked
 
 # 2) copy your backend code
 COPY backend/ ./backend
+COPY log_conf.yaml ./
 
 # ─── Stage 3: Final image (merge UI + API) ────────────────────────
 FROM uv-base AS runtime
@@ -46,6 +47,5 @@ EXPOSE 80
 RUN uv add fastapi-cli && uv sync --locked
 
 # Use uv to invoke FastAPI; serving static at “/” via StaticFiles in your main.py
-ENTRYPOINT ["uv", "run", "fastapi", "run", \
-    "--reload", "backend/app/main.py", \
-    "--host", "0.0.0.0", "--port", "80"]
+ENTRYPOINT ["uv", "run", "-m", "uvicorn", "backend.app.main:app", \
+    "--reload", "--host", "0.0.0.0", "--port", "80", "--log-config", "log_conf.yaml" ]
