@@ -84,6 +84,24 @@ class ConfigureService:
         )
 
     def upsert_agent_info(self, info: AgentInfo) -> AgentInfo:
+        # Validate tool configurations, especially for a2a_call tools
+        for tool_config in info.tools:
+            if tool_config.type == "a2a_call":
+                if not isinstance(tool_config.tool_schema, dict):
+                    raise ValueError(
+                        f"Tool '{tool_config.name}' of type 'a2a_call' has an invalid tool_schema (expected a dictionary)."
+                    )
+                if "agent_url" not in tool_config.tool_schema:
+                    raise ValueError(
+                        f"Tool '{tool_config.name}' of type 'a2a_call' is missing 'agent_url' in its tool_schema."
+                    )
+                # Optionally, further validate the agent_url format (e.g., if it's a valid HTTP/HTTPS URL)
+                # agent_url_val = tool_config.tool_schema["agent_url"]
+                # if not isinstance(agent_url_val, str) or not (agent_url_val.startswith("http://") or agent_url_val.startswith("https://")):
+                #     raise ValueError(
+                #         f"Tool '{tool_config.name}' of type 'a2a_call' has an invalid 'agent_url': {agent_url_val}."
+                #     )
+
         conn = self._get_conn()
         conn.execute(
             "INSERT OR REPLACE INTO agent_info(key, name, description, model_name, model_parameters, tools) VALUES(1, ?, ?, ?, ?, ?)",
