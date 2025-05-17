@@ -56,23 +56,28 @@ def session_service() -> BaseSessionService:
 def agent(
     db_url: Annotated[str, Depends(database_url)],
 ) -> Agent:
-    """
-    Returns the agent to be used for the application, reading info from the database.
-    """
     conn = sqlite3.connect(db_url, detect_types=sqlite3.PARSE_DECLTYPES)
     conn.row_factory = sqlite3.Row
     cursor = conn.execute(
-        "SELECT name, description, model_name FROM agent_info WHERE key = 1"
+        "SELECT name, description, model_name, tools FROM agent_info WHERE key = 1"
     )
     row = cursor.fetchone()
     conn.close()
+
     if not row:
-        raise ValueError("Agent info not found")
-    name, description, model_name = row
+        raise ValueError("Agent info not found in the database.")
+
+    name: str = row["name"]
+    description: str = row["description"]
+    model_name: str = row["model_name"]
+
+    agent_tools = []
+
     return Agent(
         name=name,
         model=LiteLlm(model=model_name),
         description=description,
+        tools=agent_tools,  # Pass the list of configured tools
     )
 
 
