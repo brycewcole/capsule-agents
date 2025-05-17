@@ -6,7 +6,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Save, Loader2, Edit, Trash } from "lucide-react"
+import { Save, Loader2, Edit, Trash, Plus } from "lucide-react"
 import { Separator } from "@/components/ui/separator"
 import { toast } from "sonner"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -181,6 +181,11 @@ export default function AgentEditor() {
     setShowToolForm(false)
   }
 
+  const handleAddNewToolClick = () => {
+    resetToolForm(); // Clears form state, sets editIndex to null, and calls setShowToolForm(false)
+    setShowToolForm(true); // Opens the dialog for a new tool
+  };
+
   if (isLoading) {
     return (
       <Card className="shadow-md">
@@ -227,23 +232,28 @@ export default function AgentEditor() {
         <div className="space-y-4">
           <div className="flex justify-between items-center">
             <Label>Tools</Label>
-            <ToolDialog
-              open={showToolForm}
-              onOpenChange={(open) => {
-                setShowToolForm(open);
-                if (!open) resetToolForm();
-              }}
-              toolName={toolName}
-              setToolName={setToolName}
-              toolType={toolType}
-              setToolType={setToolType}
-              toolSchema={toolSchema}
-              setToolSchema={setToolSchema}
-              editIndex={editIndex}
-              onSubmit={addTool}
-              onCancel={() => setShowToolForm(false)}
-            />
+            <Button size="sm" variant="outline" onClick={handleAddNewToolClick}>
+              <Plus className="mr-2 h-4 w-4" />
+              Add Tool
+            </Button>
           </div>
+
+          <ToolDialog
+            open={showToolForm}
+            onOpenChange={(open) => {
+              setShowToolForm(open);
+              if (!open) resetToolForm();
+            }}
+            toolName={toolName}
+            setToolName={setToolName}
+            toolType={toolType}
+            setToolType={setToolType}
+            toolSchema={toolSchema}
+            setToolSchema={setToolSchema}
+            editIndex={editIndex}
+            onSubmit={addTool}
+            onCancel={() => setShowToolForm(false)}
+          />
 
           {/* Tools Table */}
           {tools.length > 0 ? (
