@@ -274,6 +274,8 @@ export default function AgentEditor() {
             setToolType={setToolType}
             toolSchema={toolSchema}
             setToolSchema={setToolSchema}
+            agentUrl={agentUrl}
+            setAgentUrl={setAgentUrl}
             editIndex={editIndex}
             onSubmit={addTool}
             onCancel={() => setShowToolForm(false)}
