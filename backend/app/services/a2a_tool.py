@@ -1,4 +1,4 @@
-import logging # Add logging import
+import logging  # Add logging import
 from google.adk.tools import BaseTool
 import httpx
 from uuid import uuid4
@@ -12,7 +12,6 @@ class A2ATool(BaseTool):
         super().__init__(
             name="a2a_call",
             description="Send a single message to remote A2A agent via tasks/send",
-            is_long_running=True,
         )
         self.agent_url = agent_url
         self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
@@ -45,17 +44,22 @@ class A2ATool(BaseTool):
 
         request_id = str(uuid4())
         # wrap into TaskSendParams: id and message
+        message = types.Content(parts=[types.Part(text=msg)]).model_dump()
         payload = {
             "jsonrpc": "2.0",
             "id": request_id,
             "method": "tasks/send",
-            "params": {"id": request_id, "message": msg},
+            "params": {"id": request_id, "message": message},
         }
-        self.logger.info(f"Sending A2A request to {self.agent_url} with payload: {payload}")
+        self.logger.info(
+            f"Sending A2A request to {self.agent_url} with payload: {payload}"
+        )
         try:
             async with httpx.AsyncClient() as client:
                 response = await client.post(self.agent_url, json=payload)
-                self.logger.info(f"Received response from A2A agent: status_code={response.status_code}")
+                self.logger.info(
+                    f"Received response from A2A agent: status_code={response.status_code}"
+                )
                 response.raise_for_status()  # Raise an exception for bad status codes
                 result = response.json()
                 self.logger.info(f"A2A response JSON: {result}")
@@ -64,7 +68,10 @@ class A2ATool(BaseTool):
                 return result["result"]
             return result
         except httpx.HTTPStatusError as e:
-            self.logger.error(f"A2A HTTP error: {e.response.status_code} - {e.response.text}", exc_info=True)
+            self.logger.error(
+                f"A2A HTTP error: {e.response.status_code} - {e.response.text}",
+                exc_info=True,
+            )
             raise
         except httpx.RequestError as e:
             self.logger.error(f"A2A request error: {e}", exc_info=True)

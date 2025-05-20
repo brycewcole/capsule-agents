@@ -20,20 +20,10 @@ handlers:
     stream: ext://sys.stdout
 
 loggers:
-  uvicorn:
-    handlers: [console]
+  uvicorn.error:   # or omit entirely
     propagate: True
-    level: INFO
-
-  uvicorn.error:
-    handlers: [console]
-    propagate: True
-    level: INFO
-
   uvicorn.access:
-    handlers: [console]
     propagate: True
-    level: INFO
 
 root:
   handlers: [console]

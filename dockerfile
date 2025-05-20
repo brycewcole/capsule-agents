@@ -45,4 +45,4 @@ EXPOSE 80
 
 # Use uv to invoke FastAPI; serving static at “/” via StaticFiles in your main.py
 ENTRYPOINT ["uv", "run", "-m", "uvicorn", "backend.app.main:app", \
-    "--reload", "--host", "0.0.0.0", "--port", "80", "--log-config", "log_conf.yaml" ]
+    "--host", "0.0.0.0", "--port", "80", "--log-config", "log_conf.yaml" ]
