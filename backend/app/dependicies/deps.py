@@ -53,7 +53,7 @@ def session_service() -> BaseSessionService:
     return SQLiteSessionService("./sessions.db")
 
 
-def agent(
+async def get_agent(
     db_url: Annotated[str, Depends(database_url)],
 ) -> Agent:
     conn = sqlite3.connect(db_url, detect_types=sqlite3.PARSE_DECLTYPES)
@@ -81,10 +81,12 @@ def agent(
                     tool_schema = config.get("tool_schema", {})
                     agent_url = tool_schema.get("agent_url")
                     if agent_url:
-                        agent_tools.append(A2ATool(agent_url=agent_url))
+                        tool = A2ATool(agent_card_url=agent_url)
+                        await tool.initialize_agent_card()
+                        agent_tools.append(tool)
                     else:
-                        print(
-                            f"Warning: a2a_call tool '{config.get('name')}' is missing agent_url."
+                        raise ValueError(
+                            f"a2a_call tool '{config.get('name')}' is missing agent_url."
                         )
                 # Add logic for other tool types here if needed in the future
         except json.JSONDecodeError:
@@ -99,9 +101,9 @@ def agent(
     )
 
 
-def runner(
+def get_runner(
     session_service: Annotated[BaseSessionService, Depends(session_service)],
-    agent: Annotated[Agent, Depends(agent)],
+    agent: Annotated[Agent, Depends(get_agent)],
 ) -> Runner:
     return Runner(
         agent=agent,

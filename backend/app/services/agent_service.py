@@ -1,10 +1,11 @@
 from datetime import datetime
-import logging  # Add logging import
+import logging
+import os  # Add logging import
 from google.adk.runners import Runner
 from typing import Annotated, Dict
 from fastapi import Depends
 from google.genai import types
-from backend.app.dependicies.deps import runner
+from backend.app.dependicies.deps import get_runner
 from backend.app.schemas import Task, TaskIdParams, TaskPushNotificationConfig
 from backend.app.schemas import (
     AgentCapabilities,
@@ -19,7 +20,7 @@ logger = logging.getLogger(__name__)  # Initialize logger for the module
 
 
 class AgentService:
-    def __init__(self, runner: Annotated[Runner, Depends(runner)]):
+    def __init__(self, runner: Annotated[Runner, Depends(get_runner)]):
         self.store: Dict[str, Task] = {}
         self.push_store: Dict[str, TaskPushNotificationConfig] = {}
         self.runner = runner
@@ -129,9 +130,7 @@ class AgentService:
         return task
 
     async def set_push(self, params: TaskPushNotificationConfig):
-        logger.info(
-            f"set_push called for task_id: {params.id}, endpoint: {params.endpoint}"
-        )
+        logger.info(f"set_push called for task_id: {params.id}")
         self.push_store[params.id] = params
         return params
 
@@ -175,16 +174,17 @@ class AgentService:
         return stream()
 
     async def get_agent_card(self) -> AgentCard:
-        logger.info("get_agent_card called.")
-        """
-        Return agent metadata and capabilities.
-        """
+        agent = self.runner.agent
+        agent_url = os.getenv("AGENT_URL")
+        if not agent_url:
+            raise ValueError("AGENT_URL environment variable is not set.")
+        logger.info(f"Agent URL: {agent_url}")
         return AgentCard(
-            name="your_agent_name",
-            description="Describe your agent here.",
-            version="1.0.0",
-            url="https://your-agent-url.com",
-            skills=[],
+            name=agent.name,
+            description=agent.description,
+            version="0.1",
+            url=agent_url,
+            skills=[],  # TODO - Add skills if available
             capabilities=AgentCapabilities(
                 streaming=True,
                 pushNotifications=True,

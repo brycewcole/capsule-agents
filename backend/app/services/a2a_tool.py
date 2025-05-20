@@ -2,22 +2,49 @@ import logging  # Add logging import
 from google.adk.tools import BaseTool
 import httpx
 from uuid import uuid4
-from typing import Any, Dict  # added Dict for typing
+from typing import Any
 from google.genai import types
 from google.adk.tools.tool_context import ToolContext
 
+from backend.app.schemas import AgentCard
+
 
 class A2ATool(BaseTool):
-    def __init__(self, agent_url: str):
+    def __init__(self, agent_card_url: str):
         super().__init__(
             name="a2a_call",
             description="Send a single message to remote A2A agent via tasks/send",
         )
-        self.agent_url = agent_url
+        self.agent_url = agent_card_url
+        self.initialized = False
         self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
         self.logger.info(f"Initialized A2ATool with agent_url: {self.agent_url}")
 
+    async def initialize_agent_card(self):
+        try:
+            async with httpx.AsyncClient() as client:
+                resp = await client.get(self.agent_url)
+                resp.raise_for_status()
+                agent_card_json = resp.json()
+            agent_card = AgentCard(**agent_card_json)
+            self.logger.info(f"Downloaded agent card: {agent_card.name}")
+            self.name = agent_card.name
+            self.url = agent_card.url
+            self.description = (
+                agent_card.description or f"Send a message to {agent_card.name}"
+            )
+            self.initialized = True
+        except Exception as e:
+            self.logger.error(
+                f"Failed to download or parse agent card: {e}", exc_info=True
+            )
+            raise e
+
     def _get_declaration(self) -> types.FunctionDeclaration:
+        if not self.initialized:
+            raise ValueError(
+                "Trying to get declaration before agent card is initialized."
+            )
         # function takes a single 'message' argument (the A2A Message object)
         return types.FunctionDeclaration(
             name=self.name,
@@ -33,7 +60,7 @@ class A2ATool(BaseTool):
         )
 
     async def run_async(
-        self, *, args: Dict[str, Any], tool_context: ToolContext
+        self, *, args: dict[str, Any], tool_context: ToolContext
     ) -> Any:
         self.logger.info(f"Running A2ATool with args: {args}")
         # only 'message' is provided by LLM
@@ -56,7 +83,7 @@ class A2ATool(BaseTool):
         )
         try:
             async with httpx.AsyncClient() as client:
-                response = await client.post(self.agent_url, json=payload)
+                response = await client.post(self.url, json=payload)
                 self.logger.info(
                     f"Received response from A2A agent: status_code={response.status_code}"
                 )
