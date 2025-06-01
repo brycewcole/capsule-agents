@@ -21,6 +21,7 @@ export type Model = {
 
 export default function AgentEditor() {
   const [name, setName] = useState("")
+  const [nameError, setNameError] = useState("")
   const [description, setDescription] = useState("")
   const [selectedModel, setSelectedModel] = useState<Model | null>(null)
   const [isLoading, setIsLoading] = useState(false)
@@ -37,6 +38,12 @@ export default function AgentEditor() {
   const [agentUrl, setAgentUrl] = useState("") // New state for a2a_call agent URL
 
   const handleSave = async () => {
+    // Validate agent name before saving
+    if (nameError) {
+      toast.error("Invalid agent name", { description: "Please fix the agent name before saving." })
+      return
+    }
+    
     setIsSaving(true)
     const startTime = Date.now()
     try {
@@ -70,6 +77,7 @@ export default function AgentEditor() {
         ]);
         setAvailableModels(models.map(model => ({ id: model.model_name, name: model.display_name })));
         setName(agentInfo.name)
+        setNameError("") // Clear any validation errors
         setDescription(agentInfo.description)
         setSelectedModel({ 
           model_name: agentInfo.modelName, 
@@ -100,6 +108,7 @@ export default function AgentEditor() {
       setIsLoading(true)
       const agentInfo = await getAgentInfo()
       setName(agentInfo.name)
+      setNameError("") // Clear any validation errors
       setDescription(agentInfo.description)
       setSelectedModel({ 
         model_name: agentInfo.modelName, 
@@ -230,7 +239,23 @@ export default function AgentEditor() {
       <CardContent className="space-y-6">
         <div className="space-y-2">
           <Label htmlFor="agent-name">Agent Name</Label>
-          <Input id="agent-name" value={name} onChange={e => setName(e.target.value)} />
+          <Input 
+            id="agent-name" 
+            value={name} 
+            onChange={e => {
+              const value = e.target.value
+              if (value.includes(' ')) {
+                setNameError("Agent name cannot contain spaces")
+              } else {
+                setNameError("")
+              }
+              setName(value)
+            }}
+            className={nameError ? "border-red-500" : ""}
+          />
+          {nameError && (
+            <p className="text-sm text-red-600">{nameError}</p>
+          )}
         </div>
         <div className="space-y-2">
           <Label htmlFor="agent-description">Description</Label>
@@ -318,7 +343,7 @@ export default function AgentEditor() {
       <Separator />
       <CardFooter className="flex justify-end gap-2">
         <Button variant="outline" size="sm" onClick={handleReset}>Reset</Button>
-        <Button onClick={handleSave} size="sm" disabled={isSaving}>
+        <Button onClick={handleSave} size="sm" disabled={isSaving || !!nameError}>
           {isSaving ? <><Loader2 className="animate-spin mr-2" />Saving...</> : <><Save className="mr-2" />Save Agent</>}
         </Button>
       </CardFooter>
