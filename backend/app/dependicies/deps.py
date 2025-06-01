@@ -1,15 +1,22 @@
 import json
 import sqlite3
+import os  # <-- Add this import
 from google.adk.models.lite_llm import LiteLlm
+from google.adk.agents.llm_agent import LlmAgent
 from typing import Annotated
 from fastapi import Depends
 from google.adk.sessions import BaseSessionService
 from google.adk.runners import Runner
 from google.adk.agents import Agent
+from google.adk.tools.mcp_tool.mcp_toolset import (
+    StdioServerParameters,
+    MCPToolset,
+    MCPTool,
+)
 
 from backend.app.configure_schemas import Model
-from backend.app.services.sqlite_session_service import SQLiteSessionService
 from backend.app.services.a2a_tool import A2ATool
+from backend.app.services.sqlite_session_service import SQLiteSessionService
 
 
 def model_list() -> list[Model]:
@@ -71,8 +78,38 @@ async def get_agent(
     description: str = row["description"]
     model_name: str = row["model_name"]
     tools_json: str = row["tools"]  # This is a JSON string
+    agent_tools: list = []
 
-    agent_tools = []
+    file_tools, file_exit_stack = await MCPToolset.from_server(
+        connection_params=StdioServerParameters(
+            command="npx",
+            args=[
+                "-y",
+                "@modelcontextprotocol/server-filesystem",
+                "/agent-workspace",
+            ],
+        )
+    )
+
+    brave_api_key = os.environ.get("BRAVE_API_KEY")  # <-- Load from env
+    if not brave_api_key:
+        raise ValueError("BRAVE_API_KEY not found in environment variables.")
+
+    brave_tools, brave_exit_stack = await MCPToolset.from_server(
+        connection_params=StdioServerParameters(
+            command="npx",
+            args=[
+                "-y",
+                "@modelcontextprotocol/server-brave-search",
+            ],
+            env={"BRAVE_API_KEY": brave_api_key},
+        )
+    )
+
+    mcp_tools: list[MCPTool] = file_tools + brave_tools
+    print(f"Fetched {len(mcp_tools)} tools from MCP servers.")
+
+    agent_tools.extend(mcp_tools)
     if tools_json:
         try:
             tool_configs = json.loads(tools_json)
@@ -93,11 +130,11 @@ async def get_agent(
             # Handle error in parsing tools JSON, e.g., log an error
             print(f"Error: Could not parse tools JSON: {tools_json}")
 
-    return Agent(
+    return LlmAgent(
         name=name,
         model=LiteLlm(model=model_name),
         description=description,
-        tools=agent_tools,  # Pass the list of configured tools
+        tools=agent_tools,
     )
 
 
