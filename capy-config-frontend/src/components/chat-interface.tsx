@@ -7,6 +7,7 @@ import { ArrowRight, Loader2, MessageSquare, Plus } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card"
 import { checkHealth, sendMessage, extractResponseText } from "@/lib/api"
 import { v4 as uuidv4 } from "uuid"
+import Markdown from "react-markdown"
 
 type Message = {
   role: "user" | "agent"
@@ -189,7 +190,13 @@ export default function ChatInterface() {
                     message.role === "user" ? "bg-primary text-primary-foreground" : "bg-muted text-left"
                   }`}
                 >
-                  {message.content}
+                  {message.role === "agent" ? (
+                    <div className="prose prose-sm max-w-none dark:prose-invert">
+                      <Markdown>{message.content}</Markdown>
+                    </div>
+                  ) : (
+                    message.content
+                  )}
                   {message.isLoading && (
                     <Loader2 className="h-4 w-4 ml-1 inline animate-spin" />
                   )}
