@@ -1,0 +1,30 @@
+version: 1                                    # required by dictConfig  
+disable_existing_loggers: False               # keep your loggers active  
+
+formatters:
+  default:
+    "()": "uvicorn.logging.DefaultFormatter"  # use Uvicorn’s color-aware default formatter  [oai_citation:0‡Stack Overflow](https://stackoverflow.com/questions/62955750/what-does-do-in-python-log-config?utm_source=chatgpt.com)
+    fmt: "%(levelprefix)s %(message)s"        # no timestamp, only colored level + message  
+    use_colors: True                          # force colored output  [oai_citation:1‡Uvicorn](https://www.uvicorn.org/settings/?utm_source=chatgpt.com)
+
+  access:
+    "()": "uvicorn.logging.AccessFormatter"   # Uvicorn’s color-aware access formatter  [oai_citation:2‡GitHub](https://github.com/fastapi/fastapi/discussions/7457?utm_source=chatgpt.com)
+    fmt: '%(levelprefix)s %(client_addr)s - "%(request_line)s" %(status_code)s'
+    use_colors: True                          # colored HTTP metadata  
+
+handlers:
+  console:
+    class: logging.StreamHandler
+    level: INFO
+    formatter: default                        # attach our colored, no-timestamp formatter  
+    stream: ext://sys.stdout
+
+loggers:
+  uvicorn.error:   # or omit entirely
+    propagate: True
+  uvicorn.access:
+    propagate: True
+
+root:
+  handlers: [console]
+  level: INFO
