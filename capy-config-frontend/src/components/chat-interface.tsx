@@ -150,7 +150,7 @@ export default function ChatInterface() {
   }
 
   return (
-    <Card className="flex flex-col flex-1 min-h-0 overflow-hidden shadow-md">
+    <Card className="flex flex-col flex-1 overflow-hidden shadow-md">
       <CardHeader className="pb-4 flex flex-row justify-between items-center">
         <div>
           <CardTitle className="flex items-center gap-2 text-xl">
@@ -175,7 +175,7 @@ export default function ChatInterface() {
         </Button>
       </CardHeader>
 
-      <CardContent className="flex-1 min-h-0 overflow-y-auto">
+      <CardContent className="flex-1 overflow-y-auto min-h-0 p-4">
         <div className="flex flex-col space-y-4">
           {messages.length === 0 ? (
             <div className="flex items-center justify-center h-full text-muted-foreground">
