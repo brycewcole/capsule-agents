@@ -35,8 +35,18 @@ COPY log_conf.yaml ./
 FROM uv-base AS runtime
 ENV PYTHONPATH=/app
 
+# Add Node.js and npm for npx support
+RUN apt-get update && \
+    apt-get install -y curl && \
+    curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && \
+    apt-get install -y nodejs && \
+    rm -rf /var/lib/apt/lists/*
+
 # Create static directory for the Vite-built assets
 RUN mkdir -p ./static
+
+# Add agent-workspace directory at root
+RUN mkdir /agent-workspace
 
 # Copy Vite’s dist/ into static for FastAPI to serve
 COPY --from=frontend-builder /home/app/capy-config-frontend/dist/ ./static/

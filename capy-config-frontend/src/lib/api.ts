@@ -235,6 +235,38 @@ export async function checkHealth(): Promise<{ status: string }> {
     }
 }
 
+// Types for session history
+type SessionEvent = {
+    id: string;
+    author: string;
+    timestamp: number;
+    content: string;
+    actions: string;
+    partial: boolean;
+    turnComplete: boolean;
+};
+
+type SessionHistoryResponse = {
+    sessionId: string;
+    events: SessionEvent[];
+};
+
+// Function to get session chat history
+export async function getSessionHistory(sessionId: string): Promise<SessionHistoryResponse> {
+    try {
+        const response = await fetch(`${API_BASE_URL}/api/sessions/${sessionId}/history`);
+
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+
+        return await response.json();
+    } catch (error) {
+        console.error("Failed to fetch session history:", error);
+        throw error;
+    }
+}
+
 // Function to get agent metadata
 export async function getAgentCard() {
     try {

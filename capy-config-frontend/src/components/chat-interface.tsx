@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { ArrowRight, Loader2, MessageSquare, Plus } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card"
-import { checkHealth, sendMessage, extractResponseText } from "@/lib/api"
+import { checkHealth, sendMessage, extractResponseText, getSessionHistory } from "@/lib/api"
 import { v4 as uuidv4 } from "uuid"
 import Markdown from "react-markdown"
 
@@ -17,7 +17,6 @@ type Message = {
 
 // Constants for localStorage keys
 const STORAGE_KEYS = {
-  MESSAGES: "peewee-agent-messages",
   SESSION_ID: "peewee-agent-session-id"
 }
 
@@ -31,36 +30,79 @@ export default function ChatInterface() {
   
   // Initialize state from localStorage on component mount
   useEffect(() => {
-    // Load saved messages if they exist
-    const savedMessages = localStorage.getItem(STORAGE_KEYS.MESSAGES)
-    if (savedMessages) {
+    const initializeState = async () => {
       try {
-        setMessages(JSON.parse(savedMessages))
-      } catch (e) {
-        console.error("Error parsing saved messages:", e)
-        // If there's an error parsing, clear the storage
-        localStorage.removeItem(STORAGE_KEYS.MESSAGES)
+        // Load saved sessionId or create a new one
+        const savedSessionId = localStorage.getItem(STORAGE_KEYS.SESSION_ID)
+        let currentSessionId: string
+        
+        if (savedSessionId) {
+          currentSessionId = savedSessionId
+          setSessionId(currentSessionId)
+          
+          // Load chat history from backend for existing session
+          try {
+            console.log("Loading session history for:", currentSessionId)
+            const history = await getSessionHistory(currentSessionId)
+            console.log("Received history:", history)
+            const loadedMessages: Message[] = []
+            
+            for (const event of history.events) {
+              console.log("Processing event:", event)
+              
+              // Extract text content from the JSON string
+              let textContent = ""
+              if (event.content) {
+                try {
+                  const contentObj = JSON.parse(event.content)
+                  if (contentObj.parts && contentObj.parts.length > 0) {
+                    textContent = contentObj.parts.map((part: any) => part.text || "").join("")
+                  }
+                } catch (e) {
+                  console.error("Error parsing event content:", e)
+                  textContent = event.content // fallback to raw content
+                }
+              }
+              
+              if (event.author === 'user') {
+                loadedMessages.push({
+                  role: 'user',
+                  content: textContent
+                })
+              } else if (event.author === 'capy_agent') {
+                // Load agent messages regardless of turn_complete status
+                loadedMessages.push({
+                  role: 'agent',
+                  content: textContent
+                })
+              }
+            }
+            
+            console.log("Loaded messages:", loadedMessages)
+            setMessages(loadedMessages)
+          } catch (error) {
+            console.error("Failed to load session history:", error)
+            // If we can't load history, start fresh but keep the session ID
+          }
+        } else {
+          currentSessionId = uuidv4()
+          setSessionId(currentSessionId)
+          localStorage.setItem(STORAGE_KEYS.SESSION_ID, currentSessionId)
+        }
+      } catch (error) {
+        console.error("Error initializing state:", error)
+        // If backend is down, create new session anyway
+        const newSessionId = uuidv4()
+        setSessionId(newSessionId)
+        localStorage.setItem(STORAGE_KEYS.SESSION_ID, newSessionId)
       }
     }
     
-    // Load saved sessionId or create a new one
-    const savedSessionId = localStorage.getItem(STORAGE_KEYS.SESSION_ID)
-    if (savedSessionId) {
-      setSessionId(savedSessionId)
-    } else {
-      const newSessionId = uuidv4()
-      setSessionId(newSessionId)
-      localStorage.setItem(STORAGE_KEYS.SESSION_ID, newSessionId)
-    }
+    initializeState()
   }, [])
   
-  // Save messages to localStorage whenever they change
-  useEffect(() => {
-    if (messages.length > 0) {
-      localStorage.setItem(STORAGE_KEYS.MESSAGES, JSON.stringify(messages))
-    }
-  }, [messages])
   
+
   // Check backend health on component mount
   useEffect(() => {
     const checkBackendHealth = async () => {
@@ -92,7 +134,6 @@ export default function ChatInterface() {
     
     // Update localStorage
     localStorage.setItem(STORAGE_KEYS.SESSION_ID, newSessionId)
-    localStorage.removeItem(STORAGE_KEYS.MESSAGES)
   }
 
   const handleSendMessage = async () => {
@@ -191,7 +232,7 @@ export default function ChatInterface() {
                   }`}
                 >
                   {message.role === "agent" ? (
-                    <div className="prose prose-sm max-w-none dark:prose-invert">
+                    <div className="markdown">
                       <Markdown>{message.content}</Markdown>
                     </div>
                   ) : (
