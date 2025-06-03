@@ -33,3 +33,13 @@ class MockConfig(BaseModel):
 class Model(BaseModel):
     model_name: str
     display_name: str
+
+
+class PrebuiltToolsSettings(BaseModel):
+    file_access: bool
+    brave_search: bool
+
+
+class PrebuiltToolsSetting(BaseModel):
+    tool_name: str
+    enabled: bool

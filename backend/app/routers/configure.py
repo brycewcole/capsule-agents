@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel, ConfigDict
 from pydantic.alias_generators import to_camel
 
-from backend.app.configure_schemas import AgentInfo, Model, Tool
+from backend.app.configure_schemas import AgentInfo, Model, Tool, PrebuiltToolsSettings
 from backend.app.dependicies.deps import model_list, session_service
 from backend.app.services.configure_service import ConfigureService
 from backend.app.services.sqlite_session_service import SQLiteSessionService
@@ -48,6 +48,16 @@ class SessionEvent(ResponseModel):
 class GetSessionHistoryResponse(ResponseModel):
     session_id: str
     events: List[SessionEvent]
+
+
+class GetPrebuiltToolsSettingsResponse(ResponseModel):
+    file_access: bool
+    brave_search: bool
+
+
+class UpdatePrebuiltToolsSettingsRequest(RequestBodyModel):
+    file_access: bool
+    brave_search: bool
 
 
 # Agent Info Endpoints
@@ -110,6 +120,32 @@ def get_session_history(
     return GetSessionHistoryResponse(
         session_id=session_id,
         events=session_events
+    )
+
+
+# Prebuilt Tools Settings Endpoints
+@router.get("/prebuilt-tools", response_model=GetPrebuiltToolsSettingsResponse)
+def get_prebuilt_tools_settings(service: Annotated[ConfigureService, Depends()]):
+    settings = service.get_prebuilt_tools_settings()
+    return GetPrebuiltToolsSettingsResponse(
+        file_access=settings.get("file_access", True),
+        brave_search=settings.get("brave_search", True)
+    )
+
+
+@router.put("/prebuilt-tools", response_model=GetPrebuiltToolsSettingsResponse)
+def update_prebuilt_tools_settings(
+    body: UpdatePrebuiltToolsSettingsRequest, 
+    service: Annotated[ConfigureService, Depends()]
+):
+    settings = {
+        "file_access": body.file_access,
+        "brave_search": body.brave_search
+    }
+    updated_settings = service.update_prebuilt_tools_settings(settings)
+    return GetPrebuiltToolsSettingsResponse(
+        file_access=updated_settings.get("file_access", True),
+        brave_search=updated_settings.get("brave_search", True)
     )
 
 
