@@ -2,4 +2,7 @@
     "python.defaultInterpreterPath": "./backend/.venv/bin/python",
     "python.analysis.typeCheckingMode": "standard",
     "typescript.experimental.useTsgo": false,
+    "cSpell.words": [
+        "Capy"
+    ],
 }

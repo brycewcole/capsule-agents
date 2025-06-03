@@ -6,6 +6,7 @@ from pydantic.alias_generators import to_camel
 
 from backend.app.configure_schemas import AgentInfo, Model, Tool, PrebuiltToolsSettings
 from backend.app.dependicies.deps import model_list, session_service
+from backend.app.dependicies.auth import get_current_user
 from backend.app.services.configure_service import ConfigureService
 from backend.app.services.sqlite_session_service import SQLiteSessionService
 
@@ -62,7 +63,10 @@ class UpdatePrebuiltToolsSettingsRequest(RequestBodyModel):
 
 # Agent Info Endpoints
 @router.get("/agent", response_model=GetAgentResponse)
-def get_agent_info(service: Annotated[ConfigureService, Depends()]):
+def get_agent_info(
+    service: Annotated[ConfigureService, Depends()],
+    _: Annotated[str, Depends(get_current_user)]
+):
     agent_info = service.get_agent_info()
     return GetAgentResponse(
         name=agent_info.name,
@@ -75,7 +79,9 @@ def get_agent_info(service: Annotated[ConfigureService, Depends()]):
 
 @router.put("/agent", response_model=AgentInfo)
 def update_agent_info(
-    body: PutAgentRequestBody, service: Annotated[ConfigureService, Depends()]
+    body: PutAgentRequestBody, 
+    service: Annotated[ConfigureService, Depends()],
+    _: Annotated[str, Depends(get_current_user)]
 ):
     tools = [Tool(**tool.model_dump()) for tool in body.tools]
     agent_info = AgentInfo(
@@ -89,14 +95,18 @@ def update_agent_info(
 
 
 @router.get("/models", response_model=list[Model])
-def get_model_list(models: Annotated[list[Model], Depends(model_list)]):
+def get_model_list(
+    models: Annotated[list[Model], Depends(model_list)],
+    _: Annotated[str, Depends(get_current_user)]
+):
     return models
 
 
 @router.get("/sessions/{session_id}/history", response_model=GetSessionHistoryResponse)
 def get_session_history(
     session_id: str, 
-    service: Annotated[SQLiteSessionService, Depends(session_service)]
+    service: Annotated[SQLiteSessionService, Depends(session_service)],
+    _: Annotated[str, Depends(get_current_user)]
 ):
     """Get chat history for a specific session."""
     # Use the same app_name and user_id as the agent service
@@ -125,7 +135,10 @@ def get_session_history(
 
 # Prebuilt Tools Settings Endpoints
 @router.get("/prebuilt-tools", response_model=GetPrebuiltToolsSettingsResponse)
-def get_prebuilt_tools_settings(service: Annotated[ConfigureService, Depends()]):
+def get_prebuilt_tools_settings(
+    service: Annotated[ConfigureService, Depends()],
+    _: Annotated[str, Depends(get_current_user)]
+):
     settings = service.get_prebuilt_tools_settings()
     return GetPrebuiltToolsSettingsResponse(
         file_access=settings.get("file_access", True),
@@ -136,7 +149,8 @@ def get_prebuilt_tools_settings(service: Annotated[ConfigureService, Depends()])
 @router.put("/prebuilt-tools", response_model=GetPrebuiltToolsSettingsResponse)
 def update_prebuilt_tools_settings(
     body: UpdatePrebuiltToolsSettingsRequest, 
-    service: Annotated[ConfigureService, Depends()]
+    service: Annotated[ConfigureService, Depends()],
+    _: Annotated[str, Depends(get_current_user)]
 ):
     settings = {
         "file_access": body.file_access,

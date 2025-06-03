@@ -2,6 +2,51 @@ import { v4 as uuidv4 } from 'uuid';
 
 const API_BASE_URL = '';
 
+// Auth store for credentials
+class AuthStore {
+    private credentials: string | null = null;
+
+    setCredentials(username: string, password: string) {
+        this.credentials = btoa(`${username}:${password}`);
+    }
+
+    clearCredentials() {
+        this.credentials = null;
+    }
+
+    getAuthHeaders(): Record<string, string> {
+        if (!this.credentials) {
+            return {};
+        }
+        return {
+            'Authorization': `Basic ${this.credentials}`
+        };
+    }
+
+    isAuthenticated(): boolean {
+        return this.credentials !== null;
+    }
+}
+
+export const authStore = new AuthStore();
+
+// Function to test login credentials
+export async function testLogin(password: string): Promise<boolean> {
+    try {
+        // Temporarily set credentials
+        authStore.setCredentials('admin', password);
+        
+        // Test with a simple API call
+        await getAgentInfo();
+        
+        return true;
+    } catch (error) {
+        // Clear credentials on failure
+        authStore.clearCredentials();
+        throw error;
+    }
+}
+
 // Types from backend
 type Content = {
     role: string;
@@ -254,7 +299,11 @@ type SessionHistoryResponse = {
 // Function to get session chat history
 export async function getSessionHistory(sessionId: string): Promise<SessionHistoryResponse> {
     try {
-        const response = await fetch(`${API_BASE_URL}/api/sessions/${sessionId}/history`);
+        const response = await fetch(`${API_BASE_URL}/api/sessions/${sessionId}/history`, {
+            headers: {
+                ...authStore.getAuthHeaders()
+            }
+        });
 
         if (!response.ok) {
             throw new Error(`HTTP error! status: ${response.status}`);
@@ -286,7 +335,11 @@ export async function getAgentCard() {
 // Function to get agent configuration
 export async function getAgentInfo(): Promise<AgentInfo> {
     try {
-        const response = await fetch(`${API_BASE_URL}/api/agent`);
+        const response = await fetch(`${API_BASE_URL}/api/agent`, {
+            headers: {
+                ...authStore.getAuthHeaders()
+            }
+        });
 
         if (!response.ok) {
             throw new Error(`HTTP error! status: ${response.status}`);
@@ -306,6 +359,7 @@ export async function updateAgentInfo(info: AgentInfo): Promise<AgentInfo> {
         method: "PUT",
         headers: {
             "Content-Type": "application/json",
+            ...authStore.getAuthHeaders()
         },
         body: JSON.stringify(body),
     });
@@ -320,7 +374,11 @@ export async function updateAgentInfo(info: AgentInfo): Promise<AgentInfo> {
 // Function to get the list of available models
 export async function getAvailableModels(): Promise<Model[]> {
     try {
-        const response = await fetch(`${API_BASE_URL}/api/models`);
+        const response = await fetch(`${API_BASE_URL}/api/models`, {
+            headers: {
+                ...authStore.getAuthHeaders()
+            }
+        });
 
         if (!response.ok) {
             throw new Error(`HTTP error! status: ${response.status}`);
@@ -342,7 +400,11 @@ export type PrebuiltToolsSettings = {
 // Function to get prebuilt tools settings
 export async function getPrebuiltToolsSettings(): Promise<PrebuiltToolsSettings> {
     try {
-        const response = await fetch(`${API_BASE_URL}/api/prebuilt-tools`);
+        const response = await fetch(`${API_BASE_URL}/api/prebuilt-tools`, {
+            headers: {
+                ...authStore.getAuthHeaders()
+            }
+        });
 
         if (!response.ok) {
             throw new Error(`HTTP error! status: ${response.status}`);
@@ -362,6 +424,7 @@ export async function updatePrebuiltToolsSettings(settings: PrebuiltToolsSetting
             method: "PUT",
             headers: {
                 "Content-Type": "application/json",
+                ...authStore.getAuthHeaders()
             },
             body: JSON.stringify(settings),
         });
