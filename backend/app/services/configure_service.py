@@ -37,7 +37,15 @@ class ConfigureService:
         # Add tools column if it doesn't exist
         if "tools" not in columns:
             logger.info("Adding 'tools' column to 'agent_info' table.")
-            conn.execute("ALTER TABLE agent_info ADD COLUMN tools TEXT DEFAULT '[]'")
+            try:
+                conn.execute("ALTER TABLE agent_info ADD COLUMN tools TEXT DEFAULT '[]'")
+                logger.info("'tools' column added successfully.")
+            except sqlite3.OperationalError as e:
+                if "duplicate column name" in str(e).lower():
+                    logger.info("'tools' column already exists (caught duplicate column error).")
+                else:
+                    logger.error(f"Failed to add 'tools' column: {e}")
+                    raise
         else:
             logger.info("'tools' column already exists in 'agent_info' table.")
 

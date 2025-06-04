@@ -1,6 +1,6 @@
 import json
 from typing import Annotated, List
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel, ConfigDict
 from pydantic.alias_generators import to_camel
 
@@ -64,6 +64,7 @@ class UpdatePrebuiltToolsSettingsRequest(RequestBodyModel):
 # Agent Info Endpoints
 @router.get("/agent", response_model=GetAgentResponse)
 def get_agent_info(
+    request: Request,
     service: Annotated[ConfigureService, Depends()],
     _: Annotated[str, Depends(get_current_user)]
 ):
@@ -79,6 +80,7 @@ def get_agent_info(
 
 @router.put("/agent", response_model=AgentInfo)
 def update_agent_info(
+    request: Request,
     body: PutAgentRequestBody, 
     service: Annotated[ConfigureService, Depends()],
     _: Annotated[str, Depends(get_current_user)]
@@ -96,6 +98,7 @@ def update_agent_info(
 
 @router.get("/models", response_model=list[Model])
 def get_model_list(
+    request: Request,
     models: Annotated[list[Model], Depends(model_list)],
     _: Annotated[str, Depends(get_current_user)]
 ):
@@ -104,6 +107,7 @@ def get_model_list(
 
 @router.get("/sessions/{session_id}/history", response_model=GetSessionHistoryResponse)
 def get_session_history(
+    request: Request,
     session_id: str, 
     service: Annotated[SQLiteSessionService, Depends(session_service)],
     _: Annotated[str, Depends(get_current_user)]
@@ -136,6 +140,7 @@ def get_session_history(
 # Prebuilt Tools Settings Endpoints
 @router.get("/prebuilt-tools", response_model=GetPrebuiltToolsSettingsResponse)
 def get_prebuilt_tools_settings(
+    request: Request,
     service: Annotated[ConfigureService, Depends()],
     _: Annotated[str, Depends(get_current_user)]
 ):
@@ -148,6 +153,7 @@ def get_prebuilt_tools_settings(
 
 @router.put("/prebuilt-tools", response_model=GetPrebuiltToolsSettingsResponse)
 def update_prebuilt_tools_settings(
+    request: Request,
     body: UpdatePrebuiltToolsSettingsRequest, 
     service: Annotated[ConfigureService, Depends()],
     _: Annotated[str, Depends(get_current_user)]
