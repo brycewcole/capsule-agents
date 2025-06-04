@@ -37,12 +37,6 @@ function App() {
         <Header />
         <div className="container mx-auto flex flex-1 flex-col gap-6 p-4 md:flex-row md:p-6 lg:p-8 min-h-0">
           <div className="flex-1 flex flex-col min-h-0">
-            <div className="mb-6">
-              <h2 className="text-2xl font-semibold tracking-tight text-foreground">Edit</h2>
-              <p className="text-sm text-muted-foreground mt-1">
-                Configure your agent settings and tools
-              </p>
-            </div>
             <div className="flex-1 overflow-y-auto space-y-6 pr-2">
               {isAuthenticated && <AgentEditor key={isAuthenticated ? 'auth' : 'unauth'} />}
             </div>
