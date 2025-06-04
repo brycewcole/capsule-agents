@@ -12,7 +12,7 @@ import { toast } from "sonner"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { getAgentInfo, getAvailableModels, updateAgentInfo, type AgentInfo, type Tool } from "@/lib/api"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { ToolDialog } from "./tool-dialog"
+import { ToolDialog, PREBUILT_TOOLS } from "./tool-dialog"
 
 export type Model = {
   model_name: string      // maps to model_name from backend
@@ -146,6 +146,12 @@ export default function AgentEditor() {
           return;
         }
         toolDataSchema = { agent_url: agentUrl };
+      } else if (toolType === "file_access" || toolType === "brave_search") {
+        // Handle prebuilt tools - use the predefined schema
+        const prebuiltTool = PREBUILT_TOOLS[toolType as keyof typeof PREBUILT_TOOLS];
+        if (prebuiltTool) {
+          toolDataSchema = prebuiltTool.tool_schema;
+        }
       } else {
         // Try to parse the schema as JSON for other tool types
         try {
@@ -158,7 +164,7 @@ export default function AgentEditor() {
 
       const newTool: Tool = {
         name: toolName,
-        type: toolType,
+        type: (toolType === "file_access" || toolType === "brave_search") ? "prebuilt" : toolType,
         tool_schema: toolDataSchema,
       };
 
@@ -185,14 +191,22 @@ export default function AgentEditor() {
   const editTool = (index: number) => {
     const tool = tools[index];
     setToolName(tool.name);
-    setToolType(tool.type);
-    if (tool.type === "a2a_call" && tool.tool_schema && typeof tool.tool_schema.agent_url === 'string') {
-      setAgentUrl(tool.tool_schema.agent_url);
-      setToolSchema(""); // Clear generic schema for a2a_call
-    } else {
+    
+    // Handle prebuilt tools - determine the specific type from the schema
+    if (tool.type === "prebuilt" && tool.tool_schema?.type) {
+      setToolType(tool.tool_schema.type); // Set to "file_access" or "brave_search"
       setToolSchema(JSON.stringify(tool.tool_schema || {}, null, 2));
-      setAgentUrl(""); // Clear agentUrl for other types
+      setAgentUrl("");
+    } else if (tool.type === "a2a_call" && tool.tool_schema && typeof tool.tool_schema.agent_url === 'string') {
+      setToolType(tool.type);
+      setAgentUrl(tool.tool_schema.agent_url);
+      setToolSchema(JSON.stringify(tool.tool_schema || {}, null, 2));
+    } else {
+      setToolType(tool.type);
+      setToolSchema(JSON.stringify(tool.tool_schema || {}, null, 2));
+      setAgentUrl("");
     }
+    
     setEditIndex(index);
     setShowToolForm(true);
   };
@@ -320,7 +334,15 @@ export default function AgentEditor() {
                 {tools.map((tool, index) => (
                   <TableRow key={index}>
                     <TableCell>{tool.name}</TableCell>
-                    <TableCell>{tool.type}</TableCell>
+                    <TableCell>
+                      {tool.type === "prebuilt" && tool.tool_schema?.type === "file_access" 
+                        ? "File Access" 
+                        : tool.type === "prebuilt" && tool.tool_schema?.type === "brave_search"
+                        ? "Web Search"
+                        : tool.type === "a2a_call"
+                        ? "Agent (A2A)"
+                        : tool.type}
+                    </TableCell>
                     <TableCell className="flex gap-1">
                       <Button variant="ghost" size="sm" onClick={() => editTool(index)} title="Edit tool">
                         <Edit className="h-4 w-4" />

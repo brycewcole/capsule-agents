@@ -18,6 +18,24 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 
+// Prebuilt tools configuration
+export const PREBUILT_TOOLS = {
+  file_access: {
+    name: "file_access",
+    displayName: "File Access",
+    description: "Allows the agent to read and write files",
+    type: "prebuilt",
+    tool_schema: { type: "file_access" }
+  },
+  brave_search: {
+    name: "brave_search", 
+    displayName: "Web Search",
+    description: "Enables web search capabilities using Brave Search",
+    type: "prebuilt",
+    tool_schema: { type: "brave_search" }
+  }
+}
+
 interface ToolDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -27,8 +45,8 @@ interface ToolDialogProps {
   setToolType: (type: string) => void
   toolSchema: string
   setToolSchema: (schema: string) => void
-  agentUrl: string // New prop for agent URL
-  setAgentUrl: (url: string) => void // New prop for setting agent URL
+  agentUrl: string
+  setAgentUrl: (url: string) => void
   editIndex: number | null
   onSubmit: () => void
   onCancel: () => void
@@ -52,7 +70,14 @@ export function ToolDialog({
   
   const handleToolTypeChange = (newType: string) => {
     setToolType(newType);
-    if (newType !== "a2a_call") {
+    
+    // Handle prebuilt tool selection
+    if (newType in PREBUILT_TOOLS) {
+      const prebuiltTool = PREBUILT_TOOLS[newType as keyof typeof PREBUILT_TOOLS];
+      setToolName(prebuiltTool.name);
+      setToolSchema(JSON.stringify(prebuiltTool.tool_schema, null, 2));
+      setAgentUrl("");
+    } else if (newType !== "a2a_call") {
       setAgentUrl(""); // Clear agentUrl if type is not a2a_call
     }
   };
@@ -86,8 +111,9 @@ export function ToolDialog({
                   <SelectValue placeholder="Select tool type" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="function">Function</SelectItem>
-                  <SelectItem value="a2a_call">Agent (a2a)</SelectItem>
+                  <SelectItem value="a2a_call">Agent (A2A)</SelectItem>
+                  <SelectItem value="file_access">File Access</SelectItem>
+                  <SelectItem value="brave_search">Web Search</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -103,7 +129,7 @@ export function ToolDialog({
               />
             </div>
           )}
-          {toolType !== "a2a_call" && (
+          {toolType === "a2a_call" && (
             <div>
               <Label htmlFor="tool-schema" className="pb-1">Schema (JSON)</Label>
               <Textarea
@@ -113,6 +139,16 @@ export function ToolDialog({
                 placeholder='{"properties":{"location":{"type":"string"},"days":{"type":"number"}},"required":["location"]}'
                 rows={5}
               />
+            </div>
+          )}
+          {(toolType === "file_access" || toolType === "brave_search") && (
+            <div className="p-4 bg-muted rounded-lg">
+              <p className="text-sm text-muted-foreground">
+                {toolType === "file_access" 
+                  ? "This prebuilt tool allows the agent to read and write files in the working directory."
+                  : "This prebuilt tool enables web search capabilities using Brave Search API."
+                }
+              </p>
             </div>
           )}
         </div>

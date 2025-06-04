@@ -391,54 +391,6 @@ export async function getAvailableModels(): Promise<Model[]> {
     }
 }
 
-// Types for prebuilt tools settings
-export type PrebuiltToolsSettings = {
-    fileAccess: boolean;
-    braveSearch: boolean;
-};
-
-// Function to get prebuilt tools settings
-export async function getPrebuiltToolsSettings(): Promise<PrebuiltToolsSettings> {
-    try {
-        const response = await fetch(`${API_BASE_URL}/api/prebuilt-tools`, {
-            headers: {
-                ...authStore.getAuthHeaders()
-            }
-        });
-
-        if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
-        }
-
-        return await response.json();
-    } catch (error) {
-        console.error("Failed to fetch prebuilt tools settings:", error);
-        throw error;
-    }
-}
-
-// Function to update prebuilt tools settings
-export async function updatePrebuiltToolsSettings(settings: PrebuiltToolsSettings): Promise<PrebuiltToolsSettings> {
-    try {
-        const response = await fetch(`${API_BASE_URL}/api/prebuilt-tools`, {
-            method: "PUT",
-            headers: {
-                "Content-Type": "application/json",
-                ...authStore.getAuthHeaders()
-            },
-            body: JSON.stringify(settings),
-        });
-
-        if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
-        }
-
-        return await response.json();
-    } catch (error) {
-        console.error("Failed to update prebuilt tools settings:", error);
-        throw error;
-    }
-}
 
 // Helper function to extract text from a task response
 export function extractResponseText(task: Task): string {

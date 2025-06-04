@@ -2,7 +2,6 @@ import { useState, useEffect } from 'react';
 import Header from './components/header';
 import AgentEditor from './components/agent-editor';
 import ChatInterface from './components/chat-interface';
-import PrebuiltToolsSettings from './components/prebuilt-tools-settings';
 import { LoginDialog } from './components/login-dialog';
 import { authStore, testLogin } from './lib/api';
 import './App.css';
@@ -10,16 +9,20 @@ import './App.css';
 function App() {
   const [showLogin, setShowLogin] = useState(false);
   const [loginError, setLoginError] = useState<string>();
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
 
   useEffect(() => {
     // Check if already authenticated
-    setShowLogin(!authStore.isAuthenticated());
+    const authenticated = authStore.isAuthenticated();
+    setIsAuthenticated(authenticated);
+    setShowLogin(!authenticated);
   }, []);
 
   const handleLogin = async (password: string) => {
     try {
       setLoginError(undefined);
       await testLogin(password);
+      setIsAuthenticated(true);
       setShowLogin(false);
     } catch (error) {
       console.error('Login failed:', error);
@@ -41,12 +44,11 @@ function App() {
               </p>
             </div>
             <div className="flex-1 overflow-y-auto space-y-6 pr-2">
-              <AgentEditor />
-              <PrebuiltToolsSettings />
+              {isAuthenticated && <AgentEditor key={isAuthenticated ? 'auth' : 'unauth'} />}
             </div>
           </div>
           <div className="flex-1 flex flex-col min-h-0">
-            <ChatInterface />
+            {isAuthenticated && <ChatInterface key={isAuthenticated ? 'auth' : 'unauth'} />}
           </div>
         </div>
       </main>

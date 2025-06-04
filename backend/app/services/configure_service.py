@@ -49,37 +49,6 @@ class ConfigureService:
         else:
             logger.info("'tools' column already exists in 'agent_info' table.")
 
-        # Create prebuilt_tools_settings table
-        logger.info("Ensuring 'prebuilt_tools_settings' table exists.")
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS prebuilt_tools_settings (
-                id                INTEGER PRIMARY KEY,
-                tool_name         TEXT    NOT NULL UNIQUE,
-                enabled           BOOLEAN NOT NULL DEFAULT 0,
-                created_at        TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                updated_at        TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        """)
-        
-        # Insert default prebuilt tools if they don't exist
-        logger.info("Ensuring default prebuilt tools exist in settings.")
-        default_tools = [
-            ("file_access", True),
-            ("brave_search", True)
-        ]
-        
-        for tool_name, default_enabled in default_tools:
-            existing = conn.execute(
-                "SELECT 1 FROM prebuilt_tools_settings WHERE tool_name = ?", 
-                (tool_name,)
-            ).fetchone()
-            
-            if not existing:
-                logger.info(f"Adding default prebuilt tool setting: {tool_name}")
-                conn.execute(
-                    "INSERT INTO prebuilt_tools_settings(tool_name, enabled) VALUES(?, ?)",
-                    (tool_name, default_enabled)
-                )
 
         conn.commit()
         # insert mock data if it doesn't exist yet
@@ -181,40 +150,3 @@ class ConfigureService:
         logger.info(f"Agent info for '{info.name}' upserted successfully.")
         return info
 
-    def get_prebuilt_tools_settings(self) -> dict[str, bool]:
-        logger.info("Retrieving prebuilt tools settings.")
-        conn = self._get_conn()
-        rows = conn.execute(
-            "SELECT tool_name, enabled FROM prebuilt_tools_settings"
-        ).fetchall()
-        conn.close()
-        
-        settings = {row["tool_name"]: bool(row["enabled"]) for row in rows}
-        logger.info(f"Retrieved prebuilt tools settings: {settings}")
-        return settings
-
-    def update_prebuilt_tool_setting(self, tool_name: str, enabled: bool) -> None:
-        logger.info(f"Updating prebuilt tool setting: {tool_name} = {enabled}")
-        conn = self._get_conn()
-        conn.execute(
-            "UPDATE prebuilt_tools_settings SET enabled = ?, updated_at = CURRENT_TIMESTAMP WHERE tool_name = ?",
-            (enabled, tool_name)
-        )
-        conn.commit()
-        conn.close()
-        logger.info(f"Prebuilt tool setting updated: {tool_name} = {enabled}")
-
-    def update_prebuilt_tools_settings(self, settings: dict[str, bool]) -> dict[str, bool]:
-        logger.info(f"Updating multiple prebuilt tools settings: {settings}")
-        conn = self._get_conn()
-        
-        for tool_name, enabled in settings.items():
-            conn.execute(
-                "UPDATE prebuilt_tools_settings SET enabled = ?, updated_at = CURRENT_TIMESTAMP WHERE tool_name = ?",
-                (enabled, tool_name)
-            )
-        
-        conn.commit()
-        conn.close()
-        logger.info("Multiple prebuilt tools settings updated successfully.")
-        return settings
