@@ -146,7 +146,7 @@ export default function AgentEditor() {
           return;
         }
         toolDataSchema = { agent_url: agentUrl };
-      } else if (toolType === "file_access" || toolType === "brave_search") {
+      } else if (toolType === "file_access" || toolType === "brave_search" || toolType === "memory") {
         // Handle prebuilt tools - use the predefined schema
         const prebuiltTool = PREBUILT_TOOLS[toolType as keyof typeof PREBUILT_TOOLS];
         if (prebuiltTool) {
@@ -164,7 +164,7 @@ export default function AgentEditor() {
 
       const newTool: Tool = {
         name: toolName,
-        type: (toolType === "file_access" || toolType === "brave_search") ? "prebuilt" : toolType,
+        type: (toolType === "file_access" || toolType === "brave_search" || toolType === "memory") ? "prebuilt" : toolType,
         tool_schema: toolDataSchema,
       };
 
@@ -339,6 +339,8 @@ export default function AgentEditor() {
                         ? "File Access" 
                         : tool.type === "prebuilt" && tool.tool_schema?.type === "brave_search"
                         ? "Web Search"
+                        : tool.type === "prebuilt" && tool.tool_schema?.type === "memory"
+                        ? "Memory"
                         : tool.type === "a2a_call"
                         ? "Agent (A2A)"
                         : tool.type}

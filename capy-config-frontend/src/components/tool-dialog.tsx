@@ -33,6 +33,13 @@ export const PREBUILT_TOOLS = {
     description: "Enables web search capabilities using Brave Search",
     type: "prebuilt",
     tool_schema: { type: "brave_search" }
+  },
+  memory: {
+    name: "memory",
+    displayName: "Memory",
+    description: "Enables persistent memory storage for the agent",
+    type: "prebuilt",
+    tool_schema: { type: "memory" }
   }
 }
 
@@ -114,6 +121,7 @@ export function ToolDialog({
                   <SelectItem value="a2a_call">Agent (A2A)</SelectItem>
                   <SelectItem value="file_access">File Access</SelectItem>
                   <SelectItem value="brave_search">Web Search</SelectItem>
+                  <SelectItem value="memory">Memory</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -141,12 +149,14 @@ export function ToolDialog({
               />
             </div>
           )}
-          {(toolType === "file_access" || toolType === "brave_search") && (
+          {(toolType === "file_access" || toolType === "brave_search" || toolType === "memory") && (
             <div className="p-4 bg-muted rounded-lg">
               <p className="text-sm text-muted-foreground">
                 {toolType === "file_access" 
                   ? "This prebuilt tool allows the agent to read and write files in the working directory."
-                  : "This prebuilt tool enables web search capabilities using Brave Search API."
+                  : toolType === "brave_search"
+                  ? "This prebuilt tool enables web search capabilities using Brave Search API."
+                  : "This prebuilt tool enables persistent memory storage for the agent."
                 }
               </p>
             </div>

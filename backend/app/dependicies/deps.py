@@ -81,9 +81,9 @@ async def get_agent(
     agent_tools: list = []
 
     conn.close()
-    
+
     mcp_tools: list[MCPTool] = []
-    
+
     # Parse tools from the agent configuration
     if tools_json:
         try:
@@ -91,7 +91,7 @@ async def get_agent(
             for config in tool_configs:
                 tool_type = config.get("type")
                 tool_schema = config.get("tool_schema", {})
-                
+
                 if tool_type == "a2a_call":
                     # Handle A2A call tools
                     agent_url = tool_schema.get("agent_url")
@@ -103,11 +103,11 @@ async def get_agent(
                         raise ValueError(
                             f"a2a_call tool '{config.get('name')}' is missing agent_url."
                         )
-                
+
                 elif tool_type == "prebuilt":
                     # Handle prebuilt tools based on schema type
                     prebuilt_type = tool_schema.get("type")
-                    
+
                     if prebuilt_type == "file_access":
                         file_tools, file_exit_stack = await MCPToolset.from_server(
                             connection_params=StdioServerParameters(
@@ -120,11 +120,14 @@ async def get_agent(
                             )
                         )
                         mcp_tools.extend(file_tools)
-                    
+
                     elif prebuilt_type == "brave_search":
                         brave_api_key = os.environ.get("BRAVE_API_KEY")
                         if brave_api_key:
-                            brave_tools, brave_exit_stack = await MCPToolset.from_server(
+                            (
+                                brave_tools,
+                                brave_exit_stack,
+                            ) = await MCPToolset.from_server(
                                 connection_params=StdioServerParameters(
                                     command="npx",
                                     args=[
@@ -136,8 +139,22 @@ async def get_agent(
                             )
                             mcp_tools.extend(brave_tools)
                         else:
-                            print("Warning: BRAVE_API_KEY not found in environment variables. Brave search tools disabled.")
-                            
+                            print(
+                                "Warning: BRAVE_API_KEY not found in environment variables. Brave search tools disabled."
+                            )
+
+                    elif prebuilt_type == "memory":
+                        memory_tools, memory_exit_stack = await MCPToolset.from_server(
+                            connection_params=StdioServerParameters(
+                                command="npx",
+                                args=[
+                                    "-y",
+                                    "@modelcontextprotocol/server-memory",
+                                ],
+                            )
+                        )
+                        mcp_tools.extend(memory_tools)
+
         except json.JSONDecodeError:
             # Handle error in parsing tools JSON, e.g., log an error
             print(f"Error: Could not parse tools JSON: {tools_json}")
