@@ -101,6 +101,22 @@ class ConfigureService:
         tools_data = json.loads(tools_json)
         tools = [Tool(**tool_data) for tool_data in tools_data]
 
+        for tool in tools:
+            if tool.name == "create_entities":
+                logger.info(f"Found tool 'create_entities', attempting to correct its schema: {tool.tool_schema}")
+                if isinstance(tool.tool_schema, dict) and "parameters" in tool.tool_schema:
+                    if isinstance(tool.tool_schema["parameters"], dict) and "properties" in tool.tool_schema["parameters"]:
+                        for param_name, param_props in tool.tool_schema["parameters"]["properties"].items():
+                            if isinstance(param_props, dict) and param_props.get("type") == "STRING":
+                                logger.info(f"Correcting type for parameter '{param_name}' in 'create_entities' schema from STRING to string")
+                                param_props["type"] = "string"
+                            # Also check for nested schemas, e.g., in items of an array
+                            if isinstance(param_props, dict) and param_props.get("type") == "array":
+                                if isinstance(param_props.get("items"), dict) and param_props["items"].get("type") == "STRING":
+                                    logger.info(f"Correcting type for array items in parameter '{param_name}' in 'create_entities' schema from STRING to string")
+                                    param_props["items"]["type"] = "string"
+                logger.info(f"Corrected schema for 'create_entities': {tool.tool_schema}")
+
         return AgentInfo(
             name=row["name"],
             description=row["description"],
