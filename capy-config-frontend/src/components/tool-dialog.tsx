@@ -1,5 +1,4 @@
 import { Input } from "@/components/ui/input"
-import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import { Button } from "@/components/ui/button"
 import {
@@ -18,30 +17,6 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 
-// Prebuilt tools configuration
-export const PREBUILT_TOOLS = {
-  file_access: {
-    name: "file_access",
-    displayName: "File Access",
-    description: "Allows the agent to read and write files",
-    type: "prebuilt",
-    tool_schema: { type: "file_access" }
-  },
-  brave_search: {
-    name: "brave_search", 
-    displayName: "Web Search",
-    description: "Enables web search capabilities using Brave Search",
-    type: "prebuilt",
-    tool_schema: { type: "brave_search" }
-  },
-  memory: {
-    name: "memory",
-    displayName: "Memory",
-    description: "Enables persistent memory storage for the agent",
-    type: "prebuilt",
-    tool_schema: { type: "memory" }
-  }
-}
 
 interface ToolDialogProps {
   open: boolean
@@ -66,8 +41,6 @@ export function ToolDialog({
   setToolName,
   toolType,
   setToolType,
-  toolSchema,
-  setToolSchema,
   agentUrl,
   setAgentUrl,
   editIndex,
@@ -78,13 +51,7 @@ export function ToolDialog({
   const handleToolTypeChange = (newType: string) => {
     setToolType(newType);
     
-    // Handle prebuilt tool selection
-    if (newType in PREBUILT_TOOLS) {
-      const prebuiltTool = PREBUILT_TOOLS[newType as keyof typeof PREBUILT_TOOLS];
-      setToolName(prebuiltTool.name);
-      setToolSchema(JSON.stringify(prebuiltTool.tool_schema, null, 2));
-      setAgentUrl("");
-    } else if (newType !== "a2a_call") {
+    if (newType !== "a2a_call") {
       setAgentUrl(""); // Clear agentUrl if type is not a2a_call
     }
   };
@@ -93,11 +60,11 @@ export function ToolDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-lg">
         <DialogHeader>
-          <DialogTitle>{editIndex !== null ? 'Edit Tool' : 'Add Tool'}</DialogTitle>
+          <DialogTitle>{editIndex !== null ? 'Edit Custom Tool' : 'Add Custom Tool'}</DialogTitle>
           <DialogDescription>
             {editIndex !== null
-              ? 'Update the tool details below.'
-              : 'Enter the details of the new tool you want to add.'}
+              ? 'Update the custom tool details below.'
+              : 'Enter the details of the new custom tool you want to add.'}
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-4">
@@ -119,9 +86,6 @@ export function ToolDialog({
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="a2a_call">Agent (A2A)</SelectItem>
-                  <SelectItem value="file_access">File Access</SelectItem>
-                  <SelectItem value="brave_search">Web Search</SelectItem>
-                  <SelectItem value="memory">Memory</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -135,30 +99,6 @@ export function ToolDialog({
                 onChange={e => setAgentUrl(e.target.value)}
                 placeholder="http://remote-agent/api/tasks/send"
               />
-            </div>
-          )}
-          {toolType === "a2a_call" && (
-            <div>
-              <Label htmlFor="tool-schema" className="pb-1">Schema (JSON)</Label>
-              <Textarea
-                id="tool-schema"
-                value={toolSchema}
-                onChange={e => setToolSchema(e.target.value)}
-                placeholder='{"properties":{"location":{"type":"string"},"days":{"type":"number"}},"required":["location"]}'
-                rows={5}
-              />
-            </div>
-          )}
-          {(toolType === "file_access" || toolType === "brave_search" || toolType === "memory") && (
-            <div className="p-4 bg-muted rounded-lg">
-              <p className="text-sm text-muted-foreground">
-                {toolType === "file_access" 
-                  ? "This prebuilt tool allows the agent to read and write files in the working directory."
-                  : toolType === "brave_search"
-                  ? "This prebuilt tool enables web search capabilities using Brave Search API."
-                  : "This prebuilt tool enables persistent memory storage for the agent."
-                }
-              </p>
             </div>
           )}
         </div>

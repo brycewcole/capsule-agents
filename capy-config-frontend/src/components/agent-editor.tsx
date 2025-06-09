@@ -10,9 +10,10 @@ import { Save, Loader2, Edit, Trash, Plus } from "lucide-react"
 import { Separator } from "@/components/ui/separator"
 import { toast } from "sonner"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Switch } from "@/components/ui/switch"
 import { getAgentInfo, getAvailableModels, updateAgentInfo, type AgentInfo, type Tool } from "@/lib/api"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { ToolDialog, PREBUILT_TOOLS } from "./tool-dialog"
+import { ToolDialog } from "./tool-dialog"
 
 export type Model = {
   model_name: string      // maps to model_name from backend
@@ -36,6 +37,11 @@ export default function AgentEditor() {
   const [toolType, setToolType] = useState("")
   const [toolSchema, setToolSchema] = useState("")
   const [agentUrl, setAgentUrl] = useState("") // New state for a2a_call agent URL
+  
+  // Prebuilt tools state
+  const [fileAccessEnabled, setFileAccessEnabled] = useState(false)
+  const [webSearchEnabled, setWebSearchEnabled] = useState(false)
+  const [memoryEnabled, setMemoryEnabled] = useState(false)
 
   const handleSave = async () => {
     // Validate agent name before saving
@@ -84,6 +90,12 @@ export default function AgentEditor() {
           displayName: agentInfo.modelName
         })
         setTools(agentInfo.tools || [])
+        
+        // Set prebuilt tool states based on existing tools
+        const currentTools = agentInfo.tools || []
+        setFileAccessEnabled(currentTools.some(tool => tool.type === "prebuilt" && tool.tool_schema?.type === "file_access"))
+        setWebSearchEnabled(currentTools.some(tool => tool.type === "prebuilt" && tool.tool_schema?.type === "brave_search"))
+        setMemoryEnabled(currentTools.some(tool => tool.type === "prebuilt" && tool.tool_schema?.type === "memory"))
       } catch (error) {
         console.error("Failed to fetch data:", error)
         toast.error("Error fetching data", { description: "Could not load agent or model data from server." })
@@ -115,6 +127,12 @@ export default function AgentEditor() {
         displayName: agentInfo.modelName
       })
       setTools(agentInfo.tools || [])
+      
+      // Reset prebuilt tool states
+      const currentTools = agentInfo.tools || []
+      setFileAccessEnabled(currentTools.some(tool => tool.type === "prebuilt" && tool.tool_schema?.type === "file_access"))
+      setWebSearchEnabled(currentTools.some(tool => tool.type === "prebuilt" && tool.tool_schema?.type === "brave_search"))
+      setMemoryEnabled(currentTools.some(tool => tool.type === "prebuilt" && tool.tool_schema?.type === "memory"))
       toast.success("Reset successful", { description: "Agent data has been reset to saved values." })
     } catch (error) {
       console.error("Failed to fetch agent info:", error)
@@ -146,12 +164,6 @@ export default function AgentEditor() {
           return;
         }
         toolDataSchema = { agent_url: agentUrl };
-      } else if (toolType === "file_access" || toolType === "brave_search" || toolType === "memory") {
-        // Handle prebuilt tools - use the predefined schema
-        const prebuiltTool = PREBUILT_TOOLS[toolType as keyof typeof PREBUILT_TOOLS];
-        if (prebuiltTool) {
-          toolDataSchema = prebuiltTool.tool_schema;
-        }
       } else {
         // Try to parse the schema as JSON for other tool types
         try {
@@ -164,7 +176,7 @@ export default function AgentEditor() {
 
       const newTool: Tool = {
         name: toolName,
-        type: (toolType === "file_access" || toolType === "brave_search" || toolType === "memory") ? "prebuilt" : toolType,
+        type: toolType,
         tool_schema: toolDataSchema,
       };
 
@@ -190,17 +202,18 @@ export default function AgentEditor() {
 
   const editTool = (index: number) => {
     const tool = tools[index];
+    
+    // Don't allow editing prebuilt tools through the dialog
+    if (tool.type === "prebuilt") {
+      toast.error("Cannot edit prebuilt tools", { description: "Use the toggles above to enable/disable prebuilt tools." })
+      return;
+    }
+    
     setToolName(tool.name);
     
-    // Handle prebuilt tools - determine the specific type from the schema
-    if (tool.type === "prebuilt" && tool.tool_schema?.type) {
-      setToolType(tool.tool_schema.type); // Set to "file_access" or "brave_search"
-      setToolSchema(JSON.stringify(tool.tool_schema || {}, null, 2));
-      setAgentUrl("");
-    } else if (tool.type === "a2a_call" && tool.tool_schema && typeof tool.tool_schema.agent_url === 'string') {
+    if (tool.type === "a2a_call" && tool.tool_schema && typeof tool.tool_schema.agent_url === 'string') {
       setToolType(tool.type);
       setAgentUrl(tool.tool_schema.agent_url);
-      setToolSchema(JSON.stringify(tool.tool_schema || {}, null, 2));
     } else {
       setToolType(tool.type);
       setToolSchema(JSON.stringify(tool.tool_schema || {}, null, 2));
@@ -212,6 +225,14 @@ export default function AgentEditor() {
   };
 
   const deleteTool = (index: number) => {
+    const tool = tools[index]
+    
+    // Don't allow deleting prebuilt tools through the table
+    if (tool.type === "prebuilt") {
+      toast.error("Cannot delete prebuilt tools", { description: "Use the toggles above to enable/disable prebuilt tools." })
+      return;
+    }
+    
     const newTools = [...tools]
     const toolName = tools[index].name
     newTools.splice(index, 1)
@@ -231,6 +252,47 @@ export default function AgentEditor() {
   const handleAddNewToolClick = () => {
     resetToolForm(); // Clears form state, sets editIndex to null, and calls setShowToolForm(false)
     setShowToolForm(true); // Opens the dialog for a new tool
+  };
+  
+  // Handle prebuilt tool toggles
+  const handlePrebuiltToolToggle = (toolType: string, enabled: boolean) => {
+    const toolConfig = {
+      file_access: { name: "file_access", displayName: "File Access", tool_schema: { type: "file_access" } },
+      brave_search: { name: "brave_search", displayName: "Web Search", tool_schema: { type: "brave_search" } },
+      memory: { name: "memory", displayName: "Memory", tool_schema: { type: "memory" } }
+    };
+    
+    const config = toolConfig[toolType as keyof typeof toolConfig];
+    if (!config) return;
+    
+    let newTools = [...tools];
+    
+    if (enabled) {
+      // Add the prebuilt tool if it doesn't exist
+      const exists = newTools.some(tool => tool.type === "prebuilt" && tool.tool_schema?.type === toolType);
+      if (!exists) {
+        newTools.push({
+          name: config.name,
+          type: "prebuilt",
+          tool_schema: config.tool_schema
+        });
+      }
+    } else {
+      // Remove the prebuilt tool
+      newTools = newTools.filter(tool => !(tool.type === "prebuilt" && tool.tool_schema?.type === toolType));
+    }
+    
+    setTools(newTools);
+    
+    // Update the toggle state
+    if (toolType === "file_access") setFileAccessEnabled(enabled);
+    else if (toolType === "brave_search") setWebSearchEnabled(enabled);
+    else if (toolType === "memory") setMemoryEnabled(enabled);
+    
+    toast.success(
+      enabled ? "Tool enabled" : "Tool disabled", 
+      { description: `${config.displayName} has been ${enabled ? "enabled" : "disabled"}.` }
+    );
   };
 
   if (isLoading) {
@@ -297,8 +359,45 @@ export default function AgentEditor() {
             <Label>Tools</Label>
             <Button size="sm" variant="outline" onClick={handleAddNewToolClick}>
               <Plus className="mr-2 h-4 w-4" />
-              Add Tool
+              Add Custom Tool
             </Button>
+          </div>
+          
+          {/* Prebuilt Tools Toggles */}
+          <div className="space-y-3 p-4 bg-muted/50 rounded-lg">
+            <Label className="text-sm font-medium">Prebuilt Tools</Label>
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="space-y-0.5">
+                  <Label className="text-sm">File Access</Label>
+                  <p className="text-xs text-muted-foreground">Allows the agent to read and write files</p>
+                </div>
+                <Switch 
+                  checked={fileAccessEnabled} 
+                  onCheckedChange={(checked) => handlePrebuiltToolToggle("file_access", checked)}
+                />
+              </div>
+              <div className="flex items-center justify-between">
+                <div className="space-y-0.5">
+                  <Label className="text-sm">Web Search</Label>
+                  <p className="text-xs text-muted-foreground">Enables web search capabilities using Brave Search</p>
+                </div>
+                <Switch 
+                  checked={webSearchEnabled} 
+                  onCheckedChange={(checked) => handlePrebuiltToolToggle("brave_search", checked)}
+                />
+              </div>
+              <div className="flex items-center justify-between">
+                <div className="space-y-0.5">
+                  <Label className="text-sm">Memory</Label>
+                  <p className="text-xs text-muted-foreground">Enables persistent memory storage for the agent</p>
+                </div>
+                <Switch 
+                  checked={memoryEnabled} 
+                  onCheckedChange={(checked) => handlePrebuiltToolToggle("memory", checked)}
+                />
+              </div>
+            </div>
           </div>
 
           <ToolDialog
@@ -320,46 +419,47 @@ export default function AgentEditor() {
             onCancel={() => setShowToolForm(false)}
           />
 
-          {/* Tools Table */}
-          {tools.length > 0 ? (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Type</TableHead>
-                  <TableHead className="w-20">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {tools.map((tool, index) => (
-                  <TableRow key={index}>
-                    <TableCell>{tool.name}</TableCell>
-                    <TableCell>
-                      {tool.type === "prebuilt" && tool.tool_schema?.type === "file_access" 
-                        ? "File Access" 
-                        : tool.type === "prebuilt" && tool.tool_schema?.type === "brave_search"
-                        ? "Web Search"
-                        : tool.type === "prebuilt" && tool.tool_schema?.type === "memory"
-                        ? "Memory"
-                        : tool.type === "a2a_call"
-                        ? "Agent (A2A)"
-                        : tool.type}
-                    </TableCell>
-                    <TableCell className="flex gap-1">
-                      <Button variant="ghost" size="sm" onClick={() => editTool(index)} title="Edit tool">
-                        <Edit className="h-4 w-4" />
-                      </Button>
-                      <Button variant="ghost" size="sm" onClick={() => deleteTool(index)} title="Remove tool">
-                        <Trash className="h-4 w-4" />
-                      </Button>
-                    </TableCell>
+          {/* Custom Tools Table */}
+          {tools.filter(tool => tool.type !== "prebuilt").length > 0 ? (
+            <div className="space-y-2">
+              <Label className="text-sm font-medium">Custom Tools</Label>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Name</TableHead>
+                    <TableHead>Type</TableHead>
+                    <TableHead className="w-20">Actions</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                </TableHeader>
+                <TableBody>
+                  {tools.filter(tool => tool.type !== "prebuilt").map((tool, _originalIndex) => {
+                    const actualIndex = tools.findIndex(t => t === tool);
+                    return (
+                      <TableRow key={actualIndex}>
+                        <TableCell>{tool.name}</TableCell>
+                        <TableCell>
+                          {tool.type === "a2a_call" ? "Agent (A2A)" : tool.type}
+                        </TableCell>
+                        <TableCell className="flex gap-1">
+                          <Button variant="ghost" size="sm" onClick={() => editTool(actualIndex)} title="Edit tool">
+                            <Edit className="h-4 w-4" />
+                          </Button>
+                          <Button variant="ghost" size="sm" onClick={() => deleteTool(actualIndex)} title="Remove tool">
+                            <Trash className="h-4 w-4" />
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </div>
           ) : (
-            <div className="text-center p-4 text-gray-500 border border-dashed rounded-md">
-              No tools configured. Tools can enhance your agent's capabilities.
+            <div className="space-y-2">
+              <Label className="text-sm font-medium">Custom Tools</Label>
+              <div className="text-center p-4 text-muted-foreground border border-dashed rounded-md">
+                No custom tools configured. Add custom tools like Agent (A2A) connections.
+              </div>
             </div>
           )}
         </div>
