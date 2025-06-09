@@ -458,7 +458,7 @@ export default function AgentEditor() {
             <div className="space-y-2">
               <Label className="text-sm font-medium">Custom Tools</Label>
               <div className="text-center p-4 text-muted-foreground border border-dashed rounded-md">
-                No custom tools configured. Add custom tools like Agent (A2A) connections.
+                No custom tools configured. Add custom tools like Agent (A2A) connections and soon remote MCP servers.
               </div>
             </div>
           )}
