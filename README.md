@@ -26,21 +26,17 @@ Capy Agents is a framework designed with the goal of making it as easy as possib
    ```
 
 2. **Set up environment variables**
-   ```bash
-   cp backend/.env.example backend/.env
-   # Edit backend/.env with your API keys and configuration
-   ```
 
 3. **Build and run**
    ```bash
-   docker build -t capy-agent .
-   docker run -p 8000:8000 -v $(pwd)/agent-workspace:/agent-workspace capy-agent
+   docker pull brycewcole/capy-agents:latest
+   docker run -e AGENT_URL=http://host.docker.internal:8080 -p 8080:80 -it brycewcole/capy-agents:latest
    ```
 
 4. **Access the agent**
-   - Configuration UI: http://localhost:8000/editor
-   - Agent endpoint: http://localhost:8000
-   - Agent card: http://localhost:8000/.well-known/agent.json
+   - Configuration UI: http://localhost:8080/editor
+   - Agent endpoint: http://localhost:8080
+   - Agent card: http://localhost:8080/.well-known/agent.json
 
 ## 🔧 Configuration
 
