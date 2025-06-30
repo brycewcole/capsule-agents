@@ -38,6 +38,9 @@ export default function AgentEditor() {
   const [toolSchema, setToolSchema] = useState("")
   const [agentUrl, setAgentUrl] = useState("") // New state for a2a_call agent URL
   
+  // MCP Server state
+  const [mcpServerUrl, setMcpServerUrl] = useState("")
+  
   // Prebuilt tools state
   const [fileAccessEnabled, setFileAccessEnabled] = useState(false)
   const [webSearchEnabled, setWebSearchEnabled] = useState(false)
@@ -164,6 +167,21 @@ export default function AgentEditor() {
           return;
         }
         toolDataSchema = { agent_url: agentUrl };
+      } else if (toolType === "mcp_server") {
+        if (!mcpServerUrl) {
+          toast.error("Invalid tool", { description: "Server URL is required for MCP server tool." });
+          return;
+        }
+        try {
+          // Validate URL (basic validation)
+          new URL(mcpServerUrl);
+        } catch (_) {
+          toast.error("Invalid URL", { description: "Please enter a valid MCP server URL." });
+          return;
+        }
+        toolDataSchema = { 
+          server_url: mcpServerUrl
+        };
       } else {
         // Try to parse the schema as JSON for other tool types
         try {
@@ -214,6 +232,9 @@ export default function AgentEditor() {
     if (tool.type === "a2a_call" && tool.tool_schema && typeof tool.tool_schema.agent_url === 'string') {
       setToolType(tool.type);
       setAgentUrl(tool.tool_schema.agent_url);
+    } else if (tool.type === "mcp_server" && tool.tool_schema) {
+      setToolType(tool.type);
+      setMcpServerUrl(tool.tool_schema.server_url || "");
     } else {
       setToolType(tool.type);
       setToolSchema(JSON.stringify(tool.tool_schema || {}, null, 2));
@@ -245,6 +266,8 @@ export default function AgentEditor() {
     setToolType("");
     setToolSchema("");
     setAgentUrl(""); // Reset agentUrl
+    // Reset MCP fields
+    setMcpServerUrl("");
     setEditIndex(null);
     setShowToolForm(false);
   };
@@ -414,6 +437,8 @@ export default function AgentEditor() {
             setToolSchema={setToolSchema}
             agentUrl={agentUrl}
             setAgentUrl={setAgentUrl}
+            mcpServerUrl={mcpServerUrl}
+            setMcpServerUrl={setMcpServerUrl}
             editIndex={editIndex}
             onSubmit={addTool}
             onCancel={() => setShowToolForm(false)}
@@ -438,7 +463,8 @@ export default function AgentEditor() {
                       <TableRow key={actualIndex}>
                         <TableCell>{tool.name}</TableCell>
                         <TableCell>
-                          {tool.type === "a2a_call" ? "Agent (A2A)" : tool.type}
+                          {tool.type === "a2a_call" ? "Agent (A2A)" : 
+                           tool.type === "mcp_server" ? "MCP Server" : tool.type}
                         </TableCell>
                         <TableCell className="flex gap-1">
                           <Button variant="ghost" size="sm" onClick={() => editTool(actualIndex)} title="Edit tool">
@@ -458,7 +484,7 @@ export default function AgentEditor() {
             <div className="space-y-2">
               <Label className="text-sm font-medium">Custom Tools</Label>
               <div className="text-center p-4 text-muted-foreground border border-dashed rounded-md">
-                No custom tools configured. Add custom tools like Agent (A2A) connections and soon remote MCP servers.
+                No custom tools configured. Add custom tools like Agent (A2A) connections and remote MCP servers.
               </div>
             </div>
           )}

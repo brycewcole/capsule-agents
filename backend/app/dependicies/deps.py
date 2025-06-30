@@ -10,6 +10,7 @@ from google.adk.runners import Runner
 from google.adk.agents import Agent
 from google.adk.tools.mcp_tool.mcp_toolset import (
     StdioServerParameters,
+    SseServerParams,
     MCPToolset,
     MCPTool,
 )
@@ -155,6 +156,19 @@ async def get_agent(
                         )
                         mcp_tools.extend(memory_tools)
 
+                elif tool_type == "mcp_server":
+                    server_url = tool_schema.get("server_url")
+
+                    if server_url:
+                        tools, exit_stack = await MCPToolset.from_server(
+                            connection_params=SseServerParams(url=server_url)
+                        )
+                        mcp_tools.extend(tools)
+                    else:
+                        print(
+                            f"Warning: MCP server '{config.get('name')}' is missing server_url."
+                        )
+
         except json.JSONDecodeError:
             # Handle error in parsing tools JSON, e.g., log an error
             print(f"Error: Could not parse tools JSON: {tools_json}")
@@ -179,3 +193,13 @@ def get_runner(
         app_name="weather_tutorial_app",
         session_service=session_service,
     )
+
+
+def get_current_user() -> str:
+    """
+    Placeholder authentication function for MCP routes.
+    In a real implementation, this would validate authentication tokens.
+    """
+    # For now, return a default user
+    # TODO: Implement actual authentication
+    return "default_user"

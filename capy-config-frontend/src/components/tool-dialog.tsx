@@ -17,7 +17,6 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 
-
 interface ToolDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -29,6 +28,9 @@ interface ToolDialogProps {
   setToolSchema: (schema: string) => void
   agentUrl: string
   setAgentUrl: (url: string) => void
+  // MCP Server props
+  mcpServerUrl: string
+  setMcpServerUrl: (url: string) => void
   editIndex: number | null
   onSubmit: () => void
   onCancel: () => void
@@ -43,6 +45,8 @@ export function ToolDialog({
   setToolType,
   agentUrl,
   setAgentUrl,
+  mcpServerUrl,
+  setMcpServerUrl,
   editIndex,
   onSubmit,
   onCancel,
@@ -53,6 +57,9 @@ export function ToolDialog({
     
     if (newType !== "a2a_call") {
       setAgentUrl(""); // Clear agentUrl if type is not a2a_call
+    }
+    if (newType !== "mcp_server") {
+      setMcpServerUrl(""); // Clear MCP URL if type is not mcp_server
     }
   };
 
@@ -86,6 +93,7 @@ export function ToolDialog({
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="a2a_call">Agent (A2A)</SelectItem>
+                  <SelectItem value="mcp_server">MCP Server</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -101,12 +109,26 @@ export function ToolDialog({
               />
             </div>
           )}
+          {toolType === "mcp_server" && (
+            <div>
+              <Label htmlFor="mcp-server-url" className="pb-1">Server URL</Label>
+              <Input
+                id="mcp-server-url"
+                value={mcpServerUrl}
+                onChange={e => setMcpServerUrl(e.target.value)}
+                placeholder="ws://localhost:3000 or https://api.example.com/mcp"
+              />
+            </div>
+          )}
         </div>
         <DialogFooter>
           <Button variant="secondary" onClick={onCancel}>
             Cancel
           </Button>
-          <Button onClick={onSubmit} disabled={!toolName || !toolType}>
+          <Button 
+            onClick={onSubmit} 
+            disabled={!toolName || !toolType || (toolType === "mcp_server" && !mcpServerUrl)}
+          >
             {editIndex !== null ? 'Update Tool' : 'Add Tool'}
           </Button>
         </DialogFooter>
