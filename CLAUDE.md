@@ -61,3 +61,16 @@ This is a full-stack Agent-to-Agent (A2A) protocol implementation with two main 
 - **Backend**: Google ADK, Google GenAI, LiteLLM for multi-model support
 - **Frontend**: React 19, Vite, Tailwind CSS 4.x, Radix UI components
 - **Storage**: SQLite for configuration and session persistence
+
+## Important Implementation Notes
+
+### Tool Call Data Flow
+- **ADK Runner** automatically persists events to SQLite session service - do NOT manually append events
+- **Tool calls are stored** in separate events: `function_call` in one event, `function_response` in another
+- **Session history loading** requires collecting function calls across ALL events, then matching by ID
+- **Event serialization** requires `.model_dump()` on Pydantic objects before `json.dumps()` 
+
+### Chat Interface State Management  
+- **Live messages**: Extract tool calls from task.history using `extractToolCalls()`
+- **Session reload**: Process all events to build complete tool call objects before creating UI messages
+- **Tool call display**: Uses shadcn components in `ToolCallDisplay` with expandable cards
