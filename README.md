@@ -1,6 +1,8 @@
-# Capy Agents
-![Logo](new-logo.png)
-*Open Source, simple agents for an A2A world.*
+<div align="center">
+  <img src="new-logo.png" alt="Capy Agents Logo" width="120" height="120">
+  <h1>Capy Agents</h1>
+  <p><em>Open Source, simple agents for an A2A world.</em></p>
+</div>
 
 Capy Agents is a framework designed with the goal of making it as easy as possible to create [Agent-to-Agent (A2A) protocol](https://github.com/google/A2A) compatible agents. A Capy Agent can be created in a few seconds using either the built-in GUI or a configuration file. The resulting agent is a single Docker image that can be run anywhere, including on your local machine, in the cloud, or even a Raspberry Pi.
 
