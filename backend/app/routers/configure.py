@@ -40,8 +40,8 @@ class SessionEvent(ResponseModel):
     id: str
     author: str
     timestamp: float
-    content: str
-    actions: str
+    content: str | None
+    actions: str | None
     partial: bool
     turn_complete: bool
 
@@ -111,18 +111,27 @@ def get_session_history(
         user_id=session_id,  # Agent service uses session_id as user_id
         session_id=session_id
     )
-    session_events = [
-        SessionEvent(
-            id=event.id,
-            author=event.author,
-            timestamp=event.timestamp,
-            content=json.dumps(event.content.model_dump(exclude_none=True)) if event.content else "",
-            actions=json.dumps(event.actions.model_dump(exclude_none=True)) if event.actions else "",
-            partial=bool(event.partial),
-            turn_complete=bool(event.turn_complete)
-        )
-        for event in events_response.events
-    ]
+    
+    print(f"DEBUG: Found {len(events_response.events)} events for session {session_id}")
+    for i, event in enumerate(events_response.events):
+        print(f"DEBUG: Event {i}: content={event.content}, actions={event.actions}")
+    session_events = []
+    for event in events_response.events:
+        try:
+            session_events.append(SessionEvent(
+                id=event.id,
+                author=event.author,
+                timestamp=event.timestamp,
+                content=json.dumps(event.content) if event.content is not None else None,
+                actions=json.dumps(event.actions) if event.actions is not None else None,
+                partial=bool(event.partial),
+                turn_complete=bool(event.turn_complete)
+            ))
+        except Exception as e:
+            print(f"ERROR: Failed to process event {event.id}: {e}")
+            print(f"Event content type: {type(event.content)}, value: {event.content}")
+            print(f"Event actions type: {type(event.actions)}, value: {event.actions}")
+            raise ValueError(f"Failed to serialize event {event.id}: {e}")
     return GetSessionHistoryResponse(
         session_id=session_id,
         events=session_events

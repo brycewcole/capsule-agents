@@ -58,10 +58,10 @@ export default function ChatInterface() {
               let textContent = ""
               let toolCalls: ToolCall[] = []
               
-              if (event.content) {
+              if (event.content && event.content !== null) {
                 try {
                   const contentObj = JSON.parse(event.content)
-                  if (contentObj.parts && contentObj.parts.length > 0) {
+                  if (contentObj && contentObj.parts && contentObj.parts.length > 0) {
                     textContent = contentObj.parts.map((part: unknown) => (part as { text?: string }).text || "").join("")
                   }
                 } catch (e) {
@@ -70,22 +70,40 @@ export default function ChatInterface() {
                 }
               }
               
-              // Parse tool calls from actions field
-              if (event.actions) {
+              // Parse tool calls from content parts (same logic as extractToolCalls)
+              if (event.content && event.content !== null) {
                 try {
-                  const actionsObj = JSON.parse(event.actions)
-                  if (Array.isArray(actionsObj)) {
-                    toolCalls = actionsObj.map((action: unknown) => {
-                      const actionObj = action as { name?: string; args?: Record<string, unknown>; result?: unknown }
-                      return {
-                        name: actionObj.name || 'unknown',
-                        args: actionObj.args || {},
-                        result: actionObj.result
+                  const contentObj = JSON.parse(event.content)
+                  if (contentObj && contentObj.parts) {
+                    // Track function calls and responses for this event
+                    const functionCalls = new Map<string, { name: string; args: Record<string, unknown> }>()
+                    
+                    for (const part of contentObj.parts) {
+                      // Check for function calls
+                      if (part.function_call) {
+                        functionCalls.set(part.function_call.id, {
+                          name: part.function_call.name,
+                          args: part.function_call.args || {}
+                        })
                       }
-                    })
+                      
+                      // Check for function responses
+                      if (part.function_response) {
+                        const callId = part.function_response.id
+                        const call = functionCalls.get(callId)
+                        
+                        if (call) {
+                          toolCalls.push({
+                            name: call.name,
+                            args: call.args,
+                            result: part.function_response.response
+                          })
+                        }
+                      }
+                    }
                   }
                 } catch (e) {
-                  console.error("Error parsing event actions:", e)
+                  console.error("Error parsing tool calls from session history:", e)
                 }
               }
               

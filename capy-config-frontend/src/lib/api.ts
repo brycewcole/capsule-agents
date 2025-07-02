@@ -302,8 +302,8 @@ type SessionEvent = {
     id: string;
     author: string;
     timestamp: number;
-    content: string;
-    actions: string;
+    content: string | null;
+    actions: string | null;
     partial: boolean;
     turnComplete: boolean;
 };
