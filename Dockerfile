@@ -9,7 +9,7 @@ WORKDIR /home/app/capy-config-frontend
 
 # 2) copy only package manifests and install deps
 COPY --chown=app:app capy-config-frontend/package.json ./
-COPY --chown=app:app capy-config-frontend/package-lock.json* ./
+COPY --chown=app:app capy-config-frontend/package-lock.json ./
 RUN npm ci --legacy-peer-deps
 
 # 3) copy the rest of your source and build with Vite
