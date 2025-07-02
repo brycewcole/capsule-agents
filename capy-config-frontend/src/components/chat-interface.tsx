@@ -49,6 +49,7 @@ export default function ChatInterface() {
             console.log("Loading session history for:", currentSessionId)
             const history = await getSessionHistory(currentSessionId)
             console.log("Received history:", history)
+            console.log("Number of events in history:", history.events.length)
             const loadedMessages: Message[] = []
             
             for (const event of history.events) {
@@ -123,6 +124,7 @@ export default function ChatInterface() {
             }
             
             console.log("Loaded messages:", loadedMessages)
+            console.log("Number of loaded messages:", loadedMessages.length)
             setMessages(loadedMessages)
           } catch (error) {
             console.error("Failed to load session history:", error)

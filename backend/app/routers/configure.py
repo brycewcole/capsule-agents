@@ -122,8 +122,8 @@ def get_session_history(
                 id=event.id,
                 author=event.author,
                 timestamp=event.timestamp,
-                content=json.dumps(event.content) if event.content is not None else None,
-                actions=json.dumps(event.actions) if event.actions is not None else None,
+                content=json.dumps(event.content.model_dump(exclude_none=True)) if event.content is not None else None,
+                actions=json.dumps(event.actions.model_dump(exclude_none=True)) if event.actions is not None else None,
                 partial=bool(event.partial),
                 turn_complete=bool(event.turn_complete)
             ))
