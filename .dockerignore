@@ -1,0 +1,38 @@
+# Ignore git and IDE files
+.git
+.gitignore
+*.md
+README.md
+
+# Ignore OS files
+.DS_Store
+Thumbs.db
+
+# Ignore development files
+.env
+.env.local
+.env.development
+.env.test
+.env.production
+
+# Don't ignore package-lock.json - we need it for the build
+!package-lock.json
+!capy-config-frontend/package-lock.json
+
+# Ignore node_modules in root but not in capy-config-frontend during build
+node_modules
+!capy-config-frontend/node_modules
+
+# Ignore Python cache
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+.pytest_cache
+.coverage
+
+# Ignore logs
+*.log
+logs/
