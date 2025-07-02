@@ -5,14 +5,18 @@ import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { ArrowRight, Loader2, MessageSquare, Plus } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card"
-import { checkHealth, sendMessage, extractResponseText, getSessionHistory } from "@/lib/api"
+import { checkHealth, sendMessage, extractResponseText, extractToolCalls, getSessionHistory, type ToolCall as ApiToolCall } from "@/lib/api"
 import { v4 as uuidv4 } from "uuid"
 import Markdown from "react-markdown"
+import { ToolCallDisplay } from "@/components/tool-call-display"
+
+type ToolCall = ApiToolCall
 
 type Message = {
   role: "user" | "agent"
   content: string
   isLoading?: boolean
+  toolCalls?: ToolCall[]
 }
 
 // Constants for localStorage keys
@@ -45,18 +49,68 @@ export default function ChatInterface() {
             console.log("Loading session history for:", currentSessionId)
             const history = await getSessionHistory(currentSessionId)
             console.log("Received history:", history)
+            console.log("Number of events in history:", history.events.length)
             const loadedMessages: Message[] = []
             
+            // First pass: collect all function calls and responses across all events
+            const functionCalls = new Map<string, { name: string; args: Record<string, unknown> }>()
+            const functionResponses = new Map<string, unknown>()
+            
+            for (const event of history.events) {
+              if (event.content && event.content !== null) {
+                try {
+                  const contentObj = JSON.parse(event.content)
+                  if (contentObj && contentObj.parts) {
+                    for (const part of contentObj.parts) {
+                      // Collect function calls
+                      if (part.function_call) {
+                        functionCalls.set(part.function_call.id, {
+                          name: part.function_call.name,
+                          args: part.function_call.args || {}
+                        })
+                      }
+                      
+                      // Collect function responses
+                      if (part.function_response) {
+                        functionResponses.set(part.function_response.id, part.function_response.response)
+                      }
+                    }
+                  }
+                } catch (e) {
+                  console.error("Error parsing event content for tool calls:", e)
+                }
+              }
+            }
+            
+            // Build tool calls by matching calls with responses
+            const allToolCalls: ToolCall[] = []
+            console.log("Function calls found:", functionCalls.size)
+            console.log("Function responses found:", functionResponses.size)
+            for (const [callId, call] of functionCalls.entries()) {
+              const response = functionResponses.get(callId)
+              console.log(`Matching call ${callId}:`, call, "with response:", response)
+              if (response) {
+                allToolCalls.push({
+                  name: call.name,
+                  args: call.args,
+                  result: response
+                })
+              }
+            }
+            console.log("Total tool calls created:", allToolCalls.length, allToolCalls)
+            
+            // Second pass: create messages
             for (const event of history.events) {
               console.log("Processing event:", event)
               
               // Extract text content from the JSON string
               let textContent = ""
-              if (event.content) {
+              
+              if (event.content && event.content !== null) {
                 try {
                   const contentObj = JSON.parse(event.content)
-                  if (contentObj.parts && contentObj.parts.length > 0) {
-                    textContent = contentObj.parts.map((part: any) => part.text || "").join("")
+                  if (contentObj && contentObj.parts && contentObj.parts.length > 0) {
+                    textContent = contentObj.parts.map((part: unknown) => (part as { text?: string }).text || "").join("")
                   }
                 } catch (e) {
                   console.error("Error parsing event content:", e)
@@ -70,15 +124,27 @@ export default function ChatInterface() {
                   content: textContent
                 })
               } else if (event.author === 'capy_agent') {
-                // Load agent messages regardless of turn_complete status
-                loadedMessages.push({
-                  role: 'agent',
-                  content: textContent
-                })
+                // For the final agent response, attach all tool calls
+                if (textContent && allToolCalls.length > 0) {
+                  loadedMessages.push({
+                    role: 'agent',
+                    content: textContent,
+                    toolCalls: [...allToolCalls]  // Create a copy of the array
+                  })
+                  // Clear tool calls so they don't appear in subsequent messages
+                  allToolCalls.length = 0
+                } else if (textContent) {
+                  loadedMessages.push({
+                    role: 'agent',
+                    content: textContent
+                  })
+                }
+                // Skip empty agent messages (function call/response events with no text)
               }
             }
             
             console.log("Loaded messages:", loadedMessages)
+            console.log("Number of loaded messages:", loadedMessages.length)
             setMessages(loadedMessages)
           } catch (error) {
             console.error("Failed to load session history:", error)
@@ -153,8 +219,16 @@ export default function ChatInterface() {
       // Send the message with the current sessionId
       const taskResponse = await sendMessage(userMessage, sessionId)
       
-      // Extract the response text from the task
+      // Debug: Log the full task response
+      console.log("Full task response:", taskResponse)
+      console.log("Task history:", taskResponse.history)
+      
+      // Extract the response text and tool calls from the task
       const responseText = extractResponseText(taskResponse)
+      const toolCalls = extractToolCalls(taskResponse)
+      
+      // Debug: Log extracted tool calls
+      console.log("Extracted tool calls:", toolCalls)
       
       // Update the agent's message with the response
       setMessages(prev => {
@@ -162,6 +236,7 @@ export default function ChatInterface() {
         const lastMessage = updated[updated.length - 1]
         if (lastMessage.role === "agent") {
           lastMessage.content = responseText || "I couldn't generate a response. Please try again."
+          lastMessage.toolCalls = toolCalls.length > 0 ? toolCalls : undefined
           lastMessage.isLoading = false
         }
         return updated
@@ -232,8 +307,13 @@ export default function ChatInterface() {
                   }`}
                 >
                   {message.role === "agent" ? (
-                    <div className="markdown">
-                      <Markdown>{message.content}</Markdown>
+                    <div className="space-y-2">
+                      {message.toolCalls && (
+                        <ToolCallDisplay toolCalls={message.toolCalls} />
+                      )}
+                      <div className="markdown">
+                        <Markdown>{message.content}</Markdown>
+                      </div>
                     </div>
                   ) : (
                     message.content
