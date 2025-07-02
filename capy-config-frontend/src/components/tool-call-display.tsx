@@ -1,8 +1,9 @@
 import { useState } from "react"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button" 
-import { ChevronDown, ChevronRight, Wrench } from "lucide-react"
+import { Button } from "@/components/ui/button"
+import { Separator } from "@/components/ui/separator"
+import { ChevronDown, ChevronRight, Settings, ArrowRight } from "lucide-react"
 
 type ToolCall = {
   name: string
@@ -26,13 +27,19 @@ function ToolCallItem({ toolCall }: { toolCall: ToolCall }) {
   const [isExpanded, setIsExpanded] = useState(false)
 
   return (
-    <Card className="mb-2 border-l-4 border-l-blue-500">
-      <CardHeader className="pb-2">
+    <Card className="border">
+      <CardHeader className="pb-2 pt-3">
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Wrench className="h-4 w-4 text-blue-500" />
-            <CardTitle className="text-sm font-medium">{toolCall.name}</CardTitle>
-            <Badge variant="secondary" className="text-xs">Tool Call</Badge>
+          <div className="flex items-center gap-2 min-w-0 flex-1">
+            <div className="flex items-center gap-2 bg-muted/50 px-2 py-1 rounded-md">
+              <Settings className="h-3 w-3 text-muted-foreground flex-shrink-0" />
+              <span className="text-xs font-mono font-medium truncate">
+                {toolCall.name}
+              </span>
+            </div>
+            <Badge variant="secondary" className="text-xs">
+              Tool
+            </Badge>
           </div>
           <Button
             variant="ghost"
@@ -50,21 +57,36 @@ function ToolCallItem({ toolCall }: { toolCall: ToolCall }) {
       </CardHeader>
       
       {isExpanded && (
-        <CardContent className="pt-0 space-y-3">
+        <CardContent className="pt-0 pb-3 space-y-3">
+          {/* Arguments Section */}
           <div>
-            <div className="text-xs font-medium text-muted-foreground mb-1">Arguments:</div>
-            <pre className="text-xs bg-muted p-2 rounded overflow-x-auto">
-              {formatJson(toolCall.args)}
-            </pre>
+            <div className="flex items-center gap-2 mb-1">
+              <ArrowRight className="h-3 w-3 text-muted-foreground" />
+              <span className="text-xs font-medium text-foreground">Arguments</span>
+            </div>
+            <div className="bg-muted/50 rounded-md p-2 border">
+              <pre className="text-xs font-mono text-foreground whitespace-pre-wrap break-all overflow-hidden">
+                {formatJson(toolCall.args)}
+              </pre>
+            </div>
           </div>
           
           {toolCall.result !== undefined && (
-            <div>
-              <div className="text-xs font-medium text-muted-foreground mb-1">Result:</div>
-              <pre className="text-xs bg-muted p-2 rounded overflow-x-auto">
-                {formatJson(toolCall.result)}
-              </pre>
-            </div>
+            <>
+              <Separator />
+              {/* Result Section */}
+              <div>
+                <div className="flex items-center gap-2 mb-1">
+                  <ArrowRight className="h-3 w-3 text-muted-foreground" />
+                  <span className="text-xs font-medium text-foreground">Result</span>
+                </div>
+                <div className="bg-muted/30 rounded-md p-2 border">
+                  <pre className="text-xs font-mono text-foreground whitespace-pre-wrap break-all overflow-hidden">
+                    {formatJson(toolCall.result)}
+                  </pre>
+                </div>
+              </div>
+            </>
           )}
         </CardContent>
       )}
@@ -79,6 +101,10 @@ export function ToolCallDisplay({ toolCalls }: ToolCallDisplayProps) {
 
   return (
     <div className="my-2 space-y-1">
+      <div className="text-xs font-medium text-muted-foreground mb-1 flex items-center gap-1">
+        <Settings className="h-3 w-3" />
+        Tool {toolCalls.length === 1 ? 'Call' : 'Calls'} ({toolCalls.length})
+      </div>
       {toolCalls.map((toolCall, index) => (
         <ToolCallItem key={index} toolCall={toolCall} />
       ))}

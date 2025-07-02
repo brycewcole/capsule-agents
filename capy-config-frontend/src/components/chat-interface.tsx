@@ -52,12 +52,59 @@ export default function ChatInterface() {
             console.log("Number of events in history:", history.events.length)
             const loadedMessages: Message[] = []
             
+            // First pass: collect all function calls and responses across all events
+            const functionCalls = new Map<string, { name: string; args: Record<string, unknown> }>()
+            const functionResponses = new Map<string, unknown>()
+            
+            for (const event of history.events) {
+              if (event.content && event.content !== null) {
+                try {
+                  const contentObj = JSON.parse(event.content)
+                  if (contentObj && contentObj.parts) {
+                    for (const part of contentObj.parts) {
+                      // Collect function calls
+                      if (part.function_call) {
+                        functionCalls.set(part.function_call.id, {
+                          name: part.function_call.name,
+                          args: part.function_call.args || {}
+                        })
+                      }
+                      
+                      // Collect function responses
+                      if (part.function_response) {
+                        functionResponses.set(part.function_response.id, part.function_response.response)
+                      }
+                    }
+                  }
+                } catch (e) {
+                  console.error("Error parsing event content for tool calls:", e)
+                }
+              }
+            }
+            
+            // Build tool calls by matching calls with responses
+            const allToolCalls: ToolCall[] = []
+            console.log("Function calls found:", functionCalls.size)
+            console.log("Function responses found:", functionResponses.size)
+            for (const [callId, call] of functionCalls.entries()) {
+              const response = functionResponses.get(callId)
+              console.log(`Matching call ${callId}:`, call, "with response:", response)
+              if (response) {
+                allToolCalls.push({
+                  name: call.name,
+                  args: call.args,
+                  result: response
+                })
+              }
+            }
+            console.log("Total tool calls created:", allToolCalls.length, allToolCalls)
+            
+            // Second pass: create messages
             for (const event of history.events) {
               console.log("Processing event:", event)
               
               // Extract text content from the JSON string
               let textContent = ""
-              let toolCalls: ToolCall[] = []
               
               if (event.content && event.content !== null) {
                 try {
@@ -71,55 +118,28 @@ export default function ChatInterface() {
                 }
               }
               
-              // Parse tool calls from content parts (same logic as extractToolCalls)
-              if (event.content && event.content !== null) {
-                try {
-                  const contentObj = JSON.parse(event.content)
-                  if (contentObj && contentObj.parts) {
-                    // Track function calls and responses for this event
-                    const functionCalls = new Map<string, { name: string; args: Record<string, unknown> }>()
-                    
-                    for (const part of contentObj.parts) {
-                      // Check for function calls
-                      if (part.function_call) {
-                        functionCalls.set(part.function_call.id, {
-                          name: part.function_call.name,
-                          args: part.function_call.args || {}
-                        })
-                      }
-                      
-                      // Check for function responses
-                      if (part.function_response) {
-                        const callId = part.function_response.id
-                        const call = functionCalls.get(callId)
-                        
-                        if (call) {
-                          toolCalls.push({
-                            name: call.name,
-                            args: call.args,
-                            result: part.function_response.response
-                          })
-                        }
-                      }
-                    }
-                  }
-                } catch (e) {
-                  console.error("Error parsing tool calls from session history:", e)
-                }
-              }
-              
               if (event.author === 'user') {
                 loadedMessages.push({
                   role: 'user',
                   content: textContent
                 })
               } else if (event.author === 'capy_agent') {
-                // Load agent messages regardless of turn_complete status
-                loadedMessages.push({
-                  role: 'agent',
-                  content: textContent,
-                  toolCalls: toolCalls.length > 0 ? toolCalls : undefined
-                })
+                // For the final agent response, attach all tool calls
+                if (textContent && allToolCalls.length > 0) {
+                  loadedMessages.push({
+                    role: 'agent',
+                    content: textContent,
+                    toolCalls: [...allToolCalls]  // Create a copy of the array
+                  })
+                  // Clear tool calls so they don't appear in subsequent messages
+                  allToolCalls.length = 0
+                } else if (textContent) {
+                  loadedMessages.push({
+                    role: 'agent',
+                    content: textContent
+                  })
+                }
+                // Skip empty agent messages (function call/response events with no text)
               }
             }
             
