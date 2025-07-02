@@ -5,14 +5,18 @@ import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { ArrowRight, Loader2, MessageSquare, Plus } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card"
-import { checkHealth, sendMessage, extractResponseText, getSessionHistory } from "@/lib/api"
+import { checkHealth, sendMessage, extractResponseText, extractToolCalls, getSessionHistory, type ToolCall as ApiToolCall } from "@/lib/api"
 import { v4 as uuidv4 } from "uuid"
 import Markdown from "react-markdown"
+import { ToolCallDisplay } from "@/components/tool-call-display"
+
+type ToolCall = ApiToolCall
 
 type Message = {
   role: "user" | "agent"
   content: string
   isLoading?: boolean
+  toolCalls?: ToolCall[]
 }
 
 // Constants for localStorage keys
@@ -52,15 +56,36 @@ export default function ChatInterface() {
               
               // Extract text content from the JSON string
               let textContent = ""
+              let toolCalls: ToolCall[] = []
+              
               if (event.content) {
                 try {
                   const contentObj = JSON.parse(event.content)
                   if (contentObj.parts && contentObj.parts.length > 0) {
-                    textContent = contentObj.parts.map((part: any) => part.text || "").join("")
+                    textContent = contentObj.parts.map((part: unknown) => (part as { text?: string }).text || "").join("")
                   }
                 } catch (e) {
                   console.error("Error parsing event content:", e)
                   textContent = event.content // fallback to raw content
+                }
+              }
+              
+              // Parse tool calls from actions field
+              if (event.actions) {
+                try {
+                  const actionsObj = JSON.parse(event.actions)
+                  if (Array.isArray(actionsObj)) {
+                    toolCalls = actionsObj.map((action: unknown) => {
+                      const actionObj = action as { name?: string; args?: Record<string, unknown>; result?: unknown }
+                      return {
+                        name: actionObj.name || 'unknown',
+                        args: actionObj.args || {},
+                        result: actionObj.result
+                      }
+                    })
+                  }
+                } catch (e) {
+                  console.error("Error parsing event actions:", e)
                 }
               }
               
@@ -73,7 +98,8 @@ export default function ChatInterface() {
                 // Load agent messages regardless of turn_complete status
                 loadedMessages.push({
                   role: 'agent',
-                  content: textContent
+                  content: textContent,
+                  toolCalls: toolCalls.length > 0 ? toolCalls : undefined
                 })
               }
             }
@@ -153,8 +179,9 @@ export default function ChatInterface() {
       // Send the message with the current sessionId
       const taskResponse = await sendMessage(userMessage, sessionId)
       
-      // Extract the response text from the task
+      // Extract the response text and tool calls from the task
       const responseText = extractResponseText(taskResponse)
+      const toolCalls = extractToolCalls(taskResponse)
       
       // Update the agent's message with the response
       setMessages(prev => {
@@ -162,6 +189,7 @@ export default function ChatInterface() {
         const lastMessage = updated[updated.length - 1]
         if (lastMessage.role === "agent") {
           lastMessage.content = responseText || "I couldn't generate a response. Please try again."
+          lastMessage.toolCalls = toolCalls.length > 0 ? toolCalls : undefined
           lastMessage.isLoading = false
         }
         return updated
@@ -232,8 +260,13 @@ export default function ChatInterface() {
                   }`}
                 >
                   {message.role === "agent" ? (
-                    <div className="markdown">
-                      <Markdown>{message.content}</Markdown>
+                    <div className="space-y-2">
+                      {message.toolCalls && (
+                        <ToolCallDisplay toolCalls={message.toolCalls} />
+                      )}
+                      <div className="markdown">
+                        <Markdown>{message.content}</Markdown>
+                      </div>
                     </div>
                   ) : (
                     message.content

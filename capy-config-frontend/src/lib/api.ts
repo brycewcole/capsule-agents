@@ -138,6 +138,13 @@ export type Tool = {
     tool_schema: Record<string, any>;
 };
 
+// Type for tool calls
+export type ToolCall = {
+    name: string;
+    args: Record<string, unknown>;
+    result?: unknown;
+};
+
 // Types for agent configuration
 export type AgentInfo = {
     name: string;
@@ -391,6 +398,40 @@ export async function getAvailableModels(): Promise<Model[]> {
     }
 }
 
+
+// Helper function to extract tool calls from task history
+export function extractToolCalls(task: Task): ToolCall[] {
+    const toolCalls: ToolCall[] = []
+    
+    if (task.history && task.history.length > 0) {
+        for (const event of task.history) {
+            if (event.actions) {
+                try {
+                    // Parse actions if it's a string, otherwise use directly
+                    const actions = typeof event.actions === 'string' 
+                        ? JSON.parse(event.actions) 
+                        : event.actions
+                    
+                    if (Array.isArray(actions)) {
+                        const eventToolCalls = actions.map((action: unknown) => {
+                            const actionObj = action as { name?: string; args?: Record<string, unknown>; result?: unknown }
+                            return {
+                                name: actionObj.name || 'unknown',
+                                args: actionObj.args || {},
+                                result: actionObj.result
+                            }
+                        })
+                        toolCalls.push(...eventToolCalls)
+                    }
+                } catch (e) {
+                    console.error("Error parsing tool calls from task history:", e)
+                }
+            }
+        }
+    }
+    
+    return toolCalls
+}
 
 // Helper function to extract text from a task response
 export function extractResponseText(task: Task): string {
