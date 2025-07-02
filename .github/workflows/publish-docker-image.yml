@@ -26,7 +26,7 @@ jobs:
 
       - name: Extract metadata (tags, labels) for Docker
         id: meta
-        uses: docker/metadata-action
+        uses: docker/metadata-action@v5
         with:
           images: brycewcole/capy-agents
 
@@ -39,7 +39,7 @@ jobs:
           push: true
           tags: |
             ${{ steps.meta.outputs.tags }}
-            ${{ steps.meta.outputs.tags }}.latest
+            brycewcole/capy-agents:latest
           labels: ${{ steps.meta.outputs.labels }}
 
       - name: Generate artifact attestation
