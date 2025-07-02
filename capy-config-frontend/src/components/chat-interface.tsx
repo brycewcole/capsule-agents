@@ -179,9 +179,16 @@ export default function ChatInterface() {
       // Send the message with the current sessionId
       const taskResponse = await sendMessage(userMessage, sessionId)
       
+      // Debug: Log the full task response
+      console.log("Full task response:", taskResponse)
+      console.log("Task history:", taskResponse.history)
+      
       // Extract the response text and tool calls from the task
       const responseText = extractResponseText(taskResponse)
       const toolCalls = extractToolCalls(taskResponse)
+      
+      // Debug: Log extracted tool calls
+      console.log("Extracted tool calls:", toolCalls)
       
       // Update the agent's message with the response
       setMessages(prev => {

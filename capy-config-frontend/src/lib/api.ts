@@ -67,7 +67,17 @@ type Model = {
 }
 
 type Part = {
-    text: string;
+    text?: string;
+    function_call?: {
+        id: string;
+        name: string;
+        args: Record<string, unknown>;
+    };
+    function_response?: {
+        id: string;
+        name: string;
+        response: unknown;
+    };
 };
 
 type Artifact = {
@@ -401,35 +411,52 @@ export async function getAvailableModels(): Promise<Model[]> {
 
 // Helper function to extract tool calls from task history
 export function extractToolCalls(task: Task): ToolCall[] {
+    console.log("extractToolCalls called with task:", task)
     const toolCalls: ToolCall[] = []
     
     if (task.history && task.history.length > 0) {
+        console.log("Processing task history with", task.history.length, "events")
+        
+        // Track function calls and their responses
+        const functionCalls = new Map<string, { name: string; args: Record<string, unknown> }>()
+        
         for (const event of task.history) {
-            if (event.actions) {
-                try {
-                    // Parse actions if it's a string, otherwise use directly
-                    const actions = typeof event.actions === 'string' 
-                        ? JSON.parse(event.actions) 
-                        : event.actions
-                    
-                    if (Array.isArray(actions)) {
-                        const eventToolCalls = actions.map((action: unknown) => {
-                            const actionObj = action as { name?: string; args?: Record<string, unknown>; result?: unknown }
-                            return {
-                                name: actionObj.name || 'unknown',
-                                args: actionObj.args || {},
-                                result: actionObj.result
-                            }
+            console.log("Processing event:", event)
+            
+            if (event.content && event.content.parts) {
+                for (const part of event.content.parts) {
+                    // Check for function calls
+                    if (part.function_call) {
+                        console.log("Found function call:", part.function_call)
+                        functionCalls.set(part.function_call.id, {
+                            name: part.function_call.name,
+                            args: part.function_call.args || {}
                         })
-                        toolCalls.push(...eventToolCalls)
                     }
-                } catch (e) {
-                    console.error("Error parsing tool calls from task history:", e)
+                    
+                    // Check for function responses
+                    if (part.function_response) {
+                        console.log("Found function response:", part.function_response)
+                        const callId = part.function_response.id
+                        const call = functionCalls.get(callId)
+                        
+                        if (call) {
+                            toolCalls.push({
+                                name: call.name,
+                                args: call.args,
+                                result: part.function_response.response
+                            })
+                            console.log("Created tool call:", { name: call.name, args: call.args, result: part.function_response.response })
+                        }
+                    }
                 }
             }
         }
+    } else {
+        console.log("No task history or empty history")
     }
     
+    console.log("Final extracted tool calls:", toolCalls)
     return toolCalls
 }
 
