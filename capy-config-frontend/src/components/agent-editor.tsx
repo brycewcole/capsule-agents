@@ -426,10 +426,6 @@ export default function AgentEditor() {
         <div className="space-y-4">
           <div className="flex justify-between items-center">
             <Label>Tools</Label>
-            <Button size="sm" variant="outline" onClick={handleAddNewToolClick}>
-              <Plus className="mr-2 h-4 w-4" />
-              Add Custom Tool
-            </Button>
           </div>
           
           {/* Prebuilt Tools Toggles */}
@@ -534,6 +530,14 @@ export default function AgentEditor() {
               </div>
             </div>
           )}
+          
+          {/* Add Custom Tool Button */}
+          <div className="flex justify-end">
+            <Button size="sm" variant="outline" onClick={handleAddNewToolClick}>
+              <Plus className="mr-2 h-4 w-4" />
+              Add Custom Tool
+            </Button>
+          </div>
         </div>
       </CardContent>
       <Separator />
