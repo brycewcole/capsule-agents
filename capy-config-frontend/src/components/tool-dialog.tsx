@@ -63,6 +63,25 @@ export function ToolDialog({
     }
   };
 
+  // URL validation functions
+  const isValidUrl = (url: string): boolean => {
+    if (!url) return false;
+    try {
+      new URL(url);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
+  const isAgentUrlValid = toolType === "a2a_call" ? isValidUrl(agentUrl) : true;
+  const isMcpUrlValid = toolType === "mcp_server" ? isValidUrl(mcpServerUrl) : true;
+
+  // Check if form is valid
+  const isFormValid = toolName && toolType && 
+    (toolType === "a2a_call" ? isAgentUrlValid : true) &&
+    (toolType === "mcp_server" ? isMcpUrlValid : true);
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-lg">
@@ -106,7 +125,11 @@ export function ToolDialog({
                 value={agentUrl}
                 onChange={e => setAgentUrl(e.target.value)}
                 placeholder="http://remote-agent/api/tasks/send"
+                className={agentUrl && !isAgentUrlValid ? "border-red-500" : ""}
               />
+              {agentUrl && !isAgentUrlValid && (
+                <p className="text-sm text-red-600 mt-1">Please enter a valid URL</p>
+              )}
             </div>
           )}
           {toolType === "mcp_server" && (
@@ -116,8 +139,12 @@ export function ToolDialog({
                 id="mcp-server-url"
                 value={mcpServerUrl}
                 onChange={e => setMcpServerUrl(e.target.value)}
-                placeholder="ws://localhost:3000 or https://api.example.com/mcp"
+                placeholder="https://api.example.com/mcp"
+                className={mcpServerUrl && !isMcpUrlValid ? "border-red-500" : ""}
               />
+              {mcpServerUrl && !isMcpUrlValid && (
+                <p className="text-sm text-red-600 mt-1">Please enter a valid URL</p>
+              )}
             </div>
           )}
         </div>
@@ -127,7 +154,7 @@ export function ToolDialog({
           </Button>
           <Button 
             onClick={onSubmit} 
-            disabled={!toolName || !toolType || (toolType === "mcp_server" && !mcpServerUrl)}
+            disabled={!isFormValid}
           >
             {editIndex !== null ? 'Update Tool' : 'Add Tool'}
           </Button>

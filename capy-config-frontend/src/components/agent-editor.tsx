@@ -32,6 +32,14 @@ export default function AgentEditor() {
   const [showToolForm, setShowToolForm] = useState(false)
   const [editIndex, setEditIndex] = useState<number | null>(null)
   
+  // State to track original values for change detection
+  const [originalState, setOriginalState] = useState<{
+    name: string;
+    description: string;
+    modelName: string;
+    tools: Tool[];
+  } | null>(null)
+  
   // New state for tool form
   const [toolName, setToolName] = useState("")
   const [toolType, setToolType] = useState("")
@@ -45,6 +53,18 @@ export default function AgentEditor() {
   const [fileAccessEnabled, setFileAccessEnabled] = useState(false)
   const [webSearchEnabled, setWebSearchEnabled] = useState(false)
   const [memoryEnabled, setMemoryEnabled] = useState(false)
+
+  // Function to check if there are any changes
+  const hasChanges = (): boolean => {
+    if (!originalState) return false;
+    
+    return (
+      name !== originalState.name ||
+      description !== originalState.description ||
+      selectedModel?.model_name !== originalState.modelName ||
+      JSON.stringify(tools) !== JSON.stringify(originalState.tools)
+    );
+  };
 
   const handleSave = async () => {
     // Validate agent name before saving
@@ -64,6 +84,15 @@ export default function AgentEditor() {
         tools: tools
       }
       await updateAgentInfo(agentInfo)
+      
+      // Update original state after successful save
+      setOriginalState({
+        name,
+        description,
+        modelName: selectedModel?.model_name || "",
+        tools: [...tools]
+      })
+      
       toast.success("Agent saved", { description: "Agent configuration has been updated successfully." })
     } catch (error) {
       console.error("Error saving agent:", error)
@@ -99,6 +128,14 @@ export default function AgentEditor() {
         setFileAccessEnabled(currentTools.some(tool => tool.type === "prebuilt" && tool.tool_schema?.type === "file_access"))
         setWebSearchEnabled(currentTools.some(tool => tool.type === "prebuilt" && tool.tool_schema?.type === "brave_search"))
         setMemoryEnabled(currentTools.some(tool => tool.type === "prebuilt" && tool.tool_schema?.type === "memory"))
+        
+        // Set original state for change detection
+        setOriginalState({
+          name: agentInfo.name,
+          description: agentInfo.description,
+          modelName: agentInfo.modelName,
+          tools: currentTools
+        })
       } catch (error) {
         console.error("Failed to fetch data:", error)
         toast.error("Error fetching data", { description: "Could not load agent or model data from server." })
@@ -136,6 +173,15 @@ export default function AgentEditor() {
       setFileAccessEnabled(currentTools.some(tool => tool.type === "prebuilt" && tool.tool_schema?.type === "file_access"))
       setWebSearchEnabled(currentTools.some(tool => tool.type === "prebuilt" && tool.tool_schema?.type === "brave_search"))
       setMemoryEnabled(currentTools.some(tool => tool.type === "prebuilt" && tool.tool_schema?.type === "memory"))
+      
+      // Reset original state for change detection
+      setOriginalState({
+        name: agentInfo.name,
+        description: agentInfo.description,
+        modelName: agentInfo.modelName,
+        tools: currentTools
+      })
+      
       toast.success("Reset successful", { description: "Agent data has been reset to saved values." })
     } catch (error) {
       console.error("Failed to fetch agent info:", error)
@@ -380,10 +426,6 @@ export default function AgentEditor() {
         <div className="space-y-4">
           <div className="flex justify-between items-center">
             <Label>Tools</Label>
-            <Button size="sm" variant="outline" onClick={handleAddNewToolClick}>
-              <Plus className="mr-2 h-4 w-4" />
-              Add Custom Tool
-            </Button>
           </div>
           
           {/* Prebuilt Tools Toggles */}
@@ -488,12 +530,20 @@ export default function AgentEditor() {
               </div>
             </div>
           )}
+          
+          {/* Add Custom Tool Button */}
+          <div className="flex justify-end">
+            <Button size="sm" variant="outline" onClick={handleAddNewToolClick}>
+              <Plus className="mr-2 h-4 w-4" />
+              Add Custom Tool
+            </Button>
+          </div>
         </div>
       </CardContent>
       <Separator />
       <CardFooter className="flex justify-end gap-2">
         <Button variant="outline" size="sm" onClick={handleReset}>Reset</Button>
-        <Button onClick={handleSave} size="sm" disabled={isSaving || !!nameError}>
+        <Button onClick={handleSave} size="sm" disabled={isSaving || !!nameError || !hasChanges()}>
           {isSaving ? <><Loader2 className="animate-spin mr-2" />Saving...</> : <><Save className="mr-2" />Save Agent</>}
         </Button>
       </CardFooter>
