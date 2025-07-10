@@ -20,30 +20,93 @@ class A2ATool(BaseTool):
         self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
         self.logger.info(f"Initialized A2ATool with agent_url: {self.agent_url}")
 
-    async def initialize_agent_card(self):
+    async def initialize_agent_card(self, strict_mode: bool = False):
         try:
-            async with httpx.AsyncClient() as client:
+            async with httpx.AsyncClient(timeout=10.0) as client:
                 resp = await client.get(self.agent_url)
                 resp.raise_for_status()
                 agent_card_json = resp.json()
             agent_card = AgentCard(**agent_card_json)
             self.logger.info(f"Downloaded agent card: {agent_card.name}")
-            self.name = agent_card.name
+            # Make sure the name is a valid function name (letters, numbers, underscores only)
+            clean_name = agent_card.name.replace('-', '_').replace('.', '_').replace(' ', '_')
+            # Remove any other non-alphanumeric characters except underscores
+            clean_name = ''.join(c for c in clean_name if c.isalnum() or c == '_')
+            # Ensure it starts with a letter or underscore
+            if clean_name and not (clean_name[0].isalpha() or clean_name[0] == '_'):
+                clean_name = f"agent_{clean_name}"
+            self.name = clean_name or "a2a_agent_tool"
             self.url = agent_card.url
             self.description = (
                 agent_card.description or f"Send a message to {agent_card.name}"
             )
             self.initialized = True
+        except httpx.ConnectError as e:
+            error_msg = f"Cannot connect to A2A agent at {self.agent_url}: {e}"
+            self.logger.error(error_msg)
+            
+            if strict_mode:
+                # In strict mode, raise the error so it surfaces to the user
+                raise e
+            
+            # Set fallback values so the tool can still be created (graceful degradation)
+            # Make sure the name is a valid function name (letters, numbers, underscores only)
+            url_part = self.agent_url.split('/')[-1].replace('-', '_').replace('.', '_')
+            # Remove any other non-alphanumeric characters except underscores
+            url_part = ''.join(c for c in url_part if c.isalnum() or c == '_')
+            self.name = f"a2a_agent_{url_part}" if url_part else "a2a_agent_unknown"
+            self.url = self.agent_url
+            self.description = f"A2A agent at {self.agent_url} (connection failed)"
+            self.initialized = False  # Mark as not properly initialized
+            # Don't raise - allow the agent to start without this tool working
+        except httpx.HTTPStatusError as e:
+            error_msg = f"A2A agent returned {e.response.status_code}: {e}"
+            self.logger.error(error_msg)
+            
+            if strict_mode:
+                # In strict mode, raise the error so it surfaces to the user
+                raise e
+            
+            # Set fallback values
+            # Make sure the name is a valid function name (letters, numbers, underscores only)
+            url_part = self.agent_url.split('/')[-1].replace('-', '_').replace('.', '_')
+            # Remove any other non-alphanumeric characters except underscores
+            url_part = ''.join(c for c in url_part if c.isalnum() or c == '_')
+            self.name = f"a2a_agent_{url_part}" if url_part else "a2a_agent_unknown"
+            self.url = self.agent_url
+            self.description = f"A2A agent at {self.agent_url} (HTTP {e.response.status_code})"
+            self.initialized = False
+            # Don't raise for 404s and other HTTP errors - graceful degradation
         except Exception as e:
-            self.logger.error(
-                f"Failed to download or parse agent card: {e}", exc_info=True
-            )
-            raise e
+            self.logger.error(f"Failed to download or parse agent card: {e}", exc_info=True)
+            
+            if strict_mode:
+                # In strict mode, raise the error so it surfaces to the user
+                raise e
+            
+            # Set fallback values for any other error
+            self.name = "a2a_agent_unknown"
+            self.url = self.agent_url
+            self.description = f"A2A agent at {self.agent_url} (initialization failed)"
+            self.initialized = False
+            # Don't raise - allow graceful degradation
 
     def _get_declaration(self) -> types.FunctionDeclaration:
         if not self.initialized:
-            raise ValueError(
-                "Trying to get declaration before agent card is initialized."
+            # Return a disabled tool declaration instead of raising
+            return types.FunctionDeclaration(
+                name=self.name or "a2a_agent_disabled",
+                description=f"A2A agent tool (disabled: {self.description})",
+                parameters=types.Schema(
+                    type=types.Type.OBJECT,
+                    properties={
+                        "message": types.Schema(
+                            type=types.Type.STRING,
+                            description="Message to send (tool currently disabled)"
+                        )
+                    },
+                    required=["message"]
+                )
             )
         # function takes a single 'message' argument (the A2A Message object)
         return types.FunctionDeclaration(

@@ -28,6 +28,7 @@ from backend.app.schemas import (
     TaskResubscriptionRequest,
     create_user_friendly_error,
 )
+from backend.app.utils.error_handler import ErrorHandler
 from backend.app.services.agent_service import AgentService
 from fastapi.exceptions import RequestValidationError
 
@@ -48,6 +49,23 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
     return JSONResponse(
         status_code=422,
         content={"detail": exc.errors()},
+    )
+
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    """Global exception handler for unhandled exceptions"""
+    logger.error(f"Unhandled exception: {exc}", exc_info=True)
+    
+    # Use our enhanced error handler to detect MCP/A2A errors
+    error_response = ErrorHandler.handle_exception(exc, enhance_for_user=True)
+    status_code = ErrorHandler.get_http_status_for_error_code(
+        error_response.error.code if error_response.error else -32603
+    )
+    
+    return JSONResponse(
+        status_code=status_code,
+        content=error_response.model_dump(mode="json", exclude_none=True)
     )
 
 

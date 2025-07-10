@@ -91,19 +91,24 @@ export function showErrorToast(error: unknown, options?: {
   const message = getErrorMessage(error)
   const recoveryAction = getRecoveryAction(error)
   const code = getErrorCode(error)
-
+  
+  // Build clean description
   let description = message
+  
+  // Add error code if available
   if (code) {
-    description += ` (Error ${code})`
+    description += `\n\nError Code: ${code}`
   }
+  
+  // Add recovery action if available
   if (recoveryAction) {
-    description += `\n💡 ${recoveryAction}`
+    description += `\n\n💡 ${recoveryAction}`
   }
 
   toast({
     title: options?.title || "Error",
     description,
-    variant: "destructive",
+    variant: "default",
     action: options?.action as any,
   })
 }
@@ -116,7 +121,7 @@ export function showSuccessToast(message: string, options?: {
   toast({
     title: options?.title || "Success",
     description: message,
-    variant: "success",
+    variant: "default",
     action: options?.action as any,
   })
 }
@@ -129,7 +134,7 @@ export function showWarningToast(message: string, options?: {
   toast({
     title: options?.title || "Warning",
     description: message,
-    variant: "warning",
+    variant: "default",
     action: options?.action as any,
   })
 }
@@ -142,7 +147,7 @@ export function showInfoToast(message: string, options?: {
   toast({
     title: options?.title || "Info",
     description: message,
-    variant: "info",
+    variant: "default",
     action: options?.action as any,
   })
 }
@@ -161,6 +166,10 @@ export function isRecoverableError(error: unknown): boolean {
     -32015, // Network error
     -32010, // Invalid session (can re-authenticate)
     -32013, // Validation failed (can fix input)
+    -32016, // MCP server error (server might come back up)
+    -32018, // MCP configuration error (can be fixed)
+    -32019, // A2A agent error (agent might come back up)
+    -32020, // A2A agent not found (might be temporary)
   ]
 
   return recoverableErrors.includes(code)
@@ -176,6 +185,34 @@ export function requiresAuth(error: unknown): boolean {
 export function isPermissionError(error: unknown): boolean {
   const code = getErrorCode(error)
   return code === -32007 // Authorization error
+}
+
+// Determine if error is MCP-related
+export function isMCPError(error: unknown): boolean {
+  const code = getErrorCode(error)
+  return code === -32016 || code === -32017 || code === -32018 // MCP errors
+}
+
+// Determine if error is A2A agent-related
+export function isA2AError(error: unknown): boolean {
+  const code = getErrorCode(error)
+  return code === -32019 || code === -32020 // A2A agent errors
+}
+
+// Get MCP-specific error guidance
+export function getMCPErrorGuidance(error: unknown): string | undefined {
+  const code = getErrorCode(error)
+  
+  switch (code) {
+    case -32016:
+      return "Check if the MCP server is running and the URL is correct"
+    case -32017:
+      return "Verify the tool exists and has proper permissions"
+    case -32018:
+      return "Review MCP server configuration and restart if needed"
+    default:
+      return undefined
+  }
 }
 
 // Create a user-friendly error message based on error code
@@ -195,6 +232,11 @@ export function createUserFriendlyErrorMessage(error: unknown): string {
     [-32013]: "Please check your input and try again.",
     [-32014]: "The request timed out. Please try again.",
     [-32015]: "Connection failed. Please check your internet connection.",
+    [-32016]: "MCP server is not running or unreachable. Start the MCP server and try again.",
+    [-32017]: "The requested tool operation failed. Check tool configuration.",
+    [-32018]: "MCP server configuration is invalid. Check settings and server URL.",
+    [-32019]: "A2A agent is not reachable. Check the agent URL and network connection.",
+    [-32020]: "A2A agent endpoint not found (404). Verify the URL and agent deployment.",
   }
 
   const context = contextMap[code]

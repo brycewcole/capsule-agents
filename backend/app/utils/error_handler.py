@@ -23,6 +23,11 @@ from backend.app.schemas import (
     ResourceNotFoundError,
     TimeoutError,
     NetworkError,
+    MCPServerError,
+    MCPToolError,
+    MCPConfigurationError,
+    A2AAgentError,
+    A2AAgentNotFoundError,
 )
 
 logger = logging.getLogger(__name__)
@@ -64,8 +69,11 @@ class ErrorHandler:
         elif isinstance(exc, FileNotFoundError):
             error = ResourceNotFoundError(message=str(exc))
         else:
-            # Generic internal error for unknown exceptions
-            error = InternalError(message=str(exc))
+            # Check for MCP-specific errors
+            error = ErrorHandler._detect_mcp_errors(exc)
+            if error is None:
+                # Generic internal error for unknown exceptions
+                error = InternalError(message=str(exc))
         
         # Enhance for user-friendly display if requested
         if enhance_for_user:
@@ -75,6 +83,111 @@ class ErrorHandler:
             id=request_id,
             error=error.to_dict() if isinstance(error, EnhancedJSONRPCError) else error
         )
+    
+    @staticmethod
+    def _detect_mcp_errors(exc: Exception) -> Optional[JSONRPCError]:
+        """Detect MCP-specific and A2A agent errors from exception messages and stack traces"""
+        exc_str = str(exc).lower()
+        exc_type = type(exc).__name__
+        
+        logger.info(f"Detecting error type for {exc_type}: {exc_str[:200]}...")
+        
+        # Get the full stack trace for pattern matching
+        import traceback
+        stack_trace = traceback.format_exception(type(exc), exc, exc.__traceback__)
+        full_trace = ''.join(stack_trace).lower()
+        
+        # A2A agent 404 errors
+        if (exc_type == 'HTTPStatusError' and '404' in exc_str) or ('404 not found' in exc_str):
+            return A2AAgentNotFoundError(message="A2A agent endpoint not found")
+        
+        # A2A agent connection errors
+        if any(pattern in exc_str for pattern in [
+            'workers.dev',
+            'a2a agent',
+            'agent endpoint'
+        ]) and any(error_type in exc_str for error_type in [
+            'connection',
+            'timeout',
+            'unreachable',
+            'failed'
+        ]):
+            return A2AAgentError(message="Cannot connect to A2A agent")
+        
+        # HTTP status errors that might be MCP related
+        if exc_type == 'HTTPStatusError':
+            is_mcp_related = (any(mcp_pattern in exc_str for mcp_pattern in ['mcp', 'localhost', '127.0.0.1']) or 
+                            any(mcp_pattern in full_trace for mcp_pattern in ['mcp', 'mcptoolset']))
+            logger.info(f"HTTPStatusError detected. MCP-related: {is_mcp_related}")
+            
+            if is_mcp_related:
+                if '301' in exc_str or '302' in exc_str or 'redirect' in exc_str:
+                    error = MCPConfigurationError(message="MCP server URL redirected - check configuration")
+                    logger.info(f"Detected MCP redirect error: {error.code}")
+                    return error
+                elif '404' in exc_str:
+                    error = MCPServerError(message="MCP server endpoint not found")
+                    logger.info(f"Detected MCP 404 error: {error.code}")
+                    return error
+                elif '500' in exc_str or '502' in exc_str or '503' in exc_str:
+                    error = MCPServerError(message="MCP server is having issues")
+                    logger.info(f"Detected MCP server error: {error.code}")
+                    return error
+                else:
+                    error = MCPServerError(message="MCP server returned HTTP error")
+                    logger.info(f"Detected generic MCP HTTP error: {error.code}")
+                    return error
+        
+        # MCP connection errors - improved patterns
+        mcp_connection_patterns = [
+            'mcp/client/sse.py',
+            'mcptoolset.from_server',
+            'all connection attempts failed',
+            'httpx.connecterror',
+            'connection refused',
+            'name or service not known',
+            'no route to host'
+        ]
+        
+        if any(pattern in full_trace for pattern in mcp_connection_patterns):
+            return MCPServerError(message="Cannot connect to MCP server")
+        
+        # MCP server not found (404, connection refused, etc.)
+        if any(pattern in exc_str for pattern in ['connection refused', 'name or service not known']) and 'mcp' in full_trace:
+            return MCPServerError(message="MCP server is not running or accessible")
+        
+        # MCP configuration errors
+        if any(pattern in full_trace for pattern in [
+            'sseserverparams',
+            'mcp server configuration',
+            'invalid mcp url',
+            'mcp_tool/mcp_toolset.py'
+        ]):
+            return MCPConfigurationError(message="MCP server configuration is invalid")
+        
+        # MCP tool execution errors
+        if any(pattern in full_trace for pattern in [
+            'mcp tool execution',
+            'tool not found',
+            'mcp method not supported'
+        ]):
+            return MCPToolError(message="MCP tool operation failed")
+        
+        # Generic connection errors that might be MCP-related
+        if exc_type in ['ConnectError', 'ConnectionError']:
+            # Check if URL looks like MCP server
+            if any(pattern in exc_str for pattern in ['localhost', '127.0.0.1', 'mcp']):
+                error = MCPServerError(message="MCP server is not reachable")
+                logger.info(f"Detected MCP connection error: {error.code}")
+                return error
+            # Check if URL looks like A2A agent
+            elif any(pattern in exc_str for pattern in ['workers.dev', 'agent']):
+                error = A2AAgentError(message="A2A agent is not reachable")
+                logger.info(f"Detected A2A connection error: {error.code}")
+                return error
+        
+        logger.info(f"No specific error pattern detected for {exc_type}")
+        return None
     
     @staticmethod
     def _http_exception_to_jsonrpc_error(exc: HTTPException) -> JSONRPCError:
@@ -148,6 +261,11 @@ class ErrorHandler:
             -32013: 422,  # Validation failed
             -32014: 408,  # Request timeout
             -32015: 502,  # Network error
+            -32016: 502,  # MCP server error
+            -32017: 500,  # MCP tool error
+            -32018: 500,  # MCP configuration error
+            -32019: 502,  # A2A agent error
+            -32020: 404,  # A2A agent not found
         }
         
         return error_to_status.get(error_code, 500)
@@ -213,4 +331,37 @@ def create_timeout_error(message: str = "Request timeout") -> EnhancedJSONRPCErr
         message=message,
         user_message="The request took too long. Please try again",
         recovery_action="Try again or simplify your request"
+    )
+
+
+def create_mcp_server_error(server_url: str = "", message: str = "MCP server connection failed") -> EnhancedJSONRPCError:
+    """Create an MCP server connection error"""
+    return EnhancedJSONRPCError(
+        code=-32016,
+        message=message,
+        data={"server_url": server_url} if server_url else None,
+        user_message="MCP server is not available",
+        recovery_action="Check if the MCP server is running and accessible"
+    )
+
+
+def create_a2a_agent_error(agent_url: str = "", message: str = "A2A agent connection failed") -> EnhancedJSONRPCError:
+    """Create an A2A agent connection error"""
+    return EnhancedJSONRPCError(
+        code=-32019,
+        message=message,
+        data={"agent_url": agent_url} if agent_url else None,
+        user_message="A2A agent is not reachable",
+        recovery_action="Check the agent URL and network connection"
+    )
+
+
+def create_a2a_agent_not_found_error(agent_url: str = "", message: str = "A2A agent not found") -> EnhancedJSONRPCError:
+    """Create an A2A agent not found error"""
+    return EnhancedJSONRPCError(
+        code=-32020,
+        message=message,
+        data={"agent_url": agent_url} if agent_url else None,
+        user_message="A2A agent endpoint not found",
+        recovery_action="Verify the URL and agent deployment"
     )

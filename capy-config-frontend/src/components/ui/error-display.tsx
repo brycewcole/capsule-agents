@@ -101,21 +101,22 @@ export function ErrorDisplay({
       <AlertDescription className="mt-2">
         <p className="text-sm">{userMessage}</p>
         {code && (
-          <p className="text-xs text-muted-foreground mt-1">
-            Error Code: {code}
+          <p className="text-xs text-muted-foreground mt-2">
+            <strong>Error Code:</strong> {code}
           </p>
         )}
         {recoveryAction && (
-          <p className="text-xs text-muted-foreground mt-1">
-            💡 {recoveryAction}
+          <p className="text-xs text-muted-foreground mt-2">
+            💡 <strong>Suggested Action:</strong> {recoveryAction}
           </p>
         )}
+        
         {onRetry && (
           <Button
             variant="outline"
             size="sm"
             onClick={onRetry}
-            className="mt-2"
+            className="mt-3"
           >
             <RefreshCw className="h-3 w-3 mr-1" />
             Try Again
@@ -221,14 +222,15 @@ export function ErrorCard({
         </CardDescription>
         {code && (
           <p className="text-xs text-muted-foreground mt-2">
-            Error Code: {code}
+            <strong>Error Code:</strong> {code}
           </p>
         )}
         {recoveryAction && (
           <p className="text-sm text-muted-foreground mt-2">
-            💡 {recoveryAction}
+            💡 <strong>Suggested Action:</strong> {recoveryAction}
           </p>
         )}
+        
         {onRetry && (
           <Button
             variant="outline"

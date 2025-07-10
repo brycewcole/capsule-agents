@@ -502,14 +502,47 @@ class NetworkError(JSONRPCError):
     data: None = None
 
 
+class MCPServerError(JSONRPCError):
+    code: int = -32016
+    message: str = "MCP server connection failed"
+    data: None = None
+
+
+class MCPToolError(JSONRPCError):
+    code: int = -32017
+    message: str = "MCP tool execution failed"
+    data: None = None
+
+
+class MCPConfigurationError(JSONRPCError):
+    code: int = -32018
+    message: str = "MCP server configuration error"
+    data: None = None
+
+
+class A2AAgentError(JSONRPCError):
+    code: int = -32019
+    message: str = "A2A agent connection failed"
+    data: None = None
+
+
+class A2AAgentNotFoundError(JSONRPCError):
+    code: int = -32020
+    message: str = "A2A agent not found"
+    data: None = None
+
+
 # Enhanced error with user-friendly context
 class EnhancedJSONRPCError(JSONRPCError):
     """Enhanced JSON-RPC error with user-friendly context"""
+    user_message: str
+    recovery_action: Optional[str] = None
     
     def __init__(self, code: int, message: str, data: Any = None, user_message: str = None, recovery_action: str = None):
-        super().__init__(code=code, message=message, data=data)
+        # Initialize all fields before calling super().__init__()
         self.user_message = user_message or message
         self.recovery_action = recovery_action
+        super().__init__(code=code, message=message, data=data)
     
     def to_dict(self) -> dict:
         """Convert to dictionary with enhanced context"""
@@ -547,7 +580,12 @@ def create_user_friendly_error(error: JSONRPCError) -> EnhancedJSONRPCError:
         -32012: ("Resource not found", "The requested resource could not be found"),
         -32013: ("Validation failed", "Please check your input and try again"),
         -32014: ("Request timeout", "The request took too long. Please try again"),
-        -32015: ("Network error", "Network connection failed. Please check your connection")
+        -32015: ("Network error", "Network connection failed. Please check your connection"),
+        -32016: ("MCP server not available", "Check if the MCP server is running and accessible"),
+        -32017: ("MCP tool failed", "The requested tool operation could not be completed"),
+        -32018: ("MCP configuration issue", "Check MCP server settings and try again"),
+        -32019: ("A2A agent connection failed", "Check if the agent URL is correct and accessible"),
+        -32020: ("A2A agent not found", "The agent endpoint returned 404 - verify the URL and agent availability")
     }
     
     user_message, recovery_action = error_map.get(error.code, (error.message, None))

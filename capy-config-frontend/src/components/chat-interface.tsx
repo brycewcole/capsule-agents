@@ -9,7 +9,7 @@ import { checkHealth, sendMessage, extractResponseText, extractToolCalls, getSes
 import { v4 as uuidv4 } from "uuid"
 import Markdown from "react-markdown"
 import { ToolCallDisplay } from "@/components/tool-call-display"
-import { showErrorToast, getErrorMessage, isRecoverableError, type JSONRPCError } from "@/lib/error-utils"
+import { showErrorToast, getErrorMessage, isRecoverableError, isMCPError, isA2AError, type JSONRPCError } from "@/lib/error-utils"
 import { ErrorDisplay } from "@/components/ui/error-display"
 
 type ToolCall = ApiToolCall
@@ -250,9 +250,15 @@ export default function ChatInterface() {
     } catch (error) {
       console.error("Error getting response from agent:", error)
       
-      // Show error toast
+      // Show error toast with development details and specific guidance
+      let title = "Message Send Failed"
+      if (isMCPError(error)) {
+        title = "MCP Server Error"
+      } else if (isA2AError(error)) {
+        title = "A2A Agent Error"
+      }
       showErrorToast(error, { 
-        title: "Failed to send message",
+        title,
         action: isRecoverableError(error) ? (
           <Button variant="outline" size="sm" onClick={() => handleSendMessage()}>
             Retry

@@ -98,7 +98,8 @@ async def get_agent(
                     agent_url = tool_schema.get("agent_url")
                     if agent_url:
                         tool = A2ATool(agent_card_url=agent_url)
-                        await tool.initialize_agent_card()
+                        # Use strict mode so connection errors surface to the user
+                        await tool.initialize_agent_card(strict_mode=True)
                         agent_tools.append(tool)
                     else:
                         raise ValueError(
@@ -160,10 +161,32 @@ async def get_agent(
                     server_url = tool_schema.get("server_url")
 
                     if server_url:
-                        tools, exit_stack = await MCPToolset.from_server(
-                            connection_params=SseServerParams(url=server_url)
-                        )
-                        mcp_tools.extend(tools)
+                        try:
+                            tools, exit_stack = await MCPToolset.from_server(
+                                connection_params=SseServerParams(url=server_url)
+                            )
+                            mcp_tools.extend(tools)
+                        except Exception as e:
+                            import logging
+                            logger = logging.getLogger(__name__)
+                            logger.error(f"Failed to connect to MCP server '{config.get('name')}' at {server_url}: {e}", exc_info=True)
+                            print(f"Error: Failed to connect to MCP server '{config.get('name')}' at {server_url}: {e}")
+                            
+                            # For certain critical errors, let them bubble up to be handled properly
+                            # This includes configuration issues that should be surfaced to the user
+                            error_str = str(e).lower()
+                            if any(critical_pattern in error_str for critical_pattern in [
+                                'redirect response',
+                                'invalid url',
+                                'permission denied',
+                                'unauthorized'
+                            ]):
+                                # Re-raise critical configuration errors
+                                raise e
+                            
+                            # For connection/network errors, log but continue (graceful degradation)
+                            # This allows the agent to start without the MCP tools
+                            continue
                     else:
                         print(
                             f"Warning: MCP server '{config.get('name')}' is missing server_url."
