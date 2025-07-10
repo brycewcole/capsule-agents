@@ -251,14 +251,8 @@ export default function ChatInterface() {
       console.error("Error getting response from agent:", error)
       
       // Show error toast with development details and specific guidance
-      let title = "Message Send Failed"
-      if (isMCPError(error)) {
-        title = "MCP Server Error"
-      } else if (isA2AError(error)) {
-        title = "A2A Agent Error"
-      }
       showErrorToast(error, { 
-        title,
+        title: isMCPError(error) ? "MCP Server Error" : isA2AError(error) ? "A2A Agent Error" : "Message Send Failed",
         action: isRecoverableError(error) ? (
           <Button variant="outline" size="sm" onClick={() => handleSendMessage()}>
             Retry

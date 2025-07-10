@@ -20,6 +20,18 @@ class A2ATool(BaseTool):
         self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
         self.logger.info(f"Initialized A2ATool with agent_url: {self.agent_url}")
 
+    def _handle_initialization_error(self, e: Exception, error_msg: str, strict_mode: bool):
+        self.logger.error(error_msg, exc_info=True)
+        if strict_mode:
+            raise e
+        
+        url_part = self.agent_url.split('/')[-1].replace('-', '_').replace('.', '_')
+        url_part = ''.join(c for c in url_part if c.isalnum() or c == '_')
+        self.name = f"a2a_agent_{url_part}" if url_part else "a2a_agent_unknown"
+        self.url = self.agent_url
+        self.description = f"A2A agent at {self.agent_url} (initialization failed)"
+        self.initialized = False
+
     async def initialize_agent_card(self, strict_mode: bool = False):
         try:
             async with httpx.AsyncClient(timeout=10.0) as client:
@@ -42,54 +54,11 @@ class A2ATool(BaseTool):
             )
             self.initialized = True
         except httpx.ConnectError as e:
-            error_msg = f"Cannot connect to A2A agent at {self.agent_url}: {e}"
-            self.logger.error(error_msg)
-            
-            if strict_mode:
-                # In strict mode, raise the error so it surfaces to the user
-                raise e
-            
-            # Set fallback values so the tool can still be created (graceful degradation)
-            # Make sure the name is a valid function name (letters, numbers, underscores only)
-            url_part = self.agent_url.split('/')[-1].replace('-', '_').replace('.', '_')
-            # Remove any other non-alphanumeric characters except underscores
-            url_part = ''.join(c for c in url_part if c.isalnum() or c == '_')
-            self.name = f"a2a_agent_{url_part}" if url_part else "a2a_agent_unknown"
-            self.url = self.agent_url
-            self.description = f"A2A agent at {self.agent_url} (connection failed)"
-            self.initialized = False  # Mark as not properly initialized
-            # Don't raise - allow the agent to start without this tool working
+            self._handle_initialization_error(e, f"Cannot connect to A2A agent at {self.agent_url}: {e}", strict_mode)
         except httpx.HTTPStatusError as e:
-            error_msg = f"A2A agent returned {e.response.status_code}: {e}"
-            self.logger.error(error_msg)
-            
-            if strict_mode:
-                # In strict mode, raise the error so it surfaces to the user
-                raise e
-            
-            # Set fallback values
-            # Make sure the name is a valid function name (letters, numbers, underscores only)
-            url_part = self.agent_url.split('/')[-1].replace('-', '_').replace('.', '_')
-            # Remove any other non-alphanumeric characters except underscores
-            url_part = ''.join(c for c in url_part if c.isalnum() or c == '_')
-            self.name = f"a2a_agent_{url_part}" if url_part else "a2a_agent_unknown"
-            self.url = self.agent_url
-            self.description = f"A2A agent at {self.agent_url} (HTTP {e.response.status_code})"
-            self.initialized = False
-            # Don't raise for 404s and other HTTP errors - graceful degradation
+            self._handle_initialization_error(e, f"A2A agent returned {e.response.status_code}: {e}", strict_mode)
         except Exception as e:
-            self.logger.error(f"Failed to download or parse agent card: {e}", exc_info=True)
-            
-            if strict_mode:
-                # In strict mode, raise the error so it surfaces to the user
-                raise e
-            
-            # Set fallback values for any other error
-            self.name = "a2a_agent_unknown"
-            self.url = self.agent_url
-            self.description = f"A2A agent at {self.agent_url} (initialization failed)"
-            self.initialized = False
-            # Don't raise - allow graceful degradation
+            self._handle_initialization_error(e, f"Failed to download or parse agent card: {e}", strict_mode)
 
     def _get_declaration(self) -> types.FunctionDeclaration:
         if not self.initialized:

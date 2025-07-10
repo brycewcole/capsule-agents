@@ -535,26 +535,18 @@ class A2AAgentNotFoundError(JSONRPCError):
 # Enhanced error with user-friendly context
 class EnhancedJSONRPCError(JSONRPCError):
     """Enhanced JSON-RPC error with user-friendly context"""
+
     user_message: str
     recovery_action: Optional[str] = None
-    
-    def __init__(self, code: int, message: str, data: Any = None, user_message: str = None, recovery_action: str = None):
-        # Initialize all fields before calling super().__init__()
-        self.user_message = user_message or message
-        self.recovery_action = recovery_action
-        super().__init__(code=code, message=message, data=data)
-    
-    def to_dict(self) -> dict:
-        """Convert to dictionary with enhanced context"""
-        result = {
-            "code": self.code,
-            "message": self.message,
-            "data": self.data,
-            "user_message": self.user_message,
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "user_message": "A more detailed explanation for the user.",
+                "recovery_action": "Suggestions for how the user can fix the error.",
+            }
         }
-        if self.recovery_action:
-            result["recovery_action"] = self.recovery_action
-        return result
+    )
 
 
 # Error utility functions
@@ -588,7 +580,7 @@ def create_user_friendly_error(error: JSONRPCError) -> EnhancedJSONRPCError:
         -32020: ("A2A agent not found", "The agent endpoint returned 404 - verify the URL and agent availability")
     }
     
-    user_message, recovery_action = error_map.get(error.code, (error.message, None))
+    user_message, recovery_action = error_map.get(error.code, (error.message, "No recovery action available."))
     
     return EnhancedJSONRPCError(
         code=error.code,

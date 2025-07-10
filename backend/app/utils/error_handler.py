@@ -77,11 +77,15 @@ class ErrorHandler:
         
         # Enhance for user-friendly display if requested
         if enhance_for_user:
-            error = create_user_friendly_error(error)
+            enhanced_error = create_user_friendly_error(error)
+            return JSONRPCResponse(
+                id=request_id,
+                error=enhanced_error
+            )
         
         return JSONRPCResponse(
             id=request_id,
-            error=error.to_dict() if isinstance(error, EnhancedJSONRPCError) else error
+            error=error
         )
     
     @staticmethod

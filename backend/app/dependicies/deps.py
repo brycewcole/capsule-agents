@@ -1,6 +1,7 @@
 import json
 import sqlite3
 import os  # <-- Add this import
+import logging
 from google.adk.models.lite_llm import LiteLlm
 from google.adk.agents.llm_agent import LlmAgent
 from typing import Annotated
@@ -18,6 +19,8 @@ from google.adk.tools.mcp_tool.mcp_toolset import (
 from backend.app.configure_schemas import Model
 from backend.app.services.a2a_tool import A2ATool
 from backend.app.services.sqlite_session_service import SQLiteSessionService
+
+logger = logging.getLogger(__name__)
 
 
 def model_list() -> list[Model]:
@@ -98,9 +101,15 @@ async def get_agent(
                     agent_url = tool_schema.get("agent_url")
                     if agent_url:
                         tool = A2ATool(agent_card_url=agent_url)
-                        # Use strict mode so connection errors surface to the user
-                        await tool.initialize_agent_card(strict_mode=True)
-                        agent_tools.append(tool)
+                        try:
+                            # Use strict mode so connection errors surface to the user
+                            await tool.initialize_agent_card(strict_mode=True)
+                            agent_tools.append(tool)
+                        except Exception as e:
+                            logger.error(f"Failed to connect to A2A agent '{config.get('name')}' at {agent_url}: {e}", exc_info=True)
+                            # For connection errors, log but continue (graceful degradation)
+                            # This allows the agent to start without the A2A tools
+                            continue
                     else:
                         raise ValueError(
                             f"a2a_call tool '{config.get('name')}' is missing agent_url."
@@ -161,32 +170,11 @@ async def get_agent(
                     server_url = tool_schema.get("server_url")
 
                     if server_url:
-                        try:
-                            tools, exit_stack = await MCPToolset.from_server(
-                                connection_params=SseServerParams(url=server_url)
-                            )
-                            mcp_tools.extend(tools)
-                        except Exception as e:
-                            import logging
-                            logger = logging.getLogger(__name__)
-                            logger.error(f"Failed to connect to MCP server '{config.get('name')}' at {server_url}: {e}", exc_info=True)
-                            print(f"Error: Failed to connect to MCP server '{config.get('name')}' at {server_url}: {e}")
-                            
-                            # For certain critical errors, let them bubble up to be handled properly
-                            # This includes configuration issues that should be surfaced to the user
-                            error_str = str(e).lower()
-                            if any(critical_pattern in error_str for critical_pattern in [
-                                'redirect response',
-                                'invalid url',
-                                'permission denied',
-                                'unauthorized'
-                            ]):
-                                # Re-raise critical configuration errors
-                                raise e
-                            
-                            # For connection/network errors, log but continue (graceful degradation)
-                            # This allows the agent to start without the MCP tools
-                            continue
+                        print(f"Connecting to SSE endpoint: {server_url}")
+                        tools, exit_stack = await MCPToolset.from_server(
+                            connection_params=SseServerParams(url=server_url)
+                        )
+                        mcp_tools.extend(tools)
                     else:
                         print(
                             f"Warning: MCP server '{config.get('name')}' is missing server_url."
