@@ -2,14 +2,14 @@
 Error handling utilities for the backend application.
 """
 import logging
-from fastapi import Request
+from fastapi import Request, HTTPException
 from fastapi.responses import JSONResponse
 from backend.app.utils.exceptions import APIException, JSONRPCException
 from backend.app.schemas import JSONRPCError, JSONRPCResponse
 
 logger = logging.getLogger(__name__)
 
-async def api_exception_handler(request: Request, exc: APIException):
+async def api_exception_handler(request: Request, exc: HTTPException):
     logger.error(f"API Exception: {exc.detail}", exc_info=True)
     return JSONResponse(
         status_code=exc.status_code,

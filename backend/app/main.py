@@ -30,7 +30,6 @@ from backend.app.schemas import (
     JSONRPCError,
     JSONParseError,
     InvalidRequestError,
-    MethodNotFoundError,
     InvalidParamsError,
     InternalError,
     NetworkError,
@@ -65,8 +64,14 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
     )
 
 
-app.add_exception_handler(APIException, api_exception_handler)
-app.add_exception_handler(JSONRPCException, json_rpc_exception_handler)
+@app.exception_handler(APIException)
+async def api_exception_handler_wrapper(request: Request, exc: APIException):
+    return await api_exception_handler(request, exc)
+
+
+@app.exception_handler(JSONRPCException)
+async def jsonrpc_exception_handler(request: Request, exc: JSONRPCException):
+    return await json_rpc_exception_handler(request, exc)
 
 
 @app.exception_handler(Exception)
@@ -271,4 +276,4 @@ async def rpc_root(
 
         return StreamingResponse(resume(), media_type="text/event-stream")
 
-    raise MethodNotFoundError(message=f"Method {rpc_req.method} not found")
+    raise JSONRPCException(code=-32601, message=f"Method {rpc_req.method} not found")
