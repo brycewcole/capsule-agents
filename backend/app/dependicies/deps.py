@@ -19,6 +19,7 @@ from google.adk.tools.mcp_tool.mcp_toolset import (
 from backend.app.configure_schemas import Model
 from backend.app.services.a2a_tool import A2ATool
 from backend.app.services.sqlite_session_service import SQLiteSessionService
+from backend.app.utils.exceptions import JSONRPCException
 
 logger = logging.getLogger(__name__)
 
@@ -47,7 +48,7 @@ def find_model(model_name: str) -> Model:
     for model in models:
         if model.model_name == model_name:
             return model
-    raise ValueError(f"Model {model_name} not found in the list of available models.")
+    raise JSONRPCException(code=-32602, message=f"Model {model_name} not found in the list of available models.")
 
 
 def database_url() -> str:
@@ -76,7 +77,7 @@ async def get_agent(
 
     if not row:
         conn.close()
-        raise ValueError("Agent info not found in the database.")
+        raise JSONRPCException(code=-32012, message="Agent info not found in the database.")
 
     name: str = row["name"]
     description: str = row["description"]
@@ -101,18 +102,12 @@ async def get_agent(
                     agent_url = tool_schema.get("agent_url")
                     if agent_url:
                         tool = A2ATool(agent_card_url=agent_url)
-                        try:
-                            # Use strict mode so connection errors surface to the user
-                            await tool.initialize_agent_card(strict_mode=True)
-                            agent_tools.append(tool)
-                        except Exception as e:
-                            logger.error(f"Failed to connect to A2A agent '{config.get('name')}' at {agent_url}: {e}", exc_info=True)
-                            # For connection errors, log but continue (graceful degradation)
-                            # This allows the agent to start without the A2A tools
-                            continue
+                        await tool.initialize_agent_card()
+                        agent_tools.append(tool)
                     else:
-                        raise ValueError(
-                            f"a2a_call tool '{config.get('name')}' is missing agent_url."
+                        raise JSONRPCException(
+                            code=-32602,
+                            message=f"a2a_call tool '{config.get('name')}' is missing agent_url."
                         )
 
                 elif tool_type == "prebuilt":
@@ -181,8 +176,7 @@ async def get_agent(
                         )
 
         except json.JSONDecodeError:
-            # Handle error in parsing tools JSON, e.g., log an error
-            print(f"Error: Could not parse tools JSON: {tools_json}")
+            raise JSONRPCException(code=-32700, message=f"Could not parse tools JSON: {tools_json}")
 
     print(f"Fetched {len(mcp_tools)} tools from MCP servers.")
     agent_tools.extend(mcp_tools)

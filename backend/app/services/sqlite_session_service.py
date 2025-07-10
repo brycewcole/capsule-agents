@@ -13,6 +13,7 @@ from google.adk.sessions.base_session_service import (
 )
 from google.adk.sessions.session import Session
 from google.adk.sessions.state import State
+from backend.app.utils.exceptions import JSONRPCException
 
 
 def _extract_state_delta(state: dict[str, Any]):
@@ -332,7 +333,7 @@ class SQLiteSessionService(BaseSessionService):
 
         # ensure content exists
         if not event.content:
-            raise ValueError("Event content cannot be empty.")
+            raise JSONRPCException(code=-32602, message="Event content cannot be empty.")
 
         # prepare dicts
         content_dict = (

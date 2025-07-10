@@ -19,16 +19,15 @@ from backend.app.schemas import (
     GetTaskPushNotificationRequest,
     GetTaskRequest,
     GetTaskResponse,
-    JSONRPCError,
     JSONRPCResponse,
     SendTaskRequest,
     SendTaskResponse,
     SendTaskStreamingRequest,
     SetTaskPushNotificationRequest,
     TaskResubscriptionRequest,
-    create_user_friendly_error,
 )
-from backend.app.utils.error_handler import ErrorHandler
+from backend.app.utils.exceptions import APIException, JSONRPCException
+from backend.app.utils.error_handler import api_exception_handler, json_rpc_exception_handler
 from backend.app.services.agent_service import AgentService
 from fastapi.exceptions import RequestValidationError
 
@@ -52,25 +51,8 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
     )
 
 
-@app.exception_handler(Exception)
-async def global_exception_handler(request: Request, exc: Exception):
-    """Global exception handler for unhandled exceptions"""
-    logger.error(f"Unhandled exception: {exc}", exc_info=True)
-    
-    # Use our enhanced error handler to detect MCP/A2A errors
-    error_response = ErrorHandler.handle_exception(exc, enhance_for_user=True)
-    
-    # Determine the appropriate HTTP status code from the JSON-RPC error code
-    error_code = error_response.error.code if error_response.error else -32603
-    status_code = ErrorHandler.get_http_status_for_error_code(error_code)
-    
-    # Ensure the response content is a serializable dictionary
-    response_content = error_response.model_dump(mode="json", exclude_none=True)
-    
-    return JSONResponse(
-        status_code=status_code,
-        content=response_content
-    )
+app.add_exception_handler(APIException, api_exception_handler)
+app.add_exception_handler(JSONRPCException, json_rpc_exception_handler)
 
 
 logger = logging.getLogger(__name__)
@@ -170,13 +152,7 @@ async def rpc_root(
             f"Parsed JSON-RPC request: method={getattr(rpc_req, 'method', None)}, id={getattr(rpc_req, 'id', None)}"
         )
     except ValidationError as e:
-        logger.error(f"JSON parse or validation error: {e}", exc_info=True)
-        err = JSONRPCError(code=-32600, message=str(e))
-        enhanced_err = create_user_friendly_error(err)
-        return JSONResponse(
-            status_code=400,
-            content=JSONRPCResponse(id=None, error=enhanced_err.to_dict()).model_dump(mode="json"),
-        )
+        raise JSONRPCException(code=-32600, message=str(e))
 
     rpc_id = rpc_req.id
 
@@ -248,10 +224,4 @@ async def rpc_root(
 
         return StreamingResponse(resume(), media_type="text/event-stream")
 
-    logger.info(f"Method not found: {getattr(rpc_req, 'method', None)}")
-    err = JSONRPCError(code=-32601, message=f"Method {rpc_req.method} not found")
-    enhanced_err = create_user_friendly_error(err)
-    return JSONResponse(
-        status_code=404,
-        content=JSONRPCResponse(id=rpc_id, error=enhanced_err.to_dict()).model_dump(mode="json"),
-    )
+    raise JSONRPCException(code=-32601, message=f"Method {rpc_req.method} not found")

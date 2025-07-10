@@ -6,7 +6,7 @@ from typing import Annotated, Dict
 from fastapi import Depends
 from google.genai import types
 from backend.app.dependicies.deps import get_runner
-from backend.app.schemas import Task, TaskIdParams, TaskPushNotificationConfig
+from backend.app.schemas import Task, TaskIdParams, TaskPushNotificationConfig, JSONRPCError
 from backend.app.schemas import (
     AgentCapabilities,
     AgentCard,
@@ -15,6 +15,7 @@ from backend.app.schemas import (
     TaskState,
     TaskStatus,
 )
+from backend.app.utils.exceptions import JSONRPCException
 
 logger = logging.getLogger(__name__)  # Initialize logger for the module
 
@@ -115,7 +116,7 @@ class AgentService:
         task = self.store.get(params.id)
         if not task:
             logger.warning(f"Task {params.id} not found in store.")
-            raise ValueError(f"Task {params.id} not found")
+            raise JSONRPCException(code=-32001, message=f"Task {params.id} not found")
         logger.info(f"Task {params.id} retrieved successfully.")
         return task
 
@@ -124,7 +125,7 @@ class AgentService:
         task = self.store.get(params.id)
         if not task:
             logger.warning(f"Task {params.id} not found for cancellation.")
-            raise ValueError(f"Task {params.id} not found")
+            raise JSONRPCException(code=-32001, message=f"Task {params.id} not found")
         task.status.state = TaskState.CANCELED
         logger.info(f"Task {params.id} status set to CANCELED.")
         return task
@@ -164,7 +165,7 @@ class AgentService:
         task = self.store.get(params.id)
         if not task:
             logger.warning(f"Task {params.id} not found for resubscription.")
-            raise ValueError(f"Task {params.id} not found")
+            raise JSONRPCException(code=-32001, message=f"Task {params.id} not found")
 
         async def stream():
             logger.info(f"Resubscription stream started for task_id: {params.id}")
@@ -177,7 +178,7 @@ class AgentService:
         agent = self.runner.agent
         agent_url = os.getenv("AGENT_URL")
         if not agent_url:
-            raise ValueError("AGENT_URL environment variable is not set.")
+            raise JSONRPCException(code=-32011, message="AGENT_URL environment variable is not set.")
         logger.info(f"Agent URL: {agent_url}")
         return AgentCard(
             name=agent.name,

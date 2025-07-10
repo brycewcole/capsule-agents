@@ -20,19 +20,7 @@ class A2ATool(BaseTool):
         self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
         self.logger.info(f"Initialized A2ATool with agent_url: {self.agent_url}")
 
-    def _handle_initialization_error(self, e: Exception, error_msg: str, strict_mode: bool):
-        self.logger.error(error_msg, exc_info=True)
-        if strict_mode:
-            raise e
-        
-        url_part = self.agent_url.split('/')[-1].replace('-', '_').replace('.', '_')
-        url_part = ''.join(c for c in url_part if c.isalnum() or c == '_')
-        self.name = f"a2a_agent_{url_part}" if url_part else "a2a_agent_unknown"
-        self.url = self.agent_url
-        self.description = f"A2A agent at {self.agent_url} (initialization failed)"
-        self.initialized = False
-
-    async def initialize_agent_card(self, strict_mode: bool = False):
+    async def initialize_agent_card(self):
         try:
             async with httpx.AsyncClient(timeout=10.0) as client:
                 resp = await client.get(self.agent_url)
@@ -53,12 +41,9 @@ class A2ATool(BaseTool):
                 agent_card.description or f"Send a message to {agent_card.name}"
             )
             self.initialized = True
-        except httpx.ConnectError as e:
-            self._handle_initialization_error(e, f"Cannot connect to A2A agent at {self.agent_url}: {e}", strict_mode)
-        except httpx.HTTPStatusError as e:
-            self._handle_initialization_error(e, f"A2A agent returned {e.response.status_code}: {e}", strict_mode)
-        except Exception as e:
-            self._handle_initialization_error(e, f"Failed to download or parse agent card: {e}", strict_mode)
+        except (httpx.ConnectError, httpx.HTTPStatusError) as e:
+            self.logger.error(f"Failed to initialize A2A tool at {self.agent_url}: {e}", exc_info=True)
+            raise e
 
     def _get_declaration(self) -> types.FunctionDeclaration:
         if not self.initialized:
