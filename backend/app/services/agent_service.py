@@ -15,7 +15,6 @@ from backend.app.schemas import (
     TaskState,
     TaskStatus,
 )
-from backend.app.utils.exceptions import JSONRPCException
 
 logger = logging.getLogger(__name__)  # Initialize logger for the module
 
@@ -116,7 +115,7 @@ class AgentService:
         task = self.store.get(params.id)
         if not task:
             logger.warning(f"Task {params.id} not found in store.")
-            raise JSONRPCException(code=-32001, message=f"Task {params.id} not found")
+            raise ValueError(f"Task {params.id} not found")
         logger.info(f"Task {params.id} retrieved successfully.")
         return task
 
@@ -125,7 +124,7 @@ class AgentService:
         task = self.store.get(params.id)
         if not task:
             logger.warning(f"Task {params.id} not found for cancellation.")
-            raise JSONRPCException(code=-32001, message=f"Task {params.id} not found")
+            raise ValueError(f"Task {params.id} not found")
         task.status.state = TaskState.CANCELED
         logger.info(f"Task {params.id} status set to CANCELED.")
         return task
@@ -165,7 +164,7 @@ class AgentService:
         task = self.store.get(params.id)
         if not task:
             logger.warning(f"Task {params.id} not found for resubscription.")
-            raise JSONRPCException(code=-32001, message=f"Task {params.id} not found")
+            raise ValueError(f"Task {params.id} not found")
 
         async def stream():
             logger.info(f"Resubscription stream started for task_id: {params.id}")
@@ -178,7 +177,7 @@ class AgentService:
         agent = self.runner.agent
         agent_url = os.getenv("AGENT_URL")
         if not agent_url:
-            raise JSONRPCException(code=-32011, message="AGENT_URL environment variable is not set.")
+            raise ValueError("AGENT_URL environment variable is not set.")
         logger.info(f"Agent URL: {agent_url}")
         return AgentCard(
             name=agent.name,

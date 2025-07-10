@@ -9,7 +9,6 @@ from backend.app.dependicies.deps import model_list, session_service
 from backend.app.dependicies.auth import get_current_user
 from backend.app.services.configure_service import ConfigureService
 from backend.app.services.sqlite_session_service import SQLiteSessionService
-from backend.app.utils.exceptions import JSONRPCException
 
 router = APIRouter(prefix="/api", tags=["api"])
 
@@ -132,7 +131,7 @@ def get_session_history(
             print(f"ERROR: Failed to process event {event.id}: {e}")
             print(f"Event content type: {type(event.content)}, value: {event.content}")
             print(f"Event actions type: {type(event.actions)}, value: {event.actions}")
-            raise JSONRPCException(code=-32000, message=f"Failed to serialize event {event.id}: {e}") # Using a generic code for now
+            raise ValueError(f"Failed to serialize event {event.id}: {e}")
     return GetSessionHistoryResponse(
         session_id=session_id,
         events=session_events

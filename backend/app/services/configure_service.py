@@ -8,7 +8,6 @@ from backend.app.configure_schemas import AgentInfo, Tool
 import json
 
 from backend.app.dependicies.deps import database_url
-from backend.app.utils.exceptions import JSONRPCException
 
 logger = logging.getLogger(__name__)  # Initialize logger for the module
 
@@ -47,7 +46,7 @@ class ConfigureService:
                     logger.info("'tools' column already exists (caught duplicate column error).")
                 else:
                     logger.error(f"Failed to add 'tools' column: {e}")
-                    raise JSONRPCException(code=-32000, message=f"Database error: {e}") # Using a generic code for now
+                    raise
         else:
             logger.info("'tools' column already exists in 'agent_info' table.")
 
@@ -95,7 +94,7 @@ class ConfigureService:
         conn.close()
         if not row:
             logger.error("Agent info not found in the database.")
-            raise JSONRPCException(code=-32012, message="Agent info not found")
+            raise ValueError("Agent info not found")
         logger.info("Agent info retrieved successfully.")
 
         # Handle case where tools column might not exist in older database versions
@@ -121,12 +120,16 @@ class ConfigureService:
                     logger.error(
                         f"Validation failed for tool '{tool_config.name}': tool_schema is not a dict."
                     )
-                    raise JSONRPCException(code=-32602, message=f"Tool '{tool_config.name}' of type 'a2a_call' has an invalid tool_schema (expected a dictionary).")
+                    raise ValueError(
+                        f"Tool '{tool_config.name}' of type 'a2a_call' has an invalid tool_schema (expected a dictionary)."
+                    )
                 if "agent_url" not in tool_config.tool_schema:
                     logger.error(
                         f"Validation failed for tool '{tool_config.name}': 'agent_url' missing in tool_schema."
                     )
-                    raise JSONRPCException(code=-32602, message=f"Tool '{tool_config.name}' of type 'a2a_call' is missing 'agent_url' in its tool_schema.")
+                    raise ValueError(
+                        f"Tool '{tool_config.name}' of type 'a2a_call' is missing 'agent_url' in its tool_schema."
+                    )
                 logger.info(f"Tool '{tool_config.name}' validated successfully.")
 
         conn = self._get_conn()

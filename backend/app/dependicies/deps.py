@@ -15,11 +15,11 @@ from google.adk.tools.mcp_tool.mcp_toolset import (
     MCPToolset,
     MCPTool,
 )
+import httpx # Import httpx
 
 from backend.app.configure_schemas import Model
 from backend.app.services.a2a_tool import A2ATool
 from backend.app.services.sqlite_session_service import SQLiteSessionService
-from backend.app.utils.exceptions import JSONRPCException
 
 logger = logging.getLogger(__name__)
 
@@ -48,7 +48,7 @@ def find_model(model_name: str) -> Model:
     for model in models:
         if model.model_name == model_name:
             return model
-    raise JSONRPCException(code=-32602, message=f"Model {model_name} not found in the list of available models.")
+    raise ValueError(f"Model {model_name} not found in the list of available models.")
 
 
 def database_url() -> str:
@@ -77,7 +77,7 @@ async def get_agent(
 
     if not row:
         conn.close()
-        raise JSONRPCException(code=-32012, message="Agent info not found in the database.")
+        raise ValueError("Agent info not found in the database.")
 
     name: str = row["name"]
     description: str = row["description"]
@@ -105,9 +105,8 @@ async def get_agent(
                         await tool.initialize_agent_card()
                         agent_tools.append(tool)
                     else:
-                        raise JSONRPCException(
-                            code=-32602,
-                            message=f"a2a_call tool '{config.get('name')}' is missing agent_url."
+                        raise ValueError(
+                            f"a2a_call tool '{config.get('name')}' is missing agent_url."
                         )
 
                 elif tool_type == "prebuilt":
@@ -115,68 +114,80 @@ async def get_agent(
                     prebuilt_type = tool_schema.get("type")
 
                     if prebuilt_type == "file_access":
-                        file_tools, file_exit_stack = await MCPToolset.from_server(
-                            connection_params=StdioServerParameters(
-                                command="npx",
-                                args=[
-                                    "-y",
-                                    "@modelcontextprotocol/server-filesystem",
-                                    "/agent-workspace",
-                                ],
-                            )
-                        )
-                        mcp_tools.extend(file_tools)
-
-                    elif prebuilt_type == "brave_search":
-                        brave_api_key = os.environ.get("BRAVE_API_KEY")
-                        if brave_api_key:
-                            (
-                                brave_tools,
-                                brave_exit_stack,
-                            ) = await MCPToolset.from_server(
+                        try:
+                            file_tools, file_exit_stack = await MCPToolset.from_server(
                                 connection_params=StdioServerParameters(
                                     command="npx",
                                     args=[
                                         "-y",
-                                        "@modelcontextprotocol/server-brave-search",
+                                        "@modelcontextprotocol/server-filesystem",
+                                        "/agent-workspace",
                                     ],
-                                    env={"BRAVE_API_KEY": brave_api_key},
                                 )
                             )
-                            mcp_tools.extend(brave_tools)
+                            mcp_tools.extend(file_tools)
+                        except httpx.ConnectError as e:
+                            raise httpx.ConnectError(f"Failed to connect to MCP file access server: {e}")
+
+                    elif prebuilt_type == "brave_search":
+                        brave_api_key = os.environ.get("BRAVE_API_KEY")
+                        if brave_api_key:
+                            try:
+                                (
+                                    brave_tools,
+                                    brave_exit_stack,
+                                ) = await MCPToolset.from_server(
+                                    connection_params=StdioServerParameters(
+                                        command="npx",
+                                        args=[
+                                            "-y",
+                                            "@modelcontextprotocol/server-brave-search",
+                                        ],
+                                        env={"BRAVE_API_KEY": brave_api_key},
+                                    )
+                                )
+                                mcp_tools.extend(brave_tools)
+                            except httpx.ConnectError as e:
+                                raise httpx.ConnectError(f"Failed to connect to MCP Brave Search server: {e}")
                         else:
                             print(
                                 "Warning: BRAVE_API_KEY not found in environment variables. Brave search tools disabled."
                             )
 
                     elif prebuilt_type == "memory":
-                        memory_tools, memory_exit_stack = await MCPToolset.from_server(
-                            connection_params=StdioServerParameters(
-                                command="npx",
-                                args=[
-                                    "-y",
-                                    "@modelcontextprotocol/server-memory",
-                                ],
+                        try:
+                            memory_tools, memory_exit_stack = await MCPToolset.from_server(
+                                connection_params=StdioServerParameters(
+                                    command="npx",
+                                    args=[
+                                        "-y",
+                                        "@modelcontextprotocol/server-memory",
+                                    ],
+                                )
                             )
-                        )
-                        mcp_tools.extend(memory_tools)
+                            mcp_tools.extend(memory_tools)
+                        except httpx.ConnectError as e:
+                            raise httpx.ConnectError(f"Failed to connect to MCP memory server: {e}")
 
                 elif tool_type == "mcp_server":
                     server_url = tool_schema.get("server_url")
 
                     if server_url:
                         print(f"Connecting to SSE endpoint: {server_url}")
-                        tools, exit_stack = await MCPToolset.from_server(
-                            connection_params=SseServerParams(url=server_url)
-                        )
-                        mcp_tools.extend(tools)
+                        try:
+                            tools, exit_stack = await MCPToolset.from_server(
+                                connection_params=SseServerParams(url=server_url)
+                            )
+                            mcp_tools.extend(tools)
+                        except httpx.ConnectError as e:
+                            raise httpx.ConnectError(f"Failed to connect to MCP server at {server_url}: {e}")
                     else:
                         print(
                             f"Warning: MCP server '{config.get('name')}' is missing server_url."
                         )
 
         except json.JSONDecodeError:
-            raise JSONRPCException(code=-32700, message=f"Could not parse tools JSON: {tools_json}")
+            raise ValueError(f"Could not parse tools JSON: {tools_json}")
 
     print(f"Fetched {len(mcp_tools)} tools from MCP servers.")
     agent_tools.extend(mcp_tools)
