@@ -27,10 +27,21 @@ from backend.app.schemas import (
     SendTaskStreamingRequest,
     SetTaskPushNotificationRequest,
     TaskResubscriptionRequest,
-    JSONRPCError
+    JSONRPCError,
+    JSONParseError,
+    InvalidRequestError,
+    MethodNotFoundError,
+    InvalidParamsError,
+    InternalError,
+    NetworkError,
+    A2AAgentError,
+    A2AAgentNotFoundError,
 )
 from backend.app.utils.exceptions import APIException, JSONRPCException
-from backend.app.utils.error_handler import api_exception_handler, json_rpc_exception_handler
+from backend.app.utils.error_handler import (
+    api_exception_handler,
+    json_rpc_exception_handler,
+)
 from backend.app.services.agent_service import AgentService
 from fastapi.exceptions import RequestValidationError
 
@@ -57,37 +68,41 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
 app.add_exception_handler(APIException, api_exception_handler)
 app.add_exception_handler(JSONRPCException, json_rpc_exception_handler)
 
+
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
     logger.error(f"Unhandled exception: {exc}", exc_info=True)
-    
-    error_code = -32603 # Internal error
-    error_message = f"Internal server error: {exc}"
 
-    if isinstance(exc, ValueError):
-        if "not found" in str(exc).lower():
-            error_code = -32001 # Task not found / Resource not found
-            error_message = str(exc)
-        else:
-            error_code = -32602 # Invalid params
-            error_message = str(exc)
+    json_rpc_error: JSONRPCError
+
+    if isinstance(exc, ValidationError):
+        json_rpc_error = InvalidRequestError(message=str(exc))
+    elif isinstance(exc, ValueError):
+        # Default ValueError to InvalidParamsError, or InternalError if more generic
+        json_rpc_error = InvalidParamsError(message=str(exc))
     elif isinstance(exc, httpx.ConnectError):
-        error_code = -32015 # Network error / MCP/A2A connection failed
-        error_message = f"Connection failed: {exc}"
+        json_rpc_error = NetworkError(message=f"Connection failed: {exc}")
     elif isinstance(exc, httpx.HTTPStatusError):
-        error_code = -32019 # A2A agent error / MCP server error
-        error_message = f"HTTP error from external service: {exc.response.status_code} - {exc.response.text}"
+        if exc.response.status_code == 404:
+            json_rpc_error = A2AAgentNotFoundError(
+                message=f"A2A agent not found: {exc.request.url}"
+            )
+        else:
+            json_rpc_error = A2AAgentError(
+                message=f"HTTP error from A2A agent: {exc.response.status_code} - {exc.response.text}"
+            )
     elif isinstance(exc, sqlite3.OperationalError):
-        error_code = -32000 # Generic database error
-        error_message = f"Database operational error: {exc}"
+        json_rpc_error = InternalError(message=f"Database operational error: {exc}")
     elif isinstance(exc, json.JSONDecodeError):
-        error_code = -32700 # Parse error
-        error_message = f"JSON parsing error: {exc}"
+        json_rpc_error = JSONParseError(message=f"JSON parsing error: {exc}")
+    else:
+        json_rpc_error = InternalError(message=f"An unexpected error occurred: {exc}")
 
-    json_rpc_error = JSONRPCError(code=error_code, message=error_message)
     return JSONResponse(
         status_code=200,
-        content=JSONRPCResponse(id=None, error=json_rpc_error).model_dump(mode="json", exclude_none=True),
+        content=JSONRPCResponse(id=None, error=json_rpc_error).model_dump(
+            mode="json", exclude_none=True
+        ),
     )
 
 
@@ -223,9 +238,7 @@ async def rpc_root(
         updated = await service.set_push(rpc_req.params)
         logger.info(f"SetTaskPushNotificationRequest result: {updated}")
         return JSONResponse(
-            content=JSONRPCResponse(id=rpc_id, result=updated).model_dump(
-                mode="json"
-            )
+            content=JSONRPCResponse(id=rpc_id, result=updated).model_dump(mode="json")
         )
 
     if isinstance(rpc_req, GetTaskPushNotificationRequest):
@@ -233,9 +246,7 @@ async def rpc_root(
         current = await service.get_push(rpc_req.params)
         logger.info(f"GetTaskPushNotificationRequest result: {current}")
         return JSONResponse(
-            content=JSONRPCResponse(id=rpc_id, result=current).model_dump(
-                mode="json"
-            )
+            content=JSONRPCResponse(id=rpc_id, result=current).model_dump(mode="json")
         )
 
     if isinstance(rpc_req, SendTaskStreamingRequest):
@@ -260,4 +271,4 @@ async def rpc_root(
 
         return StreamingResponse(resume(), media_type="text/event-stream")
 
-    raise JSONRPCException(code=-32601, message=f"Method {rpc_req.method} not found")
+    raise MethodNotFoundError(message=f"Method {rpc_req.method} not found")

@@ -378,6 +378,160 @@ A2ARequest = TypeAdapter(
     ]
 )
 
+
+## Error types ##
+
+
+class JSONParseError(JSONRPCError):
+    code: int = -32700
+    message: str = "Invalid JSON payload"
+    data: Any | None = None
+
+
+class InvalidRequestError(JSONRPCError):
+    code: int = -32600
+    message: str = "Request payload validation error"
+    data: Any | None = None
+
+
+class MethodNotFoundError(JSONRPCError):
+    code: int = -32601
+    message: str = "Method not found"
+    data: None = None
+
+
+class InvalidParamsError(JSONRPCError):
+    code: int = -32602
+    message: str = "Invalid parameters"
+    data: Any | None = None
+
+
+class InternalError(JSONRPCError):
+    code: int = -32603
+    message: str = "Internal error"
+    data: Any | None = None
+
+
+class TaskNotFoundError(JSONRPCError):
+    code: int = -32001
+    message: str = "Task not found"
+    data: None = None
+
+
+class TaskNotCancelableError(JSONRPCError):
+    code: int = -32002
+    message: str = "Task cannot be canceled"
+    data: None = None
+
+
+class PushNotificationNotSupportedError(JSONRPCError):
+    code: int = -32003
+    message: str = "Push Notification is not supported"
+    data: None = None
+
+
+class UnsupportedOperationError(JSONRPCError):
+    code: int = -32004
+    message: str = "This operation is not supported"
+    data: None = None
+
+
+class ContentTypeNotSupportedError(JSONRPCError):
+    code: int = -32005
+    message: str = "Incompatible content types"
+    data: None = None
+
+
+class AuthenticationError(JSONRPCError):
+    code: int = -32006
+    message: str = "Authentication required"
+    data: None = None
+
+
+class AuthorizationError(JSONRPCError):
+    code: int = -32007
+    message: str = "Insufficient permissions"
+    data: None = None
+
+
+class RateLimitError(JSONRPCError):
+    code: int = -32008
+    message: str = "Rate limit exceeded"
+    data: None = None
+
+
+class ServiceUnavailableError(JSONRPCError):
+    code: int = -32009
+    message: str = "Service temporarily unavailable"
+    data: None = None
+
+
+class InvalidSessionError(JSONRPCError):
+    code: int = -32010
+    message: str = "Invalid or expired session"
+    data: None = None
+
+
+class ConfigurationError(JSONRPCError):
+    code: int = -32011
+    message: str = "Configuration error"
+    data: None = None
+
+
+class ResourceNotFoundError(JSONRPCError):
+    code: int = -32012
+    message: str = "Resource not found"
+    data: None = None
+
+
+class ValidationError(JSONRPCError):
+    code: int = -32013
+    message: str = "Validation failed"
+    data: None = None
+
+
+class TimeoutError(JSONRPCError):
+    code: int = -32014
+    message: str = "Request timeout"
+    data: None = None
+
+
+class NetworkError(JSONRPCError):
+    code: int = -32015
+    message: str = "Network error"
+    data: None = None
+
+
+class MCPServerError(JSONRPCError):
+    code: int = -32016
+    message: str = "MCP server connection failed"
+    data: None = None
+
+
+class MCPToolError(JSONRPCError):
+    code: int = -32017
+    message: str = "MCP tool execution failed"
+    data: None = None
+
+
+class MCPConfigurationError(JSONRPCError):
+    code: int = -32018
+    message: str = "MCP server configuration error"
+    data: None = None
+
+
+class A2AAgentError(JSONRPCError):
+    code: int = -32019
+    message: str = "A2A agent connection failed"
+    data: None = None
+
+
+class A2AAgentNotFoundError(JSONRPCError):
+    code: int = -32020
+    message: str = "A2A agent not found"
+    data: None = None
+
+
 # --- Agent Card Models (unchanged) ---
 
 
