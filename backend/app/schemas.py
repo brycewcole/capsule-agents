@@ -442,6 +442,125 @@ class ContentTypeNotSupportedError(JSONRPCError):
     data: None = None
 
 
+class AuthenticationError(JSONRPCError):
+    code: int = -32006
+    message: str = "Authentication required"
+    data: None = None
+
+
+class AuthorizationError(JSONRPCError):
+    code: int = -32007
+    message: str = "Insufficient permissions"
+    data: None = None
+
+
+class RateLimitError(JSONRPCError):
+    code: int = -32008
+    message: str = "Rate limit exceeded"
+    data: None = None
+
+
+class ServiceUnavailableError(JSONRPCError):
+    code: int = -32009
+    message: str = "Service temporarily unavailable"
+    data: None = None
+
+
+class InvalidSessionError(JSONRPCError):
+    code: int = -32010
+    message: str = "Invalid or expired session"
+    data: None = None
+
+
+class ConfigurationError(JSONRPCError):
+    code: int = -32011
+    message: str = "Configuration error"
+    data: None = None
+
+
+class ResourceNotFoundError(JSONRPCError):
+    code: int = -32012
+    message: str = "Resource not found"
+    data: None = None
+
+
+class ValidationError(JSONRPCError):
+    code: int = -32013
+    message: str = "Validation failed"
+    data: None = None
+
+
+class TimeoutError(JSONRPCError):
+    code: int = -32014
+    message: str = "Request timeout"
+    data: None = None
+
+
+class NetworkError(JSONRPCError):
+    code: int = -32015
+    message: str = "Network error"
+    data: None = None
+
+
+# Enhanced error with user-friendly context
+class EnhancedJSONRPCError(JSONRPCError):
+    """Enhanced JSON-RPC error with user-friendly context"""
+    
+    def __init__(self, code: int, message: str, data: Any = None, user_message: str = None, recovery_action: str = None):
+        super().__init__(code=code, message=message, data=data)
+        self.user_message = user_message or message
+        self.recovery_action = recovery_action
+    
+    def to_dict(self) -> dict:
+        """Convert to dictionary with enhanced context"""
+        result = {
+            "code": self.code,
+            "message": self.message,
+            "data": self.data,
+            "user_message": self.user_message,
+        }
+        if self.recovery_action:
+            result["recovery_action"] = self.recovery_action
+        return result
+
+
+# Error utility functions
+def create_user_friendly_error(error: JSONRPCError) -> EnhancedJSONRPCError:
+    """Convert standard JSON-RPC errors to user-friendly versions"""
+    error_map = {
+        -32700: ("Invalid request format", "Please check your request format and try again"),
+        -32600: ("Invalid request", "The request format is incorrect"),
+        -32601: ("Method not found", "The requested operation is not available"),
+        -32602: ("Invalid parameters", "Please check your input parameters"),
+        -32603: ("Internal error", "Something went wrong on our end. Please try again later"),
+        -32001: ("Task not found", "The requested task could not be found"),
+        -32002: ("Cannot cancel task", "This task cannot be canceled at this time"),
+        -32003: ("Push notifications not supported", "Push notifications are not available"),
+        -32004: ("Operation not supported", "This operation is not currently supported"),
+        -32005: ("Content type not supported", "The content type is not supported"),
+        -32006: ("Authentication required", "Please log in to continue"),
+        -32007: ("Insufficient permissions", "You don't have permission to perform this action"),
+        -32008: ("Rate limit exceeded", "Too many requests. Please wait a moment and try again"),
+        -32009: ("Service unavailable", "The service is temporarily unavailable. Please try again later"),
+        -32010: ("Invalid session", "Your session has expired. Please log in again"),
+        -32011: ("Configuration error", "There's a configuration issue. Please contact support"),
+        -32012: ("Resource not found", "The requested resource could not be found"),
+        -32013: ("Validation failed", "Please check your input and try again"),
+        -32014: ("Request timeout", "The request took too long. Please try again"),
+        -32015: ("Network error", "Network connection failed. Please check your connection")
+    }
+    
+    user_message, recovery_action = error_map.get(error.code, (error.message, None))
+    
+    return EnhancedJSONRPCError(
+        code=error.code,
+        message=error.message,
+        data=error.data,
+        user_message=user_message,
+        recovery_action=recovery_action
+    )
+
+
 # --- Agent Card Models (unchanged) ---
 
 

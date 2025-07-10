@@ -9,6 +9,8 @@ import { checkHealth, sendMessage, extractResponseText, extractToolCalls, getSes
 import { v4 as uuidv4 } from "uuid"
 import Markdown from "react-markdown"
 import { ToolCallDisplay } from "@/components/tool-call-display"
+import { showErrorToast, getErrorMessage, isRecoverableError, type JSONRPCError } from "@/lib/error-utils"
+import { ErrorDisplay } from "@/components/ui/error-display"
 
 type ToolCall = ApiToolCall
 
@@ -30,6 +32,7 @@ export default function ChatInterface() {
   const [isLoading, setIsLoading] = useState(false)
   const [isBackendConnected, setIsBackendConnected] = useState(false)
   const [sessionId, setSessionId] = useState<string>("")
+  const [connectionError, setConnectionError] = useState<JSONRPCError | Error | string | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   
   // Initialize state from localStorage on component mount
@@ -148,6 +151,7 @@ export default function ChatInterface() {
             setMessages(loadedMessages)
           } catch (error) {
             console.error("Failed to load session history:", error)
+            showErrorToast(error, { title: "Could not load session history" })
             // If we can't load history, start fresh but keep the session ID
           }
         } else {
@@ -175,9 +179,11 @@ export default function ChatInterface() {
       try {
         const health = await checkHealth()
         setIsBackendConnected(health.status === "ok")
+        setConnectionError(null)
       } catch (error) {
         console.error("Backend health check failed:", error)
         setIsBackendConnected(false)
+        setConnectionError(error as JSONRPCError | Error | string)
       }
     }
     
@@ -244,12 +250,22 @@ export default function ChatInterface() {
     } catch (error) {
       console.error("Error getting response from agent:", error)
       
+      // Show error toast
+      showErrorToast(error, { 
+        title: "Failed to send message",
+        action: isRecoverableError(error) ? (
+          <Button variant="outline" size="sm" onClick={() => handleSendMessage()}>
+            Retry
+          </Button>
+        ) : undefined
+      })
+      
       // Update with an error message
       setMessages(prev => {
         const updated = [...prev]
         const lastMessage = updated[updated.length - 1]
         if (lastMessage.role === "agent") {
-          lastMessage.content = "Sorry, there was an error connecting to the agent. Please try again later."
+          lastMessage.content = getErrorMessage(error)
           lastMessage.isLoading = false
         }
         return updated
@@ -293,6 +309,29 @@ export default function ChatInterface() {
       </CardHeader>
 
       <CardContent className="flex-1 overflow-y-auto min-h-0 p-4">
+        {connectionError && !isBackendConnected && (
+          <div className="mb-4">
+            <ErrorDisplay
+              error={connectionError}
+              title="Connection Error"
+              onRetry={() => {
+                const checkBackendHealth = async () => {
+                  try {
+                    const health = await checkHealth()
+                    setIsBackendConnected(health.status === "ok")
+                    setConnectionError(null)
+                  } catch (error) {
+                    console.error("Backend health check failed:", error)
+                    setIsBackendConnected(false)
+                    setConnectionError(error as JSONRPCError | Error | string)
+                  }
+                }
+                checkBackendHealth()
+              }}
+              onDismiss={() => setConnectionError(null)}
+            />
+          </div>
+        )}
         <div className="flex flex-col space-y-4">
           {messages.length === 0 ? (
             <div className="flex items-center justify-center h-full text-muted-foreground">

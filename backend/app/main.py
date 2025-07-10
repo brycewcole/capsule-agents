@@ -26,6 +26,7 @@ from backend.app.schemas import (
     SendTaskStreamingRequest,
     SetTaskPushNotificationRequest,
     TaskResubscriptionRequest,
+    create_user_friendly_error,
 )
 from backend.app.services.agent_service import AgentService
 from fastapi.exceptions import RequestValidationError
@@ -149,9 +150,10 @@ async def rpc_root(
     except ValidationError as e:
         logger.error(f"JSON parse or validation error: {e}", exc_info=True)
         err = JSONRPCError(code=-32600, message=str(e))
+        enhanced_err = create_user_friendly_error(err)
         return JSONResponse(
             status_code=400,
-            content=JSONRPCResponse(id=None, error=err).model_dump(mode="json"),
+            content=JSONRPCResponse(id=None, error=enhanced_err.to_dict()).model_dump(mode="json"),
         )
 
     rpc_id = rpc_req.id
@@ -227,24 +229,27 @@ async def rpc_root(
 
         logger.info(f"Method not found: {getattr(rpc_req, 'method', None)}")
         err = JSONRPCError(code=-32601, message=f"Method {rpc_req.method} not found")
+        enhanced_err = create_user_friendly_error(err)
         return JSONResponse(
             status_code=404,
-            content=JSONRPCResponse(id=rpc_id, error=err).model_dump(mode="json"),
+            content=JSONRPCResponse(id=rpc_id, error=enhanced_err.to_dict()).model_dump(mode="json"),
         )
 
     except KeyError as ke:
         logger.error(f"KeyError: {ke}", exc_info=True)
         err = JSONRPCError(code=-32001, message=str(ke))
+        enhanced_err = create_user_friendly_error(err)
         return JSONResponse(
             status_code=404,
-            content=JSONRPCResponse(id=rpc_id, error=err).model_dump(
+            content=JSONRPCResponse(id=rpc_id, error=enhanced_err.to_dict()).model_dump(
                 mode="json", exclude_none=True
             ),
         )
     except Exception as ex:
         logger.error(f"Exception occurred: {ex}", exc_info=True)
         err = JSONRPCError(code=-32603, message=str(ex))
+        enhanced_err = create_user_friendly_error(err)
         return JSONResponse(
             status_code=500,
-            content=JSONRPCResponse(id=rpc_id, error=err).model_dump(mode="json"),
+            content=JSONRPCResponse(id=rpc_id, error=enhanced_err.to_dict()).model_dump(mode="json"),
         )
