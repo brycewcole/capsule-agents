@@ -6,6 +6,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
 from dotenv import load_dotenv
 import os
+import httpx
+import sqlite3
 
 from fastapi.staticfiles import StaticFiles
 from pydantic import ValidationError
@@ -19,13 +21,25 @@ from backend.app.schemas import (
     GetTaskPushNotificationRequest,
     GetTaskRequest,
     GetTaskResponse,
-    JSONRPCError,
     JSONRPCResponse,
     SendTaskRequest,
     SendTaskResponse,
     SendTaskStreamingRequest,
     SetTaskPushNotificationRequest,
     TaskResubscriptionRequest,
+    JSONRPCError,
+    JSONParseError,
+    InvalidRequestError,
+    InvalidParamsError,
+    InternalError,
+    NetworkError,
+    A2AAgentError,
+    A2AAgentNotFoundError,
+)
+from backend.app.utils.exceptions import APIException, JSONRPCException
+from backend.app.utils.error_handler import (
+    api_exception_handler,
+    json_rpc_exception_handler,
 )
 from backend.app.services.agent_service import AgentService
 from fastapi.exceptions import RequestValidationError
@@ -47,6 +61,53 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
     return JSONResponse(
         status_code=422,
         content={"detail": exc.errors()},
+    )
+
+
+@app.exception_handler(APIException)
+async def api_exception_handler_wrapper(request: Request, exc: APIException):
+    return await api_exception_handler(request, exc)
+
+
+@app.exception_handler(JSONRPCException)
+async def jsonrpc_exception_handler(request: Request, exc: JSONRPCException):
+    return await json_rpc_exception_handler(request, exc)
+
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    logger.error(f"Unhandled exception: {exc}", exc_info=True)
+
+    json_rpc_error: JSONRPCError
+
+    if isinstance(exc, ValidationError):
+        json_rpc_error = InvalidRequestError(message=str(exc))
+    elif isinstance(exc, ValueError):
+        # Default ValueError to InvalidParamsError, or InternalError if more generic
+        json_rpc_error = InvalidParamsError(message=str(exc))
+    elif isinstance(exc, httpx.ConnectError):
+        json_rpc_error = NetworkError(message=f"Connection failed: {exc}")
+    elif isinstance(exc, httpx.HTTPStatusError):
+        if exc.response.status_code == 404:
+            json_rpc_error = A2AAgentNotFoundError(
+                message=f"A2A agent not found: {exc.request.url}"
+            )
+        else:
+            json_rpc_error = A2AAgentError(
+                message=f"HTTP error from A2A agent: {exc.response.status_code} - {exc.response.text}"
+            )
+    elif isinstance(exc, sqlite3.OperationalError):
+        json_rpc_error = InternalError(message=f"Database operational error: {exc}")
+    elif isinstance(exc, json.JSONDecodeError):
+        json_rpc_error = JSONParseError(message=f"JSON parsing error: {exc}")
+    else:
+        json_rpc_error = InternalError(message=f"An unexpected error occurred: {exc}")
+
+    return JSONResponse(
+        status_code=200,
+        content=JSONRPCResponse(id=None, error=json_rpc_error).model_dump(
+            mode="json", exclude_none=True
+        ),
     )
 
 
@@ -147,104 +208,72 @@ async def rpc_root(
             f"Parsed JSON-RPC request: method={getattr(rpc_req, 'method', None)}, id={getattr(rpc_req, 'id', None)}"
         )
     except ValidationError as e:
-        logger.error(f"JSON parse or validation error: {e}", exc_info=True)
-        err = JSONRPCError(code=-32600, message=str(e))
-        return JSONResponse(
-            status_code=400,
-            content=JSONRPCResponse(id=None, error=err).model_dump(mode="json"),
-        )
+        raise JSONRPCException(code=-32600, message=str(e))
 
     rpc_id = rpc_req.id
 
-    try:
-        if isinstance(rpc_req, SendTaskRequest):
-            logger.info(f"Handling SendTaskRequest: id={rpc_id}")
-            task = await service.send_task(rpc_req.params)
-            logger.info(f"SendTaskRequest result: {task}")
-            return JSONResponse(
-                content=SendTaskResponse(id=rpc_id, result=task).model_dump(mode="json")
-            )
-
-        if isinstance(rpc_req, GetTaskRequest):
-            logger.info(f"Handling GetTaskRequest: id={rpc_id}")
-            task = await service.get_task(rpc_req.params)
-            logger.info(f"GetTaskRequest result: {task}")
-            return JSONResponse(
-                content=GetTaskResponse(id=rpc_id, result=task).model_dump(mode="json")
-            )
-
-        if isinstance(rpc_req, CancelTaskRequest):
-            logger.info(f"Handling CancelTaskRequest: id={rpc_id}")
-            cancelled = await service.cancel_task(rpc_req.params)
-            logger.info(f"CancelTaskRequest result: {cancelled}")
-            return JSONResponse(
-                content=CancelTaskResponse(id=rpc_id, result=cancelled).model_dump(
-                    mode="json"
-                )
-            )
-
-        if isinstance(rpc_req, SetTaskPushNotificationRequest):
-            logger.info(f"Handling SetTaskPushNotificationRequest: id={rpc_id}")
-            updated = await service.set_push(rpc_req.params)
-            logger.info(f"SetTaskPushNotificationRequest result: {updated}")
-            return JSONResponse(
-                content=JSONRPCResponse(id=rpc_id, result=updated).model_dump(
-                    mode="json"
-                )
-            )
-
-        if isinstance(rpc_req, GetTaskPushNotificationRequest):
-            logger.info(f"Handling GetTaskPushNotificationRequest: id={rpc_id}")
-            current = await service.get_push(rpc_req.params)
-            logger.info(f"GetTaskPushNotificationRequest result: {current}")
-            return JSONResponse(
-                content=JSONRPCResponse(id=rpc_id, result=current).model_dump(
-                    mode="json"
-                )
-            )
-
-        if isinstance(rpc_req, SendTaskStreamingRequest):
-            logger.info(f"Handling SendTaskStreamingRequest: id={rpc_id}")
-            params = rpc_req.params
-
-            async def sse():
-                async for ev in service.subscribe_stream(params):
-                    logger.info(f"Streaming event for SendTaskStreamingRequest: {ev}")
-                    yield f"data: {JSONRPCResponse(id=rpc_id, result=ev).model_dump_json()}\n\n"
-
-            return StreamingResponse(sse(), media_type="text/event-stream")
-
-        if isinstance(rpc_req, TaskResubscriptionRequest):
-            logger.info(f"Handling TaskResubscriptionRequest: id={rpc_id}")
-            params = rpc_req.params
-
-            async def resume():
-                async for ev in await service.resubscribe_stream(params):
-                    logger.info(f"Streaming event for TaskResubscriptionRequest: {ev}")
-                    yield f"data: {JSONRPCResponse(id=rpc_id, result=ev).model_dump_json()}\n\n"
-
-            return StreamingResponse(resume(), media_type="text/event-stream")
-
-        logger.info(f"Method not found: {getattr(rpc_req, 'method', None)}")
-        err = JSONRPCError(code=-32601, message=f"Method {rpc_req.method} not found")
+    if isinstance(rpc_req, SendTaskRequest):
+        logger.info(f"Handling SendTaskRequest: id={rpc_id}")
+        task = await service.send_task(rpc_req.params)
+        logger.info(f"SendTaskRequest result: {task}")
         return JSONResponse(
-            status_code=404,
-            content=JSONRPCResponse(id=rpc_id, error=err).model_dump(mode="json"),
+            content=SendTaskResponse(id=rpc_id, result=task).model_dump(mode="json")
         )
 
-    except KeyError as ke:
-        logger.error(f"KeyError: {ke}", exc_info=True)
-        err = JSONRPCError(code=-32001, message=str(ke))
+    if isinstance(rpc_req, GetTaskRequest):
+        logger.info(f"Handling GetTaskRequest: id={rpc_id}")
+        task = await service.get_task(rpc_req.params)
+        logger.info(f"GetTaskRequest result: {task}")
         return JSONResponse(
-            status_code=404,
-            content=JSONRPCResponse(id=rpc_id, error=err).model_dump(
-                mode="json", exclude_none=True
-            ),
+            content=GetTaskResponse(id=rpc_id, result=task).model_dump(mode="json")
         )
-    except Exception as ex:
-        logger.error(f"Exception occurred: {ex}", exc_info=True)
-        err = JSONRPCError(code=-32603, message=str(ex))
+
+    if isinstance(rpc_req, CancelTaskRequest):
+        logger.info(f"Handling CancelTaskRequest: id={rpc_id}")
+        cancelled = await service.cancel_task(rpc_req.params)
+        logger.info(f"CancelTaskRequest result: {cancelled}")
         return JSONResponse(
-            status_code=500,
-            content=JSONRPCResponse(id=rpc_id, error=err).model_dump(mode="json"),
+            content=CancelTaskResponse(id=rpc_id, result=cancelled).model_dump(
+                mode="json"
+            )
         )
+
+    if isinstance(rpc_req, SetTaskPushNotificationRequest):
+        logger.info(f"Handling SetTaskPushNotificationRequest: id={rpc_id}")
+        updated = await service.set_push(rpc_req.params)
+        logger.info(f"SetTaskPushNotificationRequest result: {updated}")
+        return JSONResponse(
+            content=JSONRPCResponse(id=rpc_id, result=updated).model_dump(mode="json")
+        )
+
+    if isinstance(rpc_req, GetTaskPushNotificationRequest):
+        logger.info(f"Handling GetTaskPushNotificationRequest: id={rpc_id}")
+        current = await service.get_push(rpc_req.params)
+        logger.info(f"GetTaskPushNotificationRequest result: {current}")
+        return JSONResponse(
+            content=JSONRPCResponse(id=rpc_id, result=current).model_dump(mode="json")
+        )
+
+    if isinstance(rpc_req, SendTaskStreamingRequest):
+        logger.info(f"Handling SendTaskStreamingRequest: id={rpc_id}")
+        params = rpc_req.params
+
+        async def sse():
+            async for ev in service.subscribe_stream(params):
+                logger.info(f"Streaming event for SendTaskStreamingRequest: {ev}")
+                yield f"data: {JSONRPCResponse(id=rpc_id, result=ev).model_dump_json()}\n\n"
+
+        return StreamingResponse(sse(), media_type="text/event-stream")
+
+    if isinstance(rpc_req, TaskResubscriptionRequest):
+        logger.info(f"Handling TaskResubscriptionRequest: id={rpc_id}")
+        params = rpc_req.params
+
+        async def resume():
+            async for ev in await service.resubscribe_stream(params):
+                logger.info(f"Streaming event for TaskResubscriptionRequest: {ev}")
+                yield f"data: {JSONRPCResponse(id=rpc_id, result=ev).model_dump_json()}\n\n"
+
+        return StreamingResponse(resume(), media_type="text/event-stream")
+
+    raise JSONRPCException(code=-32601, message=f"Method {rpc_req.method} not found")

@@ -22,28 +22,54 @@ class A2ATool(BaseTool):
 
     async def initialize_agent_card(self):
         try:
-            async with httpx.AsyncClient() as client:
+            async with httpx.AsyncClient(timeout=10.0) as client:
                 resp = await client.get(self.agent_url)
                 resp.raise_for_status()
                 agent_card_json = resp.json()
             agent_card = AgentCard(**agent_card_json)
             self.logger.info(f"Downloaded agent card: {agent_card.name}")
-            self.name = agent_card.name
+            # Make sure the name is a valid function name (letters, numbers, underscores only)
+            clean_name = (
+                agent_card.name.replace("-", "_").replace(".", "_").replace(" ", "_")
+            )
+            # Remove any other non-alphanumeric characters except underscores
+            clean_name = "".join(c for c in clean_name if c.isalnum() or c == "_")
+            # Ensure it starts with a letter or underscore
+            if clean_name and not (clean_name[0].isalpha() or clean_name[0] == "_"):
+                clean_name = f"agent_{clean_name}"
+            self.name = clean_name or "a2a_agent_tool"
             self.url = agent_card.url
             self.description = (
                 agent_card.description or f"Send a message to {agent_card.name}"
             )
             self.initialized = True
-        except Exception as e:
+        except httpx.ConnectError as e:
             self.logger.error(
-                f"Failed to download or parse agent card: {e}", exc_info=True
+                f"Failed to connect to A2A tool at {self.agent_url}: {e}", exc_info=True
             )
-            raise e
+            raise ValueError(f"Failed to connect to A2A tool at {self.agent_url}: {e}")
+        except httpx.HTTPStatusError as e:
+            self.logger.error(
+                f"Failed to initialize A2A tool at {self.agent_url}: {e}", exc_info=True
+            )
+            raise ValueError(f"Failed to initialize A2A tool at {self.agent_url}: {e}")
 
     def _get_declaration(self) -> types.FunctionDeclaration:
         if not self.initialized:
-            raise ValueError(
-                "Trying to get declaration before agent card is initialized."
+            # Return a disabled tool declaration instead of raising
+            return types.FunctionDeclaration(
+                name=self.name or "a2a_agent_disabled",
+                description=f"A2A agent tool (disabled: {self.description})",
+                parameters=types.Schema(
+                    type=types.Type.OBJECT,
+                    properties={
+                        "message": types.Schema(
+                            type=types.Type.STRING,
+                            description="Message to send (tool currently disabled)",
+                        )
+                    },
+                    required=["message"],
+                ),
             )
         # function takes a single 'message' argument (the A2A Message object)
         return types.FunctionDeclaration(
@@ -99,10 +125,10 @@ class A2ATool(BaseTool):
                 f"A2A HTTP error: {e.response.status_code} - {e.response.text}",
                 exc_info=True,
             )
-            raise
+            raise e
         except httpx.RequestError as e:
             self.logger.error(f"A2A request error: {e}", exc_info=True)
-            raise
+            raise e
         except Exception as e:
             self.logger.error(f"Unexpected error in A2ATool: {e}", exc_info=True)
-            raise
+            raise e

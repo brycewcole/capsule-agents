@@ -123,6 +123,8 @@ type JSONRPCResponse<T = any> = {
         code: number;
         message: string;
         data?: any;
+        user_message?: string;
+        recovery_action?: string;
     };
 };
 
@@ -194,13 +196,32 @@ export async function sendMessage(message: string, sessionId?: string): Promise<
         });
 
         if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
+            const errorText = await response.text();
+            let errorData;
+            
+            try {
+                errorData = JSON.parse(errorText);
+            } catch {
+                errorData = { message: errorText };
+            }
+            
+            throw {
+                code: response.status,
+                message: `HTTP ${response.status}: ${response.statusText}`,
+                data: errorData,
+                user_message: `Request failed with status ${response.status}`,
+                recovery_action: response.status >= 500 ? "Try again later" : "Check your request and try again",
+                isAPIError: true
+            };
         }
 
         const data = await response.json() as JSONRPCResponse<Task>;
 
         if (data.error) {
-            throw new Error(`API error: ${data.error.message}`);
+            throw {
+                ...data.error,
+                isAPIError: true
+            };
         }
 
         return data.result as Task;
@@ -240,7 +261,23 @@ export async function* streamMessage(message: string, sessionId?: string): Async
         });
 
         if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
+            const errorText = await response.text();
+            let errorData;
+            
+            try {
+                errorData = JSON.parse(errorText);
+            } catch {
+                errorData = { message: errorText };
+            }
+            
+            throw {
+                code: response.status,
+                message: `HTTP ${response.status}: ${response.statusText}`,
+                data: errorData,
+                user_message: `Streaming request failed with status ${response.status}`,
+                recovery_action: response.status >= 500 ? "Try again later" : "Check your request and try again",
+                isAPIError: true
+            };
         }
 
         const reader = response.body!.getReader();
@@ -265,7 +302,10 @@ export async function* streamMessage(message: string, sessionId?: string): Async
                         const data = JSON.parse(json) as JSONRPCResponse<StreamEventType>;
 
                         if (data.error) {
-                            throw new Error(`Stream error: ${data.error.message}`);
+                            throw {
+                                ...data.error,
+                                isAPIError: true
+                            };
                         }
 
                         if (data.result) {
@@ -287,7 +327,13 @@ export async function checkHealth(): Promise<{ status: string }> {
         const response = await fetch(`${API_BASE_URL}/health`);
 
         if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
+            throw {
+                code: response.status,
+                message: `Health check failed: ${response.status}`,
+                user_message: "Cannot connect to the backend service",
+                recovery_action: "Check if the service is running and try again",
+                isAPIError: true
+            };
         }
 
         return await response.json();
@@ -323,7 +369,13 @@ export async function getSessionHistory(sessionId: string): Promise<SessionHisto
         });
 
         if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
+            throw {
+                code: response.status,
+                message: `Failed to fetch session history: ${response.status}`,
+                user_message: response.status === 401 ? "Please log in to view session history" : "Could not load session history",
+                recovery_action: response.status === 401 ? "Log in and try again" : "Try again later",
+                isAPIError: true
+            };
         }
 
         return await response.json();
@@ -339,7 +391,13 @@ export async function getAgentCard() {
         const response = await fetch(`${API_BASE_URL}/.well-known/agent.json`);
 
         if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
+            throw {
+                code: response.status,
+                message: `Failed to fetch agent metadata: ${response.status}`,
+                user_message: "Could not load agent information",
+                recovery_action: "Try again later",
+                isAPIError: true
+            };
         }
 
         return await response.json();
@@ -359,7 +417,13 @@ export async function getAgentInfo(): Promise<AgentInfo> {
         });
 
         if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
+            throw {
+                code: response.status,
+                message: `Failed to fetch agent config: ${response.status}`,
+                user_message: response.status === 401 ? "Please log in to view agent configuration" : "Could not load agent configuration",
+                recovery_action: response.status === 401 ? "Log in and try again" : "Try again later",
+                isAPIError: true
+            };
         }
 
         return await response.json();
@@ -382,7 +446,23 @@ export async function updateAgentInfo(info: AgentInfo): Promise<AgentInfo> {
     });
 
     if (!response.ok) {
-        throw new Error("Failed to update agent info");
+        const errorText = await response.text();
+        let errorData;
+        
+        try {
+            errorData = JSON.parse(errorText);
+        } catch {
+            errorData = { message: errorText };
+        }
+        
+        throw {
+            code: response.status,
+            message: `Failed to update agent config: ${response.status}`,
+            data: errorData,
+            user_message: response.status === 401 ? "Please log in to update agent configuration" : "Could not save agent configuration",
+            recovery_action: response.status === 401 ? "Log in and try again" : "Check your changes and try again",
+            isAPIError: true
+        };
     }
 
     return response.json();
@@ -398,7 +478,13 @@ export async function getAvailableModels(): Promise<Model[]> {
         });
 
         if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
+            throw {
+                code: response.status,
+                message: `Failed to fetch models: ${response.status}`,
+                user_message: response.status === 401 ? "Please log in to view available models" : "Could not load available models",
+                recovery_action: response.status === 401 ? "Log in and try again" : "Try again later",
+                isAPIError: true
+            };
         }
 
         return await response.json() as Model[];

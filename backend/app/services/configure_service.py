@@ -32,7 +32,8 @@ class ConfigureService:
                 model_name        TEXT    NOT NULL,
                 model_parameters  TEXT    NOT NULL
             )
-        """)
+        """
+)
 
         # Add tools column if it doesn't exist
         if "tools" not in columns:
@@ -149,4 +150,3 @@ class ConfigureService:
         conn.close()
         logger.info(f"Agent info for '{info.name}' upserted successfully.")
         return info
-

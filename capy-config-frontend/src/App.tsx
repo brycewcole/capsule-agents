@@ -3,6 +3,7 @@ import Header from './components/header';
 import AgentEditor from './components/agent-editor';
 import ChatInterface from './components/chat-interface';
 import { LoginDialog } from './components/login-dialog';
+import { Toaster } from './components/ui/toaster';
 import { authStore, testLogin } from './lib/api';
 import './App.css';
 
@@ -52,6 +53,7 @@ function App() {
         onLogin={handleLogin} 
         error={loginError}
       />
+      <Toaster />
     </>
   );
 }

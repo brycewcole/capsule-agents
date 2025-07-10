@@ -6,7 +6,7 @@ from typing import Annotated, Dict
 from fastapi import Depends
 from google.genai import types
 from backend.app.dependicies.deps import get_runner
-from backend.app.schemas import Task, TaskIdParams, TaskPushNotificationConfig
+from backend.app.schemas import Task, TaskIdParams, TaskPushNotificationConfig, JSONRPCError
 from backend.app.schemas import (
     AgentCapabilities,
     AgentCard,

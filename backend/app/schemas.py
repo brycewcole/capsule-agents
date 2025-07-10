@@ -442,6 +442,96 @@ class ContentTypeNotSupportedError(JSONRPCError):
     data: None = None
 
 
+class AuthenticationError(JSONRPCError):
+    code: int = -32006
+    message: str = "Authentication required"
+    data: None = None
+
+
+class AuthorizationError(JSONRPCError):
+    code: int = -32007
+    message: str = "Insufficient permissions"
+    data: None = None
+
+
+class RateLimitError(JSONRPCError):
+    code: int = -32008
+    message: str = "Rate limit exceeded"
+    data: None = None
+
+
+class ServiceUnavailableError(JSONRPCError):
+    code: int = -32009
+    message: str = "Service temporarily unavailable"
+    data: None = None
+
+
+class InvalidSessionError(JSONRPCError):
+    code: int = -32010
+    message: str = "Invalid or expired session"
+    data: None = None
+
+
+class ConfigurationError(JSONRPCError):
+    code: int = -32011
+    message: str = "Configuration error"
+    data: None = None
+
+
+class ResourceNotFoundError(JSONRPCError):
+    code: int = -32012
+    message: str = "Resource not found"
+    data: None = None
+
+
+class ValidationError(JSONRPCError):
+    code: int = -32013
+    message: str = "Validation failed"
+    data: None = None
+
+
+class TimeoutError(JSONRPCError):
+    code: int = -32014
+    message: str = "Request timeout"
+    data: None = None
+
+
+class NetworkError(JSONRPCError):
+    code: int = -32015
+    message: str = "Network error"
+    data: None = None
+
+
+class MCPServerError(JSONRPCError):
+    code: int = -32016
+    message: str = "MCP server connection failed"
+    data: None = None
+
+
+class MCPToolError(JSONRPCError):
+    code: int = -32017
+    message: str = "MCP tool execution failed"
+    data: None = None
+
+
+class MCPConfigurationError(JSONRPCError):
+    code: int = -32018
+    message: str = "MCP server configuration error"
+    data: None = None
+
+
+class A2AAgentError(JSONRPCError):
+    code: int = -32019
+    message: str = "A2A agent connection failed"
+    data: None = None
+
+
+class A2AAgentNotFoundError(JSONRPCError):
+    code: int = -32020
+    message: str = "A2A agent not found"
+    data: None = None
+
+
 # --- Agent Card Models (unchanged) ---
 
 
@@ -483,26 +573,3 @@ class AgentCard(BaseModel):
     defaultInputModes: List[str] = ["text"]
     defaultOutputModes: List[str] = ["text"]
     skills: List[AgentSkill]
-
-
-class A2AClientError(Exception):
-    pass
-
-
-class A2AClientHTTPError(A2AClientError):
-    def __init__(self, status_code: int, message: str):
-        self.status_code = status_code
-        self.message = message
-        super().__init__(f"HTTP Error {status_code}: {message}")
-
-
-class A2AClientJSONError(A2AClientError):
-    def __init__(self, message: str):
-        self.message = message
-        super().__init__(f"JSON Error: {message}")
-
-
-class MissingAPIKeyError(Exception):
-    """Exception for missing API key."""
-
-    pass
