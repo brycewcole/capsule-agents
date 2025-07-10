@@ -15,7 +15,7 @@ from google.adk.tools.mcp_tool.mcp_toolset import (
     MCPToolset,
     MCPTool,
 )
-import httpx # Import httpx
+import httpx  # Import httpx
 
 from backend.app.configure_schemas import Model
 from backend.app.services.a2a_tool import A2ATool
@@ -36,6 +36,10 @@ def model_list() -> list[Model]:
         Model(
             model_name="openai/gpt-4o",
             display_name="OpenAI GPT-4o",
+        ),
+        Model(
+            model_name="anthropic/claude-4",
+            display_name="Claude 4",
         ),
     ]
 
@@ -127,7 +131,9 @@ async def get_agent(
                             )
                             mcp_tools.extend(file_tools)
                         except httpx.ConnectError as e:
-                            raise httpx.ConnectError(f"Failed to connect to MCP file access server: {e}")
+                            raise httpx.ConnectError(
+                                f"Failed to connect to MCP file access server: {e}"
+                            )
 
                     elif prebuilt_type == "brave_search":
                         brave_api_key = os.environ.get("BRAVE_API_KEY")
@@ -148,7 +154,9 @@ async def get_agent(
                                 )
                                 mcp_tools.extend(brave_tools)
                             except httpx.ConnectError as e:
-                                raise httpx.ConnectError(f"Failed to connect to MCP Brave Search server: {e}")
+                                raise httpx.ConnectError(
+                                    f"Failed to connect to MCP Brave Search server: {e}"
+                                )
                         else:
                             print(
                                 "Warning: BRAVE_API_KEY not found in environment variables. Brave search tools disabled."
@@ -156,7 +164,10 @@ async def get_agent(
 
                     elif prebuilt_type == "memory":
                         try:
-                            memory_tools, memory_exit_stack = await MCPToolset.from_server(
+                            (
+                                memory_tools,
+                                memory_exit_stack,
+                            ) = await MCPToolset.from_server(
                                 connection_params=StdioServerParameters(
                                     command="npx",
                                     args=[
@@ -167,7 +178,9 @@ async def get_agent(
                             )
                             mcp_tools.extend(memory_tools)
                         except httpx.ConnectError as e:
-                            raise httpx.ConnectError(f"Failed to connect to MCP memory server: {e}")
+                            raise httpx.ConnectError(
+                                f"Failed to connect to MCP memory server: {e}"
+                            )
 
                 elif tool_type == "mcp_server":
                     server_url = tool_schema.get("server_url")
@@ -180,7 +193,9 @@ async def get_agent(
                             )
                             mcp_tools.extend(tools)
                         except httpx.ConnectError as e:
-                            raise httpx.ConnectError(f"Failed to connect to MCP server at {server_url}: {e}")
+                            raise httpx.ConnectError(
+                                f"Failed to connect to MCP server at {server_url}: {e}"
+                            )
                     else:
                         print(
                             f"Warning: MCP server '{config.get('name')}' is missing server_url."
