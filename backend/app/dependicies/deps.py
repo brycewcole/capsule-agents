@@ -3,7 +3,8 @@ import sqlite3
 import os  # <-- Add this import
 import logging
 from google.adk.models.lite_llm import LiteLlm
-from google.adk.agents.llm_agent import LlmAgent
+from google.adk.agents.llm_agent import LlmAgent, ToolUnion
+
 from typing import Annotated, Any, cast
 from fastapi import Depends
 from google.adk.sessions import BaseSessionService
@@ -12,9 +13,11 @@ from google.adk.agents import Agent
 from google.adk.tools.mcp_tool.mcp_session_manager import SseConnectionParams
 from google.adk.tools.mcp_tool.mcp_toolset import MCPToolset
 from mcp import StdioServerParameters
-from google.adk.agents.llm_agent import ToolUnion
 from google.adk.tools.base_tool import BaseTool
+
+
 import httpx  # Import httpx
+
 
 from backend.app.configure_schemas import Model
 from backend.app.services.a2a_tool import A2ATool
@@ -76,17 +79,17 @@ async def get_agent(
     cursor = conn.execute(
         "SELECT name, description, model_name, tools FROM agent_info WHERE key = 1"
     )
-    row = cursor.fetchone()
+    row: dict[str, Any] = cursor.fetchone()
 
     if not row:
         conn.close()
         raise ValueError("Agent info not found in the database.")
 
-    name: str = row["name"]
-    description: str = row["description"]
-    model_name: str = row["model_name"]
-    tools_json: str = row["tools"]  # This is a JSON string
-    agent_tools: list[BaseTool] = []
+    name = cast(str, row["name"])
+    description = cast(str, row["description"])
+    model_name = cast(str, row["model_name"])
+    tools_json = cast(str, row["tools"])  # This is a JSON string
+    agent_tools: list[ToolUnion] = []
 
     conn.close()
 
@@ -95,14 +98,14 @@ async def get_agent(
     # Parse tools from the agent configuration
     if tools_json:
         try:
-            tool_configs: list[dict[str, Any]] = json.loads(tools_json)
+            tool_configs = cast(list[dict[str, Any]], json.loads(tools_json))
             for config in tool_configs:
-                tool_type: str = config.get("type", "")
-                tool_schema: dict[str, Any] = config.get("tool_schema", {})
+                tool_type = cast(str, config.get("type", ""))
+                tool_schema = cast(dict[str, Any], config.get("tool_schema", {}))
 
                 if tool_type == "a2a_call":
                     # Handle A2A call tools
-                    agent_url: str = tool_schema.get("agent_url", "")
+                    agent_url = cast(str, tool_schema.get("agent_url", ""))
                     if agent_url:
                         tool = A2ATool(agent_card_url=agent_url)
                         await tool.initialize_agent_card()
@@ -114,7 +117,7 @@ async def get_agent(
 
                 elif tool_type == "prebuilt":
                     # Handle prebuilt tools based on schema type
-                    prebuilt_type: str = tool_schema.get("type", "")
+                    prebuilt_type = cast(str, tool_schema.get("type", ""))
 
                     if prebuilt_type == "file_access":
                         try:
@@ -179,7 +182,7 @@ async def get_agent(
                             )
 
                 elif tool_type == "mcp_server":
-                    server_url: str = tool_schema.get("server_url", "")
+                    server_url = cast(str, tool_schema.get("server_url", ""))
 
                     if server_url:
                         print(f"Connecting to SSE endpoint: {server_url}")
@@ -208,7 +211,7 @@ async def get_agent(
         name=name,
         model=LiteLlm(model=model_name),
         description=description,
-        tools=cast(list[ToolUnion], agent_tools),
+        tools=agent_tools,
     )
 
 

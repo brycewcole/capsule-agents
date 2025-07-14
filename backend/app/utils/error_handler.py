@@ -22,6 +22,6 @@ async def json_rpc_exception_handler(request: Request, exc: JSONRPCException):
         status_code=200,
         content=JSONRPCResponse(
             id=None,
-            error=JSONRPCError(code=exc.code, message=exc.message, data=exc.data),
+            error=JSONRPCError(code=exc.code, message=exc.message, data=exc.data if exc.data else None),
         ).model_dump(mode="json", exclude_none=True),
     )

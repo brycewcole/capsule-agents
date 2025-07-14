@@ -1,9 +1,9 @@
-from typing import Any, List, Optional, Literal, Union, TypeVar, Generic, Annotated
+from typing import Any, Literal, Union, TypeVar, Generic, Annotated
 from uuid import uuid4
 from datetime import datetime
 from enum import Enum
 
-from pydantic import BaseModel, Field, TypeAdapter, ConfigDict, field_serializer
+from pydantic import BaseModel, Field, ConfigDict, field_serializer
 
 from google.genai.types import Part, Content
 from google.adk.events.event import Event
@@ -45,11 +45,11 @@ class TaskStatus(BaseModel):
     """
 
     state: TaskState
-    message: Optional[Content] = None
+    message: Content | None = None
     timestamp: datetime = Field(default_factory=datetime.now)
 
     @field_serializer("timestamp")
-    def serialize_dt(self, dt: datetime, _info):
+    def serialize_dt(self, dt: datetime, _info: Any) -> str:
         return dt.isoformat()
 
 
@@ -71,13 +71,13 @@ class Artifact(BaseModel):
         lastChunk: If True, this is the final chunk of a multi-part artifact
     """
 
-    name: Optional[str] = None
-    description: Optional[str] = None
-    parts: List[Part]
-    metadata: Optional[dict[str, Any]] = None
+    name: str | None = None
+    description: str | None = None
+    parts: list[Part]
+    metadata: dict[str, Any] | None = None
     index: int = 0
-    append: Optional[bool] = None
-    lastChunk: Optional[bool] = None
+    append: bool | None = None
+    lastChunk: bool | None = None
 
 
 # --- Task ---
@@ -98,11 +98,11 @@ class Task(BaseModel):
     """
 
     id: str
-    sessionId: Optional[str] = None
+    sessionId: str | None = None
     status: TaskStatus
-    artifacts: Optional[List[Artifact]] = None
-    history: Optional[List[Event]] = None
-    metadata: Optional[dict[str, Any]] = None
+    artifacts: list[Artifact] | None = None
+    history: list[Event] | None = None
+    metadata: dict[str, Any] | None = None
 
 
 class TaskStatusUpdateEvent(BaseModel):
@@ -144,7 +144,7 @@ class TaskArtifactUpdateEvent(BaseModel):
 class AuthenticationInfo(BaseModel):
     model_config = ConfigDict(extra="allow")
 
-    schemes: List[str]
+    schemes: list[str]
     credentials: str | None = None
 
 
@@ -167,7 +167,7 @@ class TaskSendParams(BaseModel):
     id: str
     sessionId: str = Field(default_factory=lambda: uuid4().hex)
     message: Content
-    acceptedOutputModes: Optional[List[str]] = None
+    acceptedOutputModes: list[str] | None = None
     pushNotification: PushNotificationConfig | None = None
     historyLength: int | None = None
     metadata: dict[str, Any] | None = None
@@ -363,20 +363,18 @@ class GetTaskPushNotificationResponse(JSONRPCResponse):
 
 # --- TypeAdapter Union for Discriminator Parsing ---
 
-A2ARequest = TypeAdapter(
-    Annotated[
-        Union[
-            SendTaskRequest,
-            SendTaskStreamingRequest,
-            GetTaskRequest,
-            CancelTaskRequest,
-            SetTaskPushNotificationRequest,
-            GetTaskPushNotificationRequest,
-            TaskResubscriptionRequest,
-        ],
-        Field(discriminator="method"),
-    ]
-)
+A2ARequest = Annotated[
+    Union[
+        SendTaskRequest,
+        SendTaskStreamingRequest,
+        GetTaskRequest,
+        CancelTaskRequest,
+        SetTaskPushNotificationRequest,
+        GetTaskPushNotificationRequest,
+        TaskResubscriptionRequest,
+    ],
+    Field(discriminator="method"),
+]
 
 
 ## Error types ##
@@ -547,7 +545,7 @@ class AgentCapabilities(BaseModel):
 
 
 class AgentAuthentication(BaseModel):
-    schemes: List[str]
+    schemes: list[str]
     credentials: str | None = None
 
 
@@ -555,10 +553,10 @@ class AgentSkill(BaseModel):
     id: str
     name: str
     description: str | None = None
-    tags: List[str] | None = None
-    examples: List[str] | None = None
-    inputModes: List[str] | None = None
-    outputModes: List[str] | None = None
+    tags: list[str] | None = None
+    examples: list[str] | None = None
+    inputModes: list[str] | None = None
+    outputModes: list[str] | None = None
 
 
 class AgentCard(BaseModel):
@@ -570,6 +568,6 @@ class AgentCard(BaseModel):
     documentationUrl: str | None = None
     capabilities: AgentCapabilities
     authentication: AgentAuthentication | None = None
-    defaultInputModes: List[str] = ["text"]
-    defaultOutputModes: List[str] = ["text"]
-    skills: List[AgentSkill]
+    defaultInputModes: list[str] = ["text"]
+    defaultOutputModes: list[str] = ["text"]
+    skills: list[AgentSkill]
