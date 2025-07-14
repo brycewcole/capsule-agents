@@ -15,6 +15,7 @@ from google.adk.tools.mcp_tool.mcp_toolset import (
     MCPToolset,
     MCPTool,
 )
+from google.adk.agents.llm_agent import ToolUnion
 import httpx  # Import httpx
 
 from backend.app.configure_schemas import Model
@@ -87,7 +88,7 @@ async def get_agent(
     description: str = row["description"]
     model_name: str = row["model_name"]
     tools_json: str = row["tools"]  # This is a JSON string
-    agent_tools: list = []
+    agent_tools: list[ToolUnion] = []
 
     conn.close()
 
@@ -224,13 +225,3 @@ def get_runner(
         app_name="weather_tutorial_app",
         session_service=session_service,
     )
-
-
-def get_current_user() -> str:
-    """
-    Placeholder authentication function for MCP routes.
-    In a real implementation, this would validate authentication tokens.
-    """
-    # For now, return a default user
-    # TODO: Implement actual authentication
-    return "default_user"
