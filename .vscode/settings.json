@@ -1,7 +1,10 @@
 {
-    "python.defaultInterpreterPath": "./backend/.venv/bin/python",
-    "python.analysis.typeCheckingMode": "standard",
-    "typescript.experimental.useTsgo": false,
+    "python.defaultInterpreterPath": "${workspaceFolder}/backend/.venv/bin/python",
+    "python.testing.pytestEnabled": true,
+    "python.testing.cwd": "${workspaceFolder}/backend",
+    "python.testing.pytestArgs": [
+        "backend/tests"
+    ],
     "cSpell.words": [
         "Capy"
     ],
