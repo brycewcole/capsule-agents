@@ -6,11 +6,10 @@ readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
     "fastapi[standard]>=0.115.12",
-    "google-adk>=0.2.0",
+    "google-adk>=1.6.1",
     "uvicorn[standard]>=0.20.0",
     "sse-starlette>=0.1.0",
-    "google-genai>=1.11.0",
-    "litellm>=1.68.1",
+    "litellm>=1.74.3",
     "python-multipart>=0.0.12",
     "h11>=0.16.0",
 ]
