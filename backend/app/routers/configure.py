@@ -115,7 +115,8 @@ async def get_session_history(
         session_id=session_id,
     )
     if not session:
-        raise ValueError("Could not get session")
+        # Return empty history if session doesn't exist yet
+        return GetSessionHistoryResponse(session_id=session_id, events=[])
 
     print(f"DEBUG: Found {len(session.events)} events for session {session_id}")
     for i, event in enumerate(session.events):
