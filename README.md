@@ -42,7 +42,6 @@ Capy Agents is a framework designed with the goal of making it as easy as possib
 
 3. **Run!**
    ```bash
-   docker pull brycewcole/capy-agents:latest
    docker run -e AGENT_URL=http://host.docker.internal:8080 -p 8080:80 -it brycewcole/capy-agents:latest
    ```
 
