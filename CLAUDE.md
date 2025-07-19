@@ -10,7 +10,7 @@ The project is configured to run both backend API and frontend from a single Fas
 #### Option 1: VS Code (Recommended)
 1. **Build frontend**: Run VS Code task "Build Frontend" or manually:
    ```bash
-   cd capy-config-frontend
+   cd capsule-agents-frontend
    npm install && npm run build
    ```
 
@@ -21,20 +21,20 @@ The project is configured to run both backend API and frontend from a single Fas
 #### Option 2: Command Line
 ```bash
 # Build frontend
-cd capy-config-frontend
+cd capsule-agents-frontend
 npm install && npm run build
 cd ..
 
 # Start backend (serves both API and frontend)
 cd backend
 uv sync
-STATIC_DIR=capy-config-frontend/dist uv run -m uvicorn backend.app.main:app --reload --host 0.0.0.0 --port 8000
+STATIC_DIR=capsule-agents-frontend/dist uv run -m uvicorn backend.app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
 ### Separate Frontend Development (Optional)
 For frontend-only development with hot reload:
 ```bash
-cd capy-config-frontend
+cd capsule-agents-frontend
 npm install               # Install dependencies
 npm run dev              # Start development server
 npm run build            # Build for production
@@ -43,8 +43,8 @@ npm run lint             # Run ESLint
 
 ### Docker
 ```bash
-docker build -t peewee-agents .    # Build container
-docker run -p 80:80 peewee-agents  # Run on port 80
+docker build -t capsule-agents .    # Build container
+docker run -p 80:80 capsule-agents  # Run on port 80
 ```
 
 ## Architecture Overview
@@ -75,8 +75,8 @@ This is a full-stack Agent-to-Agent (A2A) protocol implementation with two main 
 - `backend/app/main.py` - FastAPI app with A2A protocol endpoints
 - `backend/app/schemas.py` - Comprehensive A2A protocol and JSON-RPC schemas
 - `backend/app/services/agent_service.py` - Core agent task processing logic
-- `capy-config-frontend/src/lib/api.ts` - Type-safe API client
-- `capy-config-frontend/src/components/chat-interface.tsx` - Real-time agent communication
+- `capsule-agents-frontend/src/lib/api.ts` - Type-safe API client
+- `capsule-agents-frontend/src/components/chat-interface.tsx` - Real-time agent communication
 
 ### Dependencies
 - **Backend**: Google ADK, Google GenAI, LiteLLM for multi-model support

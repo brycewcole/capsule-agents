@@ -1,6 +1,6 @@
 <div align="center">
-  <img src="new-logo.png" alt="Capy Agents Logo" width="120" height="120">
-  <h1>Capy Agents</h1>
+  <img src="capsule_agents_alpha.png" alt="Capsule Agents Logo" width="120" height="120">
+  <h1>Capsule Agents</h1>
   <p><em>Open Source, simple agents for an A2A world.</em></p>
 </div>
 
@@ -9,7 +9,7 @@
 
 > ⚠️ **This project is in an early development stage and is not stable for production use.**
 
-Capy Agents is a framework designed with the goal of making it as easy as possible to create [Agent-to-Agent (A2A) protocol](https://github.com/google/A2A) compatible agents wraped in a single docker container.
+Capsule Agents is a framework designed with the goal of making it as easy as possible to create [Agent-to-Agent (A2A) protocol](https://github.com/google/A2A) compatible agents wraped in a single docker container.
 
 ## Features
 
@@ -42,7 +42,7 @@ Capy Agents is a framework designed with the goal of making it as easy as possib
 
 3. **Run!**
    ```bash
-   docker run --env-file .env -e AGENT_URL=http://host.docker.internal:8080 -p 8080:80 -it brycewcole/capy-agents:latest
+   docker run --env-file .env -e AGENT_URL=http://host.docker.internal:8080 -p 8080:80 -it brycewcole/capsule-agents:latest
    ```
 
 3. **Access the agent**

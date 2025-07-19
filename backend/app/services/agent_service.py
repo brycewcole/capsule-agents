@@ -11,7 +11,6 @@ from backend.app.schemas import (
     Task,
     TaskIdParams,
     TaskPushNotificationConfig,
-    JSONRPCError,
 )
 from backend.app.schemas import (
     AgentCapabilities,

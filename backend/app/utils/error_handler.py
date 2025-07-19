@@ -5,7 +5,7 @@ Error handling utilities for the backend application.
 import logging
 from fastapi import Request, HTTPException
 from fastapi.responses import JSONResponse
-from backend.app.utils.exceptions import APIException, JSONRPCException
+from backend.app.utils.exceptions import JSONRPCException
 from backend.app.schemas import JSONRPCError, JSONRPCResponse
 
 logger = logging.getLogger(__name__)
