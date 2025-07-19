@@ -36,7 +36,7 @@ Capsule Agents is a framework designed with the goal of making it as easy as pos
   # Required for Search
   BRAVE_API_KEY=your_brave_search_api_key
   
-  # Optional but highly recommended, used to restrict access to the configure page
+  # Used to restrict access to the configure page
   ADMIN_PASSWORD=admin
   ```
 
