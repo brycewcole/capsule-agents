@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="capsule_agents_alpha.png" alt="Capsule Agents Logo" width="120" height="120">
+  <img src="capsule_agents_alpha.png" alt="Capsule Agents Logo" width="240" height="240">
   <h1>Capsule Agents</h1>
   <p><em>Open Source, simple agents for an A2A world.</em></p>
 </div>
