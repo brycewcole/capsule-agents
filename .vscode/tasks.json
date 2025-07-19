@@ -7,7 +7,7 @@
             "command": "npm",
             "args": ["run", "build"],
             "options": {
-                "cwd": "${workspaceFolder}/capy-config-frontend"
+                "cwd": "${workspaceFolder}/capsule-agents-frontend"
             },
             "group": "build",
             "presentation": {
@@ -26,7 +26,7 @@
             "command": "npm",
             "args": ["install"],
             "options": {
-                "cwd": "${workspaceFolder}/capy-config-frontend"
+                "cwd": "${workspaceFolder}/capsule-agents-frontend"
             },
             "group": "build",
             "presentation": {

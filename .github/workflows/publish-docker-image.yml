@@ -28,7 +28,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: brycewcole/capy-agents
+          images: brycewcole/capsule-agents
 
       - name: Build & push
         id: push
@@ -39,5 +39,5 @@ jobs:
           push: true
           tags: |
             ${{ steps.meta.outputs.tags }}
-            brycewcole/capy-agents:latest
+            brycewcole/capsule-agents:latest
           labels: ${{ steps.meta.outputs.labels }}

@@ -64,8 +64,8 @@ class ConfigureService:
                 "No existing agent_info data found with key = 1, inserting mock data."
             )
             mock = AgentInfo(
-                name="capy_agent",
-                description="You are a Capybara agent. You are a friendly and helpful assistant.",
+                name="capsule_agent",
+                description="You are a Capsule agent. You are a friendly and helpful assistant.",
                 model_name="gemini/gemini-2.5-flash-preview-04-17",
                 model_parameters={},
                 tools=[],

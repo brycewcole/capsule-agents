@@ -49,8 +49,8 @@ from fastapi.exceptions import RequestValidationError
 
 app = FastAPI()
 
-# Get static directory from environment variable (defaults to capy-config-frontend/dist for local dev)
-STATIC_DIR = os.getenv("STATIC_DIR", "capy-config-frontend/dist")
+# Get static directory from environment variable (defaults to capsule-agents-frontend/dist for local dev)
+STATIC_DIR = os.getenv("STATIC_DIR", "capsule-agents-frontend/dist")
 
 # Mount specific static asset directories that won't conflict with API routes
 app.mount("/assets", StaticFiles(directory=f"{STATIC_DIR}/assets"), name="assets")

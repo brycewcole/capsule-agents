@@ -5,15 +5,15 @@ FROM node:24-alpine AS frontend-builder
 RUN addgroup -S app && adduser -S app -G app
 USER app
 
-WORKDIR /home/app/capy-config-frontend
+WORKDIR /home/app/capsule-agents-frontend
 
 # 2) copy only package manifests and install deps
-COPY --chown=app:app capy-config-frontend/package.json ./
-COPY --chown=app:app capy-config-frontend/package-lock.json ./
+COPY --chown=app:app capsule-agents-frontend/package.json ./
+COPY --chown=app:app capsule-agents-frontend/package-lock.json ./
 RUN npm ci --legacy-peer-deps
 
 # 3) copy the rest of your source and build with Vite
-COPY --chown=app:app capy-config-frontend/ ./
+COPY --chown=app:app capsule-agents-frontend/ ./
 RUN npm run build
 
 # ─── Stage 2: Prepare Python/uv environment ───────────────────────
@@ -50,8 +50,8 @@ RUN mkdir -p ./static
 # Add agent-workspace directory at root
 RUN mkdir /agent-workspace
 
-# Copy Vite’s dist/ into static for FastAPI to serve
-COPY --from=frontend-builder /home/app/capy-config-frontend/dist/ ./static/
+# Copy Vite's dist/ into static for FastAPI to serve
+COPY --from=frontend-builder /home/app/capsule-agents-frontend/dist/ ./static/
 
 EXPOSE 80
 

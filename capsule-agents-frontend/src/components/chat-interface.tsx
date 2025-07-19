@@ -23,7 +23,7 @@ type Message = {
 
 // Constants for localStorage keys
 const STORAGE_KEYS = {
-  SESSION_ID: "peewee-agent-session-id"
+  SESSION_ID: "capsule-agent-session-id"
 }
 
 export default function ChatInterface() {
@@ -126,7 +126,7 @@ export default function ChatInterface() {
                   role: 'user',
                   content: textContent
                 })
-              } else if (event.author === 'capy_agent') {
+              } else if (event.author === 'capsule_agent') {
                 // For the final agent response, attach all tool calls
                 if (textContent && allToolCalls.length > 0) {
                   loadedMessages.push({

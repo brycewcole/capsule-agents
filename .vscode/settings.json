@@ -12,8 +12,5 @@
     "python.testing.cwd": "${workspaceFolder}/backend",
     "python.testing.pytestArgs": [
         "backend/tests"
-    ],
-    "cSpell.words": [
-        "Capy"
-    ],
+    ]
 }

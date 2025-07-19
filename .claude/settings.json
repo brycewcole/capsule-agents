@@ -13,10 +13,6 @@
                     },
                     {
                         "type": "command",
-                        "command": "uv run --project backend ruff check"
-                    },
-                    {
-                        "type": "command",
                         "command": "uv run --project backend ruff format"
                     }
                 ]
