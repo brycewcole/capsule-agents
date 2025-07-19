@@ -1,7 +1,7 @@
 <div align="center">
   <img src="capsule_agents_alpha.png" alt="Capsule Agents Logo" width="240" height="240">
   <h1>Capsule Agents</h1>
-  <p><em>Open Source, simple agents for an A2A world.</em></p>
+  <p><em>Simple, containerized agents for an A2A world.</em></p>
 </div>
 
 ![status](https://img.shields.io/badge/status-under_development-yellow)
@@ -9,7 +9,7 @@
 
 > ⚠️ **This project is in an early development stage and is not stable for production use.**
 
-Capsule Agents is a framework designed with the goal of making it as easy as possible to create [Agent-to-Agent (A2A) protocol](https://github.com/google/A2A) compatible agents wraped in a single docker container.
+Capsule Agents is a framework designed with the goal of making it as easy as possible to create [Agent-to-Agent (A2A) protocol](https://github.com/google/A2A) compatible agents wrapped in a single docker container.
 
 ## Features
 
