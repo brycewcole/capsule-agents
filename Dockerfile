@@ -35,6 +35,7 @@ COPY log_conf.yaml ./
 # ─── Stage 3: Final image (merge UI + API) ────────────────────────
 FROM uv-base AS runtime
 ENV PYTHONPATH=/app
+ENV STATIC_DIR=static
 
 # Add Node.js and npm for npx support
 RUN apt-get update && \

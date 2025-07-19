@@ -1,5 +1,5 @@
-from pydantic import BaseModel
-from typing import List
+from pydantic import BaseModel, Field, ConfigDict
+from typing import Any, ClassVar
 
 
 class Tool(BaseModel):
@@ -14,20 +14,21 @@ class Tool(BaseModel):
 
     name: str
     type: str
-    tool_schema: dict
+    tool_schema: dict[str, Any]
 
 
 class AgentInfo(BaseModel):
     name: str
     description: str
     model_name: str
-    model_parameters: dict
-    tools: List[Tool] = []
+    model_parameters: dict[str, Any]
+    tools: list[Tool] = []
 
 
 class MockConfig(BaseModel):
+    model_config: ClassVar[ConfigDict] = ConfigDict(extra="allow")
     enabled: bool
-    mock_data: dict
+    mock_data: dict[str, Any] = Field(default_factory=dict)
 
 
 class Model(BaseModel):

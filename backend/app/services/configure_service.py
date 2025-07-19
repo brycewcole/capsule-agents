@@ -1,5 +1,5 @@
 import sqlite3
-from typing import Annotated
+from typing import Annotated, Any, cast
 import logging  # Add logging import
 
 from fastapi import Depends
@@ -13,6 +13,8 @@ logger = logging.getLogger(__name__)  # Initialize logger for the module
 
 
 class ConfigureService:
+    db_url: str
+
     def __init__(self, db_url: Annotated[str, Depends(database_url)]):
         self.db_url = db_url
         logger.info(f"Initializing ConfigureService with db_url: {self.db_url}")
@@ -20,7 +22,7 @@ class ConfigureService:
         # Check if tools column exists
         logger.info("Checking for 'tools' column in 'agent_info' table.")
         cursor = conn.execute("PRAGMA table_info(agent_info)")
-        columns = [column[1] for column in cursor.fetchall()]
+        columns = [cast(str, column[1]) for column in cursor.fetchall()]
 
         # Create the table if it doesn't exist
         logger.info("Ensuring 'agent_info' table exists.")
@@ -32,24 +34,26 @@ class ConfigureService:
                 model_name        TEXT    NOT NULL,
                 model_parameters  TEXT    NOT NULL
             )
-        """
-)
+        """)
 
         # Add tools column if it doesn't exist
         if "tools" not in columns:
             logger.info("Adding 'tools' column to 'agent_info' table.")
             try:
-                conn.execute("ALTER TABLE agent_info ADD COLUMN tools TEXT DEFAULT '[]'")
+                conn.execute(
+                    "ALTER TABLE agent_info ADD COLUMN tools TEXT DEFAULT '[]'"
+                )
                 logger.info("'tools' column added successfully.")
             except sqlite3.OperationalError as e:
                 if "duplicate column name" in str(e).lower():
-                    logger.info("'tools' column already exists (caught duplicate column error).")
+                    logger.info(
+                        "'tools' column already exists (caught duplicate column error)."
+                    )
                 else:
                     logger.error(f"Failed to add 'tools' column: {e}")
                     raise
         else:
             logger.info("'tools' column already exists in 'agent_info' table.")
-
 
         conn.commit()
         # insert mock data if it doesn't exist yet
@@ -79,7 +83,7 @@ class ConfigureService:
         conn.commit()
         conn.close()
 
-    def _get_conn(self):
+    def _get_conn(self) -> sqlite3.Connection:
         conn = sqlite3.connect(self.db_url, detect_types=sqlite3.PARSE_DECLTYPES)
         conn.row_factory = sqlite3.Row
         logger.info(f"Database connection established to {self.db_url}")
@@ -100,13 +104,13 @@ class ConfigureService:
         # Handle case where tools column might not exist in older database versions
         tools_json = row["tools"] if "tools" in row.keys() else "[]"
         tools_data = json.loads(tools_json)
-        tools = [Tool(**tool_data) for tool_data in tools_data]
+        tools = [Tool(**cast(dict[str, Any], tool_data)) for tool_data in tools_data]
 
         return AgentInfo(
-            name=row["name"],
-            description=row["description"],
-            model_name=row["model_name"],
-            model_parameters=json.loads(row["model_parameters"]),
+            name=cast(str, row["name"]),
+            description=cast(str, row["description"]),
+            model_name=cast(str, row["model_name"]),
+            model_parameters=cast(dict[str, Any], json.loads(row["model_parameters"])),
             tools=tools,
         )
 

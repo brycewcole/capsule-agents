@@ -2,20 +2,22 @@ import sqlite3
 import json
 import uuid
 import time
-from typing import Any, Optional
+from typing import Any, Tuple, Dict
 
 from google.adk.events.event import Event
 from google.adk.sessions.base_session_service import (
     BaseSessionService,
     GetSessionConfig,
     ListSessionsResponse,
-    ListEventsResponse,
 )
 from google.adk.sessions.session import Session
 from google.adk.sessions.state import State
+from typing_extensions import override
 
 
-def _extract_state_delta(state: dict[str, Any]):
+def _extract_state_delta(
+    state: dict[str, Any],
+) -> Tuple[Dict[str, Any], Dict[str, Any], Dict[str, Any]]:
     app_delta, user_delta, session_delta = {}, {}, {}
     if state:
         for k, v in state.items():
@@ -28,7 +30,9 @@ def _extract_state_delta(state: dict[str, Any]):
     return app_delta, user_delta, session_delta
 
 
-def _merge_state(app_state, user_state, session_state):
+def _merge_state(
+    app_state: Dict[str, Any], user_state: Dict[str, Any], session_state: Dict[str, Any]
+) -> Dict[str, Any]:
     merged = dict(session_state)
     for k, v in app_state.items():
         merged[State.APP_PREFIX + k] = v
@@ -38,6 +42,8 @@ def _merge_state(app_state, user_state, session_state):
 
 
 class SQLiteSessionService(BaseSessionService):
+    db_path: str
+
     def __init__(self, db_path: str):
         self.db_path = db_path
         # create or migrate schema
@@ -46,7 +52,7 @@ class SQLiteSessionService(BaseSessionService):
         conn.commit()
         conn.close()
 
-    def _get_conn(self):
+    def _get_conn(self) -> sqlite3.Connection:
         conn = sqlite3.connect(
             self.db_path,
             detect_types=sqlite3.PARSE_DECLTYPES,
@@ -56,7 +62,7 @@ class SQLiteSessionService(BaseSessionService):
         conn.execute("PRAGMA foreign_keys = ON")
         return conn
 
-    def _create_tables(self, conn):
+    def _create_tables(self, conn: sqlite3.Connection) -> None:
         c = conn.cursor()
         # sessions with single‑column PK
         c.execute("""
@@ -113,13 +119,14 @@ class SQLiteSessionService(BaseSessionService):
         )
         """)
 
-    def create_session(
+    @override
+    async def create_session(
         self,
         *,
         app_name: str,
         user_id: str,
-        state: Optional[dict[str, Any]] = None,
-        session_id: Optional[str] = None,
+        state: dict[str, Any] | None = None,
+        session_id: str | None = None,
     ) -> Session:
         sid = session_id or str(uuid.uuid4())
         now = time.time()
@@ -183,14 +190,15 @@ class SQLiteSessionService(BaseSessionService):
             last_update_time=now,
         )
 
-    def get_session(
+    @override
+    async def get_session(
         self,
         *,
         app_name: str,
         user_id: str,
         session_id: str,
-        config: Optional[GetSessionConfig] = None,
-    ) -> Optional[Session]:
+        config: GetSessionConfig | None = None,
+    ) -> Session | None:
         conn = self._get_conn()
         c = conn.cursor()
 
@@ -225,7 +233,7 @@ class SQLiteSessionService(BaseSessionService):
         ev_rows = c.fetchall()
 
         # load app & user states
-        def _load_state(table):
+        def _load_state(table: str) -> dict[str, Any]:
             if table == "app_states":
                 c.execute(
                     "SELECT state FROM app_states WHERE app_name = ?", (app_name,)
@@ -279,7 +287,10 @@ class SQLiteSessionService(BaseSessionService):
         conn.close()
         return session
 
-    def list_sessions(self, *, app_name: str, user_id: str) -> ListSessionsResponse:
+    @override
+    async def list_sessions(
+        self, *, app_name: str, user_id: str
+    ) -> ListSessionsResponse:
         conn = self._get_conn()
         c = conn.cursor()
         c.execute(
@@ -301,7 +312,10 @@ class SQLiteSessionService(BaseSessionService):
         conn.close()
         return resp
 
-    def delete_session(self, *, app_name: str, user_id: str, session_id: str) -> None:
+    @override
+    async def delete_session(
+        self, *, app_name: str, user_id: str, session_id: str
+    ) -> None:
         conn = self._get_conn()
         conn.execute(
             "DELETE FROM sessions WHERE app_name = ? AND user_id = ? AND id = ?",
@@ -310,9 +324,10 @@ class SQLiteSessionService(BaseSessionService):
         conn.commit()
         conn.close()
 
-    def append_event(self, session: Session, event: Event) -> Event:
+    @override
+    async def append_event(self, session: Session, event: Event) -> Event:
         # update in‑memory
-        super().append_event(session, event)
+        await super().append_event(session, event)
 
         now = time.time()
         conn = self._get_conn()
@@ -383,44 +398,3 @@ class SQLiteSessionService(BaseSessionService):
         conn.commit()
         conn.close()
         return event
-
-    def list_events(
-        self,
-        *,
-        app_name: str,
-        user_id: str,
-        session_id: str,
-    ) -> ListEventsResponse:
-        conn = self._get_conn()
-        c = conn.cursor()
-        c.execute(
-            "SELECT * FROM events WHERE app_name = ? AND user_id = ? AND session_id = ? "
-            "ORDER BY timestamp ASC",
-            (app_name, user_id, session_id),
-        )
-        rows = c.fetchall()
-        evs = ListEventsResponse(
-            events=[
-                Event(
-                    id=r["id"],
-                    author=r["author"],
-                    branch=r["branch"],
-                    invocation_id=r["invocation_id"],
-                    content=json.loads(r["content"] or "null"),
-                    actions=json.loads(r["actions"] or "null"),
-                    timestamp=r["timestamp"],
-                    long_running_tool_ids=set(
-                        json.loads(r["long_running_tool_ids"] or "[]")
-                    ),
-                    grounding_metadata=json.loads(r["grounding_metadata"] or "null"),
-                    partial=bool(r["partial"]),
-                    turn_complete=bool(r["turn_complete"]),
-                    error_code=r["error_code"],
-                    error_message=r["error_message"],
-                    interrupted=bool(r["interrupted"]),
-                )
-                for r in rows
-            ]
-        )
-        conn.close()
-        return evs

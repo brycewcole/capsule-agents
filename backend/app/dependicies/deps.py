@@ -1,27 +1,72 @@
 import json
-import sqlite3
-import os  # <-- Add this import
 import logging
-from google.adk.models.lite_llm import LiteLlm
-from google.adk.agents.llm_agent import LlmAgent
-from typing import Annotated
+import os
+import sqlite3
+from typing import Annotated, Any
+
+import httpx
 from fastapi import Depends
-from google.adk.sessions import BaseSessionService
-from google.adk.runners import Runner
 from google.adk.agents import Agent
-from google.adk.tools.mcp_tool.mcp_toolset import (
-    StdioServerParameters,
-    SseServerParams,
-    MCPToolset,
-    MCPTool,
-)
-import httpx  # Import httpx
+from google.adk.agents.llm_agent import LlmAgent, ToolUnion
+from google.adk.models.lite_llm import LiteLlm
+from google.adk.runners import Runner
+from google.adk.sessions import BaseSessionService
+from google.adk.tools.base_tool import BaseTool
+from google.adk.tools.mcp_tool.mcp_session_manager import SseConnectionParams
+from google.adk.tools.mcp_tool.mcp_toolset import MCPToolset
+from mcp import StdioServerParameters
+from pydantic import BaseModel, Field, field_validator  # Import httpx
 
 from backend.app.configure_schemas import Model
 from backend.app.services.a2a_tool import A2ATool
 from backend.app.services.sqlite_session_service import SQLiteSessionService
 
 logger = logging.getLogger(__name__)
+
+
+class AgentInfoRow(BaseModel):
+    """Pydantic model for agent_info database row validation."""
+
+    name: str
+    description: str
+    model_name: str
+    tools: str
+
+    @field_validator("tools")
+    @classmethod
+    def validate_tools_json(cls, v):
+        if v:
+            try:
+                json.loads(v)
+            except json.JSONDecodeError:
+                raise ValueError("tools must be valid JSON")
+        return v
+
+
+class ToolConfig(BaseModel):
+    """Pydantic model for tool configuration validation."""
+
+    type: str
+    name: str | None = None
+    tool_schema: dict[str, Any] = Field(default_factory=dict)
+
+
+class A2AToolSchema(BaseModel):
+    """Schema for A2A tool configuration."""
+
+    agent_url: str
+
+
+class PrebuiltToolSchema(BaseModel):
+    """Schema for prebuilt tool configuration."""
+
+    type: str
+
+
+class MCPServerSchema(BaseModel):
+    """Schema for MCP server tool configuration."""
+
+    server_url: str
 
 
 def model_list() -> list[Model]:
@@ -77,7 +122,7 @@ async def get_agent(
     cursor = conn.execute(
         "SELECT name, description, model_name, tools FROM agent_info WHERE key = 1"
     )
-    row = cursor.fetchone()
+    row: sqlite3.Row | None = cursor.fetchone()
 
     if not row:
         conn.close()
@@ -87,23 +132,23 @@ async def get_agent(
     description: str = row["description"]
     model_name: str = row["model_name"]
     tools_json: str = row["tools"]  # This is a JSON string
-    agent_tools: list = []
+    agent_tools: list[ToolUnion] = []
 
     conn.close()
 
-    mcp_tools: list[MCPTool] = []
+    mcp_tools: list[BaseTool] = []
 
     # Parse tools from the agent configuration
     if tools_json:
         try:
-            tool_configs = json.loads(tools_json)
+            tool_configs: list[dict[str, Any]] = json.loads(tools_json)
             for config in tool_configs:
-                tool_type = config.get("type")
-                tool_schema = config.get("tool_schema", {})
+                tool_type: str = config.get("type", "")
+                tool_schema: dict[str, Any] = config.get("tool_schema", {})
 
                 if tool_type == "a2a_call":
                     # Handle A2A call tools
-                    agent_url = tool_schema.get("agent_url")
+                    agent_url: str = tool_schema.get("agent_url", "")
                     if agent_url:
                         tool = A2ATool(agent_card_url=agent_url)
                         await tool.initialize_agent_card()
@@ -115,11 +160,11 @@ async def get_agent(
 
                 elif tool_type == "prebuilt":
                     # Handle prebuilt tools based on schema type
-                    prebuilt_type = tool_schema.get("type")
+                    prebuilt_type: str = tool_schema.get("type", "")
 
                     if prebuilt_type == "file_access":
                         try:
-                            file_tools, file_exit_stack = await MCPToolset.from_server(
+                            toolset = MCPToolset(
                                 connection_params=StdioServerParameters(
                                     command="npx",
                                     args=[
@@ -129,6 +174,7 @@ async def get_agent(
                                     ],
                                 )
                             )
+                            file_tools = await toolset.get_tools()
                             mcp_tools.extend(file_tools)
                         except httpx.ConnectError as e:
                             raise httpx.ConnectError(
@@ -139,10 +185,7 @@ async def get_agent(
                         brave_api_key = os.environ.get("BRAVE_API_KEY")
                         if brave_api_key:
                             try:
-                                (
-                                    brave_tools,
-                                    brave_exit_stack,
-                                ) = await MCPToolset.from_server(
+                                toolset = MCPToolset(
                                     connection_params=StdioServerParameters(
                                         command="npx",
                                         args=[
@@ -152,6 +195,7 @@ async def get_agent(
                                         env={"BRAVE_API_KEY": brave_api_key},
                                     )
                                 )
+                                brave_tools = await toolset.get_tools()
                                 mcp_tools.extend(brave_tools)
                             except httpx.ConnectError as e:
                                 raise httpx.ConnectError(
@@ -164,10 +208,7 @@ async def get_agent(
 
                     elif prebuilt_type == "memory":
                         try:
-                            (
-                                memory_tools,
-                                memory_exit_stack,
-                            ) = await MCPToolset.from_server(
+                            toolset = MCPToolset(
                                 connection_params=StdioServerParameters(
                                     command="npx",
                                     args=[
@@ -176,6 +217,7 @@ async def get_agent(
                                     ],
                                 )
                             )
+                            memory_tools = await toolset.get_tools()
                             mcp_tools.extend(memory_tools)
                         except httpx.ConnectError as e:
                             raise httpx.ConnectError(
@@ -183,14 +225,15 @@ async def get_agent(
                             )
 
                 elif tool_type == "mcp_server":
-                    server_url = tool_schema.get("server_url")
+                    server_url: str = tool_schema.get("server_url", "")
 
                     if server_url:
                         print(f"Connecting to SSE endpoint: {server_url}")
                         try:
-                            tools, exit_stack = await MCPToolset.from_server(
-                                connection_params=SseServerParams(url=server_url)
+                            toolset = MCPToolset(
+                                connection_params=SseConnectionParams(url=server_url)
                             )
+                            tools = await toolset.get_tools()
                             mcp_tools.extend(tools)
                         except httpx.ConnectError as e:
                             raise httpx.ConnectError(
@@ -224,13 +267,3 @@ def get_runner(
         app_name="weather_tutorial_app",
         session_service=session_service,
     )
-
-
-def get_current_user() -> str:
-    """
-    Placeholder authentication function for MCP routes.
-    In a real implementation, this would validate authentication tokens.
-    """
-    # For now, return a default user
-    # TODO: Implement actual authentication
-    return "default_user"

@@ -2,11 +2,17 @@ from datetime import datetime
 import logging
 import os  # Add logging import
 from google.adk.runners import Runner
-from typing import Annotated, Dict
+from typing import Annotated
+from google.adk.sessions import Session
 from fastapi import Depends
 from google.genai import types
 from backend.app.dependicies.deps import get_runner
-from backend.app.schemas import Task, TaskIdParams, TaskPushNotificationConfig, JSONRPCError
+from backend.app.schemas import (
+    Task,
+    TaskIdParams,
+    TaskPushNotificationConfig,
+    JSONRPCError,
+)
 from backend.app.schemas import (
     AgentCapabilities,
     AgentCard,
@@ -21,8 +27,8 @@ logger = logging.getLogger(__name__)  # Initialize logger for the module
 
 class AgentService:
     def __init__(self, runner: Annotated[Runner, Depends(get_runner)]):
-        self.store: Dict[str, Task] = {}
-        self.push_store: Dict[str, TaskPushNotificationConfig] = {}
+        self.store: dict[str, Task] = {}
+        self.push_store: dict[str, TaskPushNotificationConfig] = {}
         self.runner = runner
         logger.info(
             f"AgentService initialized with runner for app: {self.runner.app_name}"
@@ -58,7 +64,7 @@ class AgentService:
         logger.info(
             f"Task {params.id}: Getting or creating session for user_id: {params.sessionId}"
         )
-        session = self.runner.session_service.get_session(
+        session: Session | None = await self.runner.session_service.get_session(
             app_name=self.runner.app_name,
             user_id=params.sessionId,
             session_id=params.sessionId,
@@ -67,7 +73,7 @@ class AgentService:
             logger.info(
                 f"Task {params.id}: Creating new session for user_id: {params.sessionId}"
             )
-            session = self.runner.session_service.create_session(
+            session = await self.runner.session_service.create_session(
                 app_name=self.runner.app_name,
                 user_id=params.sessionId,
                 state={},

@@ -1,0 +1,26 @@
+{
+    "env": {
+        "CLAUDE_BASH_MAINTAIN_PROJECT_WORKING_DIR": "true"
+    },
+    "hooks": {
+        "PostToolUse": [
+            {
+                "matcher": "Write|Edit|MultiEdit",
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": "sh typecheck-backend.sh"
+                    },
+                    {
+                        "type": "command",
+                        "command": "uv run --project backend ruff check"
+                    },
+                    {
+                        "type": "command",
+                        "command": "uv run --project backend ruff format"
+                    }
+                ]
+            }
+        ]
+    }
+}

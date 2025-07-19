@@ -5,28 +5,37 @@ from uuid import uuid4
 from typing import Any
 from google.genai import types
 from google.adk.tools.tool_context import ToolContext
+from typing_extensions import override
 
 from backend.app.schemas import AgentCard
 
 
 class A2ATool(BaseTool):
+    agent_url: str
+    initialized: bool
+    logger: logging.Logger
+    name: str
+    url: str
+    description: str
+
     def __init__(self, agent_card_url: str):
         super().__init__(
             name="a2a_call",
             description="Send a single message to remote A2A agent via tasks/send",
+            is_long_running=False,
         )
         self.agent_url = agent_card_url
         self.initialized = False
         self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
         self.logger.info(f"Initialized A2ATool with agent_url: {self.agent_url}")
 
-    async def initialize_agent_card(self):
+    async def initialize_agent_card(self) -> None:
         try:
             async with httpx.AsyncClient(timeout=10.0) as client:
                 resp = await client.get(self.agent_url)
                 resp.raise_for_status()
                 agent_card_json = resp.json()
-            agent_card = AgentCard(**agent_card_json)
+            agent_card = AgentCard.model_validate(agent_card_json)
             self.logger.info(f"Downloaded agent card: {agent_card.name}")
             # Make sure the name is a valid function name (letters, numbers, underscores only)
             clean_name = (
@@ -54,6 +63,7 @@ class A2ATool(BaseTool):
             )
             raise ValueError(f"Failed to initialize A2A tool at {self.agent_url}: {e}")
 
+    @override
     def _get_declaration(self) -> types.FunctionDeclaration:
         if not self.initialized:
             # Return a disabled tool declaration instead of raising
@@ -85,9 +95,10 @@ class A2ATool(BaseTool):
             ),
         )
 
+    @override
     async def run_async(
         self, *, args: dict[str, Any], tool_context: ToolContext
-    ) -> Any:
+    ) -> dict[str, Any]:
         self.logger.info(f"Running A2ATool with args: {args}")
         # only 'message' is provided by LLM
         msg = args.get("message")
@@ -97,7 +108,7 @@ class A2ATool(BaseTool):
 
         request_id = str(uuid4())
         # wrap into TaskSendParams: id and message
-        message = types.Content(parts=[types.Part(text=msg)]).model_dump()
+        message = types.Content(parts=[types.Part(text=str(msg))]).model_dump()
         payload = {
             "jsonrpc": "2.0",
             "id": request_id,
@@ -114,7 +125,7 @@ class A2ATool(BaseTool):
                     f"Received response from A2A agent: status_code={response.status_code}"
                 )
                 response.raise_for_status()  # Raise an exception for bad status codes
-                result = response.json()
+                result: dict[str, Any] = response.json()
                 self.logger.info(f"A2A response JSON: {result}")
             # Return the JSON-RPC result or full response
             if "result" in result:

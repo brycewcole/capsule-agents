@@ -1,6 +1,8 @@
 import json
 import logging
-from typing import Annotated
+from typing import Annotated, Any
+
+# Test comment for hooks - updated
 from fastapi import Body, Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
@@ -10,7 +12,7 @@ import httpx
 import sqlite3
 
 from fastapi.staticfiles import StaticFiles
-from pydantic import ValidationError
+from pydantic import TypeAdapter, ValidationError
 
 from backend.app.routers import configure
 from backend.app.schemas import (
@@ -47,16 +49,19 @@ from fastapi.exceptions import RequestValidationError
 
 app = FastAPI()
 
+# Get static directory from environment variable (defaults to capy-config-frontend/dist for local dev)
+STATIC_DIR = os.getenv("STATIC_DIR", "capy-config-frontend/dist")
+
 # Mount specific static asset directories that won't conflict with API routes
-app.mount("/assets", StaticFiles(directory="static/assets"), name="assets")
-app.mount("/editor", StaticFiles(directory="static", html=True), name="editor")
+app.mount("/assets", StaticFiles(directory=f"{STATIC_DIR}/assets"), name="assets")
+app.mount("/editor", StaticFiles(directory=STATIC_DIR, html=True), name="editor")
 
 # Also serve vite.svg explicitly
-app.mount("/vite.svg", StaticFiles(directory="static", html=False), name="vite")
+app.mount("/vite.svg", StaticFiles(directory=STATIC_DIR, html=False), name="vite")
 
 
 @app.exception_handler(RequestValidationError)
-async def validation_exception_handler(request: Request, exc: RequestValidationError):
+async def validation_exception_handler(_: Request, exc: RequestValidationError):
     logger.error(f"Validation error: {exc}", exc_info=True)
     return JSONResponse(
         status_code=422,
@@ -70,12 +75,12 @@ async def api_exception_handler_wrapper(request: Request, exc: APIException):
 
 
 @app.exception_handler(JSONRPCException)
-async def jsonrpc_exception_handler(request: Request, exc: JSONRPCException):
+async def jsonrpc_exception_handler_wrapper(request: Request, exc: JSONRPCException):
     return await json_rpc_exception_handler(request, exc)
 
 
 @app.exception_handler(Exception)
-async def global_exception_handler(request: Request, exc: Exception):
+async def global_exception_handler(_: Request, exc: Exception):
     logger.error(f"Unhandled exception: {exc}", exc_info=True)
 
     json_rpc_error: JSONRPCError
@@ -162,8 +167,8 @@ async def agent_card(service: AgentService = Depends(AgentService)):
     }
     ```
     """
-    agent_card = await service.get_agent_card()
-    return JSONResponse(content=agent_card.model_dump(exclude_none=True))
+    agent_card_response = await service.get_agent_card()
+    return JSONResponse(content=agent_card_response.model_dump(exclude_none=True))
 
 
 @app.post(
@@ -192,7 +197,7 @@ This endpoint handles multiple types of JSON-RPC requests:
 async def rpc_root(
     request: Request,
     service: Annotated[AgentService, Depends()],
-    body: dict = Body(
+    _: dict[str, Any] = Body(
         ...,
         description="JSON-RPC request payload. The structure depends on the method being called.",
     ),
@@ -203,7 +208,8 @@ async def rpc_root(
     raw = await request.body()
     logger.info(f"Received JSON-RPC request: {raw}")
     try:
-        rpc_req = A2ARequest.validate_python(json.loads(raw))
+        adapter = TypeAdapter(A2ARequest)
+        rpc_req = adapter.validate_python(json.loads(raw))
         logger.info(
             f"Parsed JSON-RPC request: method={getattr(rpc_req, 'method', None)}, id={getattr(rpc_req, 'id', None)}"
         )
@@ -276,4 +282,6 @@ async def rpc_root(
 
         return StreamingResponse(resume(), media_type="text/event-stream")
 
-    raise JSONRPCException(code=-32601, message=f"Method {rpc_req.method} not found")
+    raise JSONRPCException(
+        code=-32601, message=f"Method {getattr(rpc_req, 'method', 'unknown')} not found"
+    )

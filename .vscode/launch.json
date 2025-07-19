@@ -1,6 +1,3 @@
-// Use IntelliSense to learn about possible attributes.
-// Hover to view descriptions of existing attributes.
-// For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
 {
     "version": "0.2.0",
     "configurations": [
@@ -11,9 +8,41 @@
             "module": "uvicorn",
             "args": [
                 "backend.app.main:app",
-                "--reload"
+                "--reload",
+                "--host",
+                "0.0.0.0",
+                "--port",
+                "8000"
             ],
-            "jinja": true
+            "env": {
+                "STATIC_DIR": "capy-config-frontend/dist"
+            },
+            "envFile": "${workspaceFolder}/.env",
+            "jinja": true,
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "name": "Build Frontend",
+            "type": "node",
+            "request": "launch",
+            "cwd": "${workspaceFolder}/capy-config-frontend",
+            "runtimeExecutable": "npm",
+            "runtimeArgs": [
+                "run",
+                "build"
+            ],
+            "console": "integratedTerminal"
+        }
+    ],
+    "compounds": [
+        {
+            "name": "Run Full-Stack Locally (Single Server - Recommended)",
+            "configurations": [
+                "Build Frontend",
+                "Python Debugger: FastAPI"
+            ],
+            "stopAll": true
         }
     ]
 }

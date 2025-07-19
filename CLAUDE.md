@@ -4,14 +4,35 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Development Commands
 
-### Backend (FastAPI + Python)
+### Local Development (Single Server - Recommended)
+The project is configured to run both backend API and frontend from a single FastAPI server (matching Docker behavior).
+
+#### Option 1: VS Code (Recommended)
+1. **Build frontend**: Run VS Code task "Build Frontend" or manually:
+   ```bash
+   cd capy-config-frontend
+   npm install && npm run build
+   ```
+
+2. **Start with debugger**: Launch "Python Debugger: FastAPI" or "Run Full-Stack Locally (Single Server)" compound configuration
+   - Frontend available at: `http://localhost:8000/editor`
+   - API available at: `http://localhost:8000/api/*`
+
+#### Option 2: Command Line
 ```bash
+# Build frontend
+cd capy-config-frontend
+npm install && npm run build
+cd ..
+
+# Start backend (serves both API and frontend)
 cd backend
-uv sync                    # Install dependencies
-uv run -m uvicorn backend.app.main:app --reload --host 0.0.0.0 --port 8000
+uv sync
+STATIC_DIR=capy-config-frontend/dist uv run -m uvicorn backend.app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-### Frontend (React + TypeScript + Vite)
+### Separate Frontend Development (Optional)
+For frontend-only development with hot reload:
 ```bash
 cd capy-config-frontend
 npm install               # Install dependencies
