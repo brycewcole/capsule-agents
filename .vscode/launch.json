@@ -17,30 +17,32 @@
             "env": {
                 "STATIC_DIR": "capy-config-frontend/dist"
             },
+            "envFile": "${workspaceFolder}/.env",
             "jinja": true,
             "console": "integratedTerminal",
             "cwd": "${workspaceFolder}"
         },
         {
-            "name": "Frontend: Vite Dev Server (Development Only)",
+            "name": "Build Frontend",
             "type": "node",
             "request": "launch",
             "cwd": "${workspaceFolder}/capy-config-frontend",
             "runtimeExecutable": "npm",
             "runtimeArgs": [
                 "run",
-                "dev"
+                "build"
             ],
-            "console": "integratedTerminal",
+            "console": "integratedTerminal"
         }
     ],
     "compounds": [
         {
-            "name": "Run Full-Stack Locally (Separate Servers)",
+            "name": "Run Full-Stack Locally (Single Server - Recommended)",
             "configurations": [
-                "Python Debugger: FastAPI",
-                "Frontend: Vite Dev Server (Development Only)"
-            ]
+                "Build Frontend",
+                "Python Debugger: FastAPI"
+            ],
+            "stopAll": true
         }
     ]
 }
