@@ -1,6 +1,8 @@
 import json
 import logging
 from typing import Annotated, Any
+
+# Test comment for hooks - updated
 from fastapi import Body, Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
@@ -47,12 +49,15 @@ from fastapi.exceptions import RequestValidationError
 
 app = FastAPI()
 
+# Get static directory from environment variable (defaults to capy-config-frontend/dist for local dev)
+STATIC_DIR = os.getenv("STATIC_DIR", "capy-config-frontend/dist")
+
 # Mount specific static asset directories that won't conflict with API routes
-app.mount("/assets", StaticFiles(directory="static/assets"), name="assets")
-app.mount("/editor", StaticFiles(directory="static", html=True), name="editor")
+app.mount("/assets", StaticFiles(directory=f"{STATIC_DIR}/assets"), name="assets")
+app.mount("/editor", StaticFiles(directory=STATIC_DIR, html=True), name="editor")
 
 # Also serve vite.svg explicitly
-app.mount("/vite.svg", StaticFiles(directory="static", html=False), name="vite")
+app.mount("/vite.svg", StaticFiles(directory=STATIC_DIR, html=False), name="vite")
 
 
 @app.exception_handler(RequestValidationError)
@@ -277,4 +282,6 @@ async def rpc_root(
 
         return StreamingResponse(resume(), media_type="text/event-stream")
 
-    raise JSONRPCException(code=-32601, message=f"Method {getattr(rpc_req, 'method', 'unknown')} not found")
+    raise JSONRPCException(
+        code=-32601, message=f"Method {getattr(rpc_req, 'method', 'unknown')} not found"
+    )
