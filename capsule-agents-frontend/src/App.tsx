@@ -1,22 +1,20 @@
 import { useState, useEffect } from 'react';
 import Header from './components/header';
-import AgentEditor from './components/agent-editor';
-import ChatInterface from './components/chat-interface';
+import NewChatInterface from './components/new-chat-interface';
 import { LoginDialog } from './components/login-dialog';
 import { Toaster } from './components/ui/toaster';
-import { authStore, testLogin } from './lib/api';
+import { testLogin } from './lib/api';
 import './App.css';
 
 function App() {
   const [showLogin, setShowLogin] = useState(false);
   const [loginError, setLoginError] = useState<string>();
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [isAuthenticated, setIsAuthenticated] = useState(true); // Temporarily always authenticated
 
   useEffect(() => {
-    // Check if already authenticated
-    const authenticated = authStore.isAuthenticated();
-    setIsAuthenticated(authenticated);
-    setShowLogin(!authenticated);
+    // Temporarily skip authentication for new backend
+    setIsAuthenticated(true);
+    setShowLogin(false);
   }, []);
 
   const handleLogin = async (password: string) => {
@@ -38,12 +36,7 @@ function App() {
         <Header />
         <div className="container mx-auto flex flex-1 flex-col gap-6 p-4 md:flex-row md:p-6 lg:p-8 min-h-0">
           <div className="flex-1 flex flex-col min-h-0">
-            <div className="flex-1 overflow-y-auto space-y-6 pr-2">
-              {isAuthenticated && <AgentEditor key={isAuthenticated ? 'auth' : 'unauth'} />}
-            </div>
-          </div>
-          <div className="flex-1 flex flex-col min-h-0">
-            {isAuthenticated && <ChatInterface key={isAuthenticated ? 'auth' : 'unauth'} />}
+            <NewChatInterface key={isAuthenticated ? 'auth' : 'unauth'} />
           </div>
         </div>
       </main>

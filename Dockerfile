@@ -10,51 +10,55 @@ WORKDIR /home/app/capsule-agents-frontend
 # 2) copy only package manifests and install deps
 COPY --chown=app:app capsule-agents-frontend/package.json ./
 COPY --chown=app:app capsule-agents-frontend/package-lock.json ./
-RUN npm ci --legacy-peer-deps
+RUN npm ci
 
 # 3) copy the rest of your source and build with Vite
 COPY --chown=app:app capsule-agents-frontend/ ./
 RUN npm run build
 
-# ─── Stage 2: Prepare Python/uv environment ───────────────────────
-FROM ghcr.io/astral-sh/uv:bookworm-slim AS uv-base
+# ─── Stage 2: Build Hono backend ───────────────────────
+FROM node:24-alpine AS backend-builder
 
-# Install Rust for any Python packages that need it
-RUN apt-get update && apt-get install -y rustc cargo && rm -rf /var/lib/apt/lists/*
+# Install build tools for native modules
+RUN apk add --no-cache python3 make g++
 
-WORKDIR /app
+RUN addgroup -S app && adduser -S app -G app
+USER app
 
-# 1) copy toml and lock, sync dependencies
-COPY backend/pyproject.toml backend/uv.lock* ./
-RUN uv sync --locked
+WORKDIR /home/app/capsule-agents-backend
 
-# 2) copy your backend code
-COPY backend/ ./backend
-COPY log_conf.yaml ./
+COPY --chown=app:app capsule-agents-backend/package.json ./
+COPY --chown=app:app capsule-agents-backend/package-lock.json ./
+RUN npm ci
+
+COPY --chown=app:app capsule-agents-backend/ ./
+# Rebuild native modules for Alpine Linux
+RUN npm rebuild better-sqlite3
+# The tsconfig.json specifies that the output is in the dist directory
+RUN npm run build
 
 # ─── Stage 3: Final image (merge UI + API) ────────────────────────
-FROM uv-base AS runtime
-ENV PYTHONPATH=/app
-ENV STATIC_DIR=static
+FROM node:24-alpine AS runtime
 
-# Add Node.js and npm for npx support
-RUN apt-get update && \
-    apt-get install -y curl && \
-    curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && \
-    apt-get install -y nodejs && \
-    rm -rf /var/lib/apt/lists/*
+RUN addgroup -S app && adduser -S app -G app
+USER app
+
+WORKDIR /home/app
+
+# Copy built backend
+COPY --from=backend-builder /home/app/capsule-agents-backend/dist ./dist
+COPY --from=backend-builder /home/app/capsule-agents-backend/node_modules ./node_modules
 
 # Create static directory for the Vite-built assets
 RUN mkdir -p ./static
 
-# Add agent-workspace directory at root
-RUN mkdir /agent-workspace
+# Add agent-workspace directory in user home
+RUN mkdir -p ./agent-workspace
 
-# Copy Vite's dist/ into static for FastAPI to serve
+# Copy Vite's dist/ into static for Hono to serve
 COPY --from=frontend-builder /home/app/capsule-agents-frontend/dist/ ./static/
 
 EXPOSE 80
 
-# Use uv to invoke FastAPI; serving static at “/” via StaticFiles in your main.py
-ENTRYPOINT ["uv", "run", "-m", "uvicorn", "backend.app.main:app", \
-    "--host", "0.0.0.0", "--port", "80", "--log-config", "log_conf.yaml" ]
+# Use node to run the Hono server
+ENTRYPOINT ["node", "dist/index.js"]
