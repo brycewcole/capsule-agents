@@ -39,6 +39,7 @@ export default function NewChatInterface() {
     body: {
       chatId: currentChatId,
     },
+    streamProtocol: 'text',
     onError: (error: Error) => {
       console.error('Chat error:', error)
       showErrorToast(error, { title: "Chat Error" })

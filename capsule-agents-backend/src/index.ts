@@ -2,7 +2,8 @@ import { Hono } from 'hono';
 import { serve } from '@hono/node-server';
 import { serveStatic } from '@hono/node-server/serve-static';
 import { cors } from 'hono/cors';
-import { streamText, UIMessage, convertToCoreMessages } from 'ai';
+import { streamText as honoStreamText } from 'hono/streaming';
+import { streamText, UIMessage, convertToModelMessages } from 'ai';
 import { openai } from '@ai-sdk/openai';
 import { fileAccessTool } from './tools/file-access.js';
 import { braveSearchTool } from './tools/brave-search.js';
@@ -56,7 +57,7 @@ app.post('/api/chat', async (c) => {
 
   const result = streamText({
     model: openai(process.env.OPENAI_API_MODEL || 'gpt-4o'),
-    messages: convertToCoreMessages(combinedMessages),
+    messages: convertToModelMessages(combinedMessages),
     tools,
     onFinish: async ({ text }) => {
       try {
@@ -68,8 +69,13 @@ app.post('/api/chat', async (c) => {
     }
   });
 
-  // Return structured stream using stable API
-  return result.toDataStreamResponse();
+  // Use Hono's streaming helper to properly stream tokens
+  return honoStreamText(c, async (stream) => {
+    // Iterate over the AI SDK's text stream and write each chunk
+    for await (const textPart of result.textStream) {
+      await stream.write(textPart);
+    }
+  });
 });
 
 // Serve static files from the frontend build
@@ -77,7 +83,6 @@ app.use('/*', serveStatic({ root: './static' }));
 
 // Start the server
 const port = process.env.PORT ? parseInt(process.env.PORT) : 80;
-console.log(`Server is running on http://localhost:${port}`);
 
 serve({
   fetch: app.fetch,

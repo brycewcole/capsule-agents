@@ -10,7 +10,7 @@ WORKDIR /home/app/capsule-agents-frontend
 # 2) copy only package manifests and install deps
 COPY --chown=app:app capsule-agents-frontend/package.json ./
 COPY --chown=app:app capsule-agents-frontend/package-lock.json ./
-RUN npm ci
+RUN npm install --force
 
 # 3) copy the rest of your source and build with Vite
 COPY --chown=app:app capsule-agents-frontend/ ./
@@ -29,7 +29,7 @@ WORKDIR /home/app/capsule-agents-backend
 
 COPY --chown=app:app capsule-agents-backend/package.json ./
 COPY --chown=app:app capsule-agents-backend/package-lock.json ./
-RUN npm ci
+RUN npm install --force
 
 COPY --chown=app:app capsule-agents-backend/ ./
 # Rebuild native modules for Alpine Linux

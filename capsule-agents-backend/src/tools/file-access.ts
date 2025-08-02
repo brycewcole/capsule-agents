@@ -7,7 +7,7 @@ const AGENT_WORKSPACE = '/agent-workspace';
 
 export const fileAccessTool = tool({
   description: 'Access files in the agent workspace.',
-  parameters: z.object({
+  inputSchema: z.object({
     operation: z.enum(['read', 'write', 'list']).describe('The file operation to perform.'),
     path: z.string().describe('The path to the file or directory.'),
     content: z.string().optional().describe('The content to write to the file.'),

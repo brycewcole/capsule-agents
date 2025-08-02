@@ -5,7 +5,7 @@ const memoryStore: Record<string, string> = {};
 
 export const memoryTool = tool({
   description: 'Store and retrieve information in memory.',
-  parameters: z.object({
+  inputSchema: z.object({
     operation: z.enum(['set', 'get']).describe('The memory operation to perform.'),
     key: z.string().describe('The key to store or retrieve.'),
     value: z.string().optional().describe('The value to store.'),

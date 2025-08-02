@@ -3,7 +3,7 @@ import { z } from 'zod';
 
 export const a2aTool = tool({
   description: 'Communicate with other agents using the Agent-to-Agent (A2A) protocol.',
-  parameters: z.object({
+  inputSchema: z.object({
     agentUrl: z.string().describe('The URL of the agent to communicate with.'),
     method: z.string().describe('The JSON-RPC method to call.'),
     params: z.any().describe('The parameters for the JSON-RPC method.'),

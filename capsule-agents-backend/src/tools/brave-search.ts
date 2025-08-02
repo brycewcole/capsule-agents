@@ -3,7 +3,7 @@ import { z } from 'zod';
 
 export const braveSearchTool = tool({
   description: 'Perform a web search using the Brave Search API.',
-  parameters: z.object({
+  inputSchema: z.object({
     query: z.string().describe('The search query.'),
   }),
   execute: async ({ query }) => {
