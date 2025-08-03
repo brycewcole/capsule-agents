@@ -99,14 +99,6 @@ type Task = {
     metadata?: Record<string, any>;
 };
 
-type TaskSendParams = {
-    id: string;
-    sessionId: string;
-    message: Content;
-    acceptedOutputModes?: string[];
-    historyLength?: number;
-    metadata?: Record<string, any>;
-};
 
 type JSONRPCRequest<P, M extends string> = {
     jsonrpc: "2.0";
@@ -128,20 +120,7 @@ type JSONRPCResponse<T = any> = {
     };
 };
 
-type TaskStatusUpdateEvent = {
-    id: string;
-    status: TaskStatus;
-    final: boolean;
-    metadata?: Record<string, any>;
-};
 
-type TaskArtifactUpdateEvent = {
-    id: string;
-    artifact: Artifact;
-    metadata?: Record<string, any>;
-};
-
-type StreamEventType = TaskStatusUpdateEvent | TaskArtifactUpdateEvent;
 
 // Type for tool definition
 export type Tool = {
@@ -166,23 +145,53 @@ export type AgentInfo = {
     tools?: Tool[];
 };
 
-// Function to send a message to the agent
-export async function sendMessage(message: string, sessionId?: string): Promise<Task> {
-    const taskId = uuidv4();
-    // Use the provided sessionId if available, otherwise create a new one
-    const currentSessionId = sessionId || uuidv4();
+// A2A Message Types
+type A2AMessage = {
+    kind: "message";
+    messageId: string;
+    parts: Array<{
+        kind: "text";
+        text: string;
+    }>;
+    role: "user" | "agent";
+    taskId?: string;
+    contextId?: string;
+};
 
-    const payload: JSONRPCRequest<TaskSendParams, "tasks/send"> = {
+type A2AMessageSendParams = {
+    message: A2AMessage;
+    configuration?: {
+        acceptedOutputModes?: string[];
+        blocking?: boolean;
+        historyLength?: number;
+    };
+    metadata?: Record<string, any>;
+};
+
+// Function to send a message to the agent using A2A protocol
+export async function sendMessage(message: string, _sessionId?: string): Promise<Task> {
+    const messageId = uuidv4();
+
+    const a2aMessage: A2AMessage = {
+        kind: "message",
+        messageId,
+        parts: [{
+            kind: "text",
+            text: message
+        }],
+        role: "user"
+    };
+
+    const payload: JSONRPCRequest<A2AMessageSendParams, "message/send"> = {
         jsonrpc: "2.0",
         id: uuidv4(),
-        method: "tasks/send",
+        method: "message/send",
         params: {
-            id: taskId,
-            sessionId: currentSessionId,
-            message: {
-                role: "user",
-                parts: [{ text: message }],
-            },
+            message: a2aMessage,
+            configuration: {
+                acceptedOutputModes: ["text/plain"],
+                blocking: true
+            }
         },
     };
 
@@ -231,23 +240,60 @@ export async function sendMessage(message: string, sessionId?: string): Promise<
     }
 }
 
-// Function to stream messages from the agent
-export async function* streamMessage(message: string, sessionId?: string): AsyncGenerator<StreamEventType> {
-    const taskId = uuidv4();
-    // Use the provided sessionId if available, otherwise create a new one
-    const currentSessionId = sessionId || uuidv4();
+// A2A Streaming Response Types
+type A2ATaskStatusUpdateEvent = {
+    kind: "status-update";
+    taskId: string;
+    contextId: string;
+    status: TaskStatus;
+    final: boolean;
+    metadata?: Record<string, any>;
+};
 
-    const payload: JSONRPCRequest<TaskSendParams, "tasks/sendSubscribe"> = {
+type A2ATaskArtifactUpdateEvent = {
+    kind: "artifact-update";
+    taskId: string;
+    contextId: string;
+    artifact: Artifact;
+    metadata?: Record<string, any>;
+};
+
+type A2ATask = {
+    id: string;
+    kind: "task";
+    contextId: string;
+    status: TaskStatus;
+    history?: A2AMessage[];
+    artifacts?: Artifact[];
+    metadata?: Record<string, any>;
+};
+
+type A2AStreamEventType = A2ATask | A2AMessage | A2ATaskStatusUpdateEvent | A2ATaskArtifactUpdateEvent;
+
+// Function to stream messages from the agent using A2A protocol
+export async function* streamMessage(message: string, _sessionId?: string): AsyncGenerator<A2AStreamEventType> {
+    const messageId = uuidv4();
+
+    const a2aMessage: A2AMessage = {
+        kind: "message",
+        messageId,
+        parts: [{
+            kind: "text",
+            text: message
+        }],
+        role: "user"
+    };
+
+    const payload: JSONRPCRequest<A2AMessageSendParams, "message/stream"> = {
         jsonrpc: "2.0",
         id: uuidv4(),
-        method: "tasks/sendSubscribe",
+        method: "message/stream",
         params: {
-            id: taskId,
-            sessionId: currentSessionId,
-            message: {
-                role: "user",
-                parts: [{ text: message }],
-            },
+            message: a2aMessage,
+            configuration: {
+                acceptedOutputModes: ["text/plain"],
+                blocking: false
+            }
         },
     };
 
@@ -299,7 +345,7 @@ export async function* streamMessage(message: string, sessionId?: string): Async
                 if (line.startsWith('data: ')) {
                     const json = line.slice(6).trim();
                     if (json) {
-                        const data = JSON.parse(json) as JSONRPCResponse<StreamEventType>;
+                        const data = JSON.parse(json) as JSONRPCResponse<A2AStreamEventType>;
 
                         if (data.error) {
                             throw {
@@ -495,24 +541,23 @@ export async function getAvailableModels(): Promise<Model[]> {
 }
 
 
-// Helper function to extract tool calls from task history
-export function extractToolCalls(task: Task): ToolCall[] {
-    console.log("extractToolCalls called with task:", task)
+// Helper function to extract tool calls from A2A task or message
+export function extractToolCalls(taskOrEvent: A2ATask | A2AMessage | any): ToolCall[] {
+    console.log("extractToolCalls called with:", taskOrEvent)
     const toolCalls: ToolCall[] = []
     
-    if (task.history && task.history.length > 0) {
-        console.log("Processing task history with", task.history.length, "events")
+    // Handle A2A Task type
+    if (taskOrEvent.kind === "task" && taskOrEvent.history) {
+        console.log("Processing A2A task history with", taskOrEvent.history.length, "messages")
         
         // Track function calls and their responses
         const functionCalls = new Map<string, { name: string; args: Record<string, unknown> }>()
         
-        for (const event of task.history) {
-            console.log("Processing event:", event)
-            
-            if (event.content && event.content.parts) {
-                for (const part of event.content.parts) {
+        for (const message of taskOrEvent.history) {
+            if (message.parts) {
+                for (const part of message.parts) {
                     // Check for function calls
-                    if (part.function_call) {
+                    if ('function_call' in part && part.function_call) {
                         console.log("Found function call:", part.function_call)
                         functionCalls.set(part.function_call.id, {
                             name: part.function_call.name,
@@ -521,7 +566,7 @@ export function extractToolCalls(task: Task): ToolCall[] {
                     }
                     
                     // Check for function responses
-                    if (part.function_response) {
+                    if ('function_response' in part && part.function_response) {
                         console.log("Found function response:", part.function_response)
                         const callId = part.function_response.id
                         const call = functionCalls.get(callId)
@@ -538,19 +583,110 @@ export function extractToolCalls(task: Task): ToolCall[] {
                 }
             }
         }
-    } else {
-        console.log("No task history or empty history")
+    }
+    // Handle legacy Task type for backward compatibility
+    else if (taskOrEvent.history && taskOrEvent.history.length > 0) {
+        console.log("Processing legacy task history")
+        // Keep the old logic for backward compatibility
+        const functionCalls = new Map<string, { name: string; args: Record<string, unknown> }>()
+        
+        for (const event of taskOrEvent.history) {
+            if (event.content && event.content.parts) {
+                for (const part of event.content.parts) {
+                    if (part.function_call) {
+                        functionCalls.set(part.function_call.id, {
+                            name: part.function_call.name,
+                            args: part.function_call.args || {}
+                        })
+                    }
+                    
+                    if (part.function_response) {
+                        const callId = part.function_response.id
+                        const call = functionCalls.get(callId)
+                        
+                        if (call) {
+                            toolCalls.push({
+                                name: call.name,
+                                args: call.args,
+                                result: part.function_response.response
+                            })
+                        }
+                    }
+                }
+            }
+        }
     }
     
     console.log("Final extracted tool calls:", toolCalls)
     return toolCalls
 }
 
-// Helper function to extract text from a task response
-export function extractResponseText(task: Task): string {
-    // First try to get text from artifacts if they exist
-    if (task.artifacts && task.artifacts.length > 0) {
-        const textArtifact = task.artifacts.find(artifact =>
+// Helper function to extract text from A2A response
+export function extractResponseText(taskOrEvent: A2ATask | A2AMessage | Task | A2AStreamEventType): string {
+    // Handle A2A Message
+    if ('kind' in taskOrEvent && taskOrEvent.kind === "message") {
+        return taskOrEvent.parts
+            .filter(part => part.kind === "text")
+            .map(part => part.text)
+            .join('');
+    }
+    
+    // Handle A2A Task
+    if ('kind' in taskOrEvent && taskOrEvent.kind === "task") {
+        const a2aTask = taskOrEvent as A2ATask;
+        
+        // First try to get text from artifacts if they exist
+        if (a2aTask.artifacts && a2aTask.artifacts.length > 0) {
+            const textArtifact = a2aTask.artifacts.find(artifact =>
+                artifact.parts && artifact.parts.some(part => 'text' in part)
+            );
+
+            if (textArtifact) {
+                return textArtifact.parts.map(part => 'text' in part ? part.text : '').join('');
+            }
+        }
+
+        // Check status message
+        if (a2aTask.status && a2aTask.status.message) {
+            // Handle legacy Content type in status message
+            const statusMessage = a2aTask.status.message as any;
+            if (statusMessage.parts) {
+                return statusMessage.parts
+                    .map((part: any) => part.text || '')
+                    .join('');
+            }
+        }
+        
+        // Check latest message in history
+        if (a2aTask.history && a2aTask.history.length > 0) {
+            const lastMessage = a2aTask.history[a2aTask.history.length - 1];
+            if (lastMessage.role === "agent") {
+                return lastMessage.parts
+                    .filter(part => part.kind === "text")
+                    .map(part => part.text)
+                    .join('');
+            }
+        }
+    }
+    
+    // Handle status update events
+    if ('kind' in taskOrEvent && taskOrEvent.kind === "status-update") {
+        const statusEvent = taskOrEvent as A2ATaskStatusUpdateEvent;
+        if (statusEvent.status.message) {
+            // Handle legacy Content type in status message
+            const statusMessage = statusEvent.status.message as any;
+            if (statusMessage.parts) {
+                return statusMessage.parts
+                    .map((part: any) => part.text || '')
+                    .join('');
+            }
+        }
+    }
+    
+    // Handle legacy Task type for backward compatibility
+    const legacyTask = taskOrEvent as Task;
+    if (legacyTask.artifacts && legacyTask.artifacts.length > 0) {
+        const textArtifact = legacyTask.artifacts.find(artifact =>
             artifact.parts && artifact.parts.some(part => 'text' in part)
         );
 
@@ -559,12 +695,14 @@ export function extractResponseText(task: Task): string {
         }
     }
 
-    // If no artifacts or no text found in artifacts, check status message
-    if (task.status && task.status.message && task.status.message.parts) {
-        return task.status.message.parts
+    if (legacyTask.status && legacyTask.status.message && legacyTask.status.message.parts) {
+        return legacyTask.status.message.parts
             .map(part => 'text' in part ? part.text : '')
             .join('');
     }
 
     return "";
 }
+
+// Export A2A types for use in components
+export type { A2AMessage, A2ATask, A2AStreamEventType, A2ATaskStatusUpdateEvent, A2ATaskArtifactUpdateEvent };

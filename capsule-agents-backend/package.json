@@ -12,13 +12,14 @@
   "license": "ISC",
   "description": "",
   "dependencies": {
+    "@a2a-js/sdk": "^0.2.5",
     "@ai-sdk/openai": "^2.0.0",
     "@hono/node-server": "^1.17.1",
     "ai": "^5.0.0",
     "better-sqlite3": "^12.2.0",
     "hono": "^4.8.10",
     "uuid": "^11.1.0",
-    "zod": "^4.0.0"
+    "zod": "^3.25.0"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.13",

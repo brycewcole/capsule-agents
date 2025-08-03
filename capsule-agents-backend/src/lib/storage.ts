@@ -17,6 +17,16 @@ export async function createChat(userId: string): Promise<string> {
   return sessionId;
 }
 
+export async function createChatWithId(sessionId: string, userId: string): Promise<void> {
+  const db = getDb();
+  const now = Date.now() / 1000;
+
+  const stmt = db.prepare(
+    'INSERT OR IGNORE INTO sessions (app_name, user_id, id, state, create_time, update_time) VALUES (?, ?, ?, ?, ?, ?)'
+  );
+  stmt.run(APP_NAME, userId, sessionId, JSON.stringify({}), now, now);
+}
+
 export async function loadChat(sessionId: string): Promise<UIMessage[]> {
   const db = getDb();
   const stmt = db.prepare('SELECT content FROM events WHERE session_id = ? ORDER BY timestamp ASC');

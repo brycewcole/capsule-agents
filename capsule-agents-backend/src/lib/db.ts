@@ -8,13 +8,12 @@ export function getDb() {
   if (!db) {
     db = new Database(dbPath);
     db.pragma('journal_mode = WAL');
-    createTables();
+    createTables(db);
   }
   return db;
 }
 
-function createTables() {
-  const db = getDb();
+function createTables(db: Database.Database) {
   db.exec(`
     CREATE TABLE IF NOT EXISTS sessions (
         app_name    TEXT,

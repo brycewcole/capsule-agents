@@ -1,6 +1,10 @@
 import { v4 as uuidv4 } from 'uuid';
+import { HttpA2AClient } from './a2a-client';
 
-// Chat API functions for Vercel AI SDK integration
+// A2A Client instance
+export const a2aClient = new HttpA2AClient('');
+
+// Non-A2A Chat API functions
 export class ChatAPI {
   private baseURL: string;
 
@@ -8,7 +12,6 @@ export class ChatAPI {
     this.baseURL = baseURL;
   }
 
-  // Create a new chat session
   async createChat(userId?: string): Promise<{ chatId: string }> {
     const response = await fetch(`${this.baseURL}/api/chat/create`, {
       method: 'POST',
@@ -25,7 +28,6 @@ export class ChatAPI {
     return response.json();
   }
 
-  // Check if backend is healthy
   async checkHealth(): Promise<{ status: string }> {
     const response = await fetch(`${this.baseURL}/api/health`);
     
@@ -37,7 +39,6 @@ export class ChatAPI {
   }
 }
 
-// Default instance
 export const chatAPI = new ChatAPI();
 
 // Storage utility for chat sessions
@@ -69,9 +70,8 @@ export class ChatStorage {
   }
 
   static startNewChat(): string {
-    this.clearCurrentChatId();
-    const chatId = uuidv4();
-    this.setCurrentChatId(chatId);
-    return chatId;
+    const newChatId = uuidv4();
+    this.setCurrentChatId(newChatId);
+    return newChatId;
   }
 }

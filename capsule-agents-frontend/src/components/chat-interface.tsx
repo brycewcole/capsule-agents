@@ -5,11 +5,10 @@ import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { ArrowRight, Loader2, MessageSquare, Plus } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card"
-import { checkHealth, sendMessage, extractResponseText, extractToolCalls, getSessionHistory, type ToolCall as ApiToolCall } from "@/lib/api"
-import { v4 as uuidv4 } from "uuid"
+import { checkHealth, streamMessage, extractResponseText, extractToolCalls, type ToolCall as ApiToolCall, type A2ATask } from "@/lib/api"
 import Markdown from "react-markdown"
 import { ToolCallDisplay } from "@/components/tool-call-display"
-import { showErrorToast, getErrorMessage, isRecoverableError, isMCPError, isA2AError, type JSONRPCError } from "@/lib/error-utils"
+import { showErrorToast, getErrorMessage, isRecoverableError, type JSONRPCError } from "@/lib/error-utils"
 import { ErrorDisplay } from "@/components/ui/error-display"
 
 type ToolCall = ApiToolCall
@@ -21,173 +20,33 @@ type Message = {
   toolCalls?: ToolCall[]
 }
 
-// Constants for localStorage keys
-const STORAGE_KEYS = {
-  SESSION_ID: "capsule-agent-session-id"
-}
 
 export default function ChatInterface() {
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState("")
   const [isLoading, setIsLoading] = useState(false)
   const [isBackendConnected, setIsBackendConnected] = useState(false)
-  const [sessionId, setSessionId] = useState<string>("")
   const [connectionError, setConnectionError] = useState<JSONRPCError | Error | string | null>(null)
+  const [currentTask, setCurrentTask] = useState<A2ATask | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   
-  // Initialize state from localStorage on component mount
+  // Initialize state - check backend connection
   useEffect(() => {
     const initializeState = async () => {
       try {
-        // Load saved sessionId or create a new one
-        const savedSessionId = localStorage.getItem(STORAGE_KEYS.SESSION_ID)
-        let currentSessionId: string
-        
-        if (savedSessionId) {
-          currentSessionId = savedSessionId
-          setSessionId(currentSessionId)
-          
-          // Load chat history from backend for existing session
-          try {
-            console.log("Loading session history for:", currentSessionId)
-            const history = await getSessionHistory(currentSessionId)
-            console.log("Received history:", history)
-            console.log("Number of events in history:", history.events.length)
-            const loadedMessages: Message[] = []
-            
-            // First pass: collect all function calls and responses across all events
-            const functionCalls = new Map<string, { name: string; args: Record<string, unknown> }>()
-            const functionResponses = new Map<string, unknown>()
-            
-            for (const event of history.events) {
-              if (event.content && event.content !== null) {
-                try {
-                  const contentObj = JSON.parse(event.content)
-                  if (contentObj && contentObj.parts) {
-                    for (const part of contentObj.parts) {
-                      // Collect function calls
-                      if (part.function_call) {
-                        functionCalls.set(part.function_call.id, {
-                          name: part.function_call.name,
-                          args: part.function_call.args || {}
-                        })
-                      }
-                      
-                      // Collect function responses
-                      if (part.function_response) {
-                        functionResponses.set(part.function_response.id, part.function_response.response)
-                      }
-                    }
-                  }
-                } catch (e) {
-                  console.error("Error parsing event content for tool calls:", e)
-                }
-              }
-            }
-            
-            // Build tool calls by matching calls with responses
-            const allToolCalls: ToolCall[] = []
-            console.log("Function calls found:", functionCalls.size)
-            console.log("Function responses found:", functionResponses.size)
-            for (const [callId, call] of functionCalls.entries()) {
-              const response = functionResponses.get(callId)
-              console.log(`Matching call ${callId}:`, call, "with response:", response)
-              if (response) {
-                allToolCalls.push({
-                  name: call.name,
-                  args: call.args,
-                  result: response
-                })
-              }
-            }
-            console.log("Total tool calls created:", allToolCalls.length, allToolCalls)
-            
-            // Second pass: create messages
-            for (const event of history.events) {
-              console.log("Processing event:", event)
-              
-              // Extract text content from the JSON string
-              let textContent = ""
-              
-              if (event.content && event.content !== null) {
-                try {
-                  const contentObj = JSON.parse(event.content)
-                  if (contentObj && contentObj.parts && contentObj.parts.length > 0) {
-                    textContent = contentObj.parts.map((part: unknown) => (part as { text?: string }).text || "").join("")
-                  }
-                } catch (e) {
-                  console.error("Error parsing event content:", e)
-                  textContent = event.content // fallback to raw content
-                }
-              }
-              
-              if (event.author === 'user') {
-                loadedMessages.push({
-                  role: 'user',
-                  content: textContent
-                })
-              } else if (event.author === 'capsule_agent') {
-                // For the final agent response, attach all tool calls
-                if (textContent && allToolCalls.length > 0) {
-                  loadedMessages.push({
-                    role: 'agent',
-                    content: textContent,
-                    toolCalls: [...allToolCalls]  // Create a copy of the array
-                  })
-                  // Clear tool calls so they don't appear in subsequent messages
-                  allToolCalls.length = 0
-                } else if (textContent) {
-                  loadedMessages.push({
-                    role: 'agent',
-                    content: textContent
-                  })
-                }
-                // Skip empty agent messages (function call/response events with no text)
-              }
-            }
-            
-            console.log("Loaded messages:", loadedMessages)
-            console.log("Number of loaded messages:", loadedMessages.length)
-            setMessages(loadedMessages)
-          } catch (error) {
-            console.error("Failed to load session history:", error)
-            showErrorToast(error, { title: "Could not load session history" })
-            // If we can't load history, start fresh but keep the session ID
-          }
-        } else {
-          currentSessionId = uuidv4()
-          setSessionId(currentSessionId)
-          localStorage.setItem(STORAGE_KEYS.SESSION_ID, currentSessionId)
-        }
-      } catch (error) {
-        console.error("Error initializing state:", error)
-        // If backend is down, create new session anyway
-        const newSessionId = uuidv4()
-        setSessionId(newSessionId)
-        localStorage.setItem(STORAGE_KEYS.SESSION_ID, newSessionId)
-      }
-    }
-    
-    initializeState()
-  }, [])
-  
-  
-
-  // Check backend health on component mount
-  useEffect(() => {
-    const checkBackendHealth = async () => {
-      try {
-        const health = await checkHealth()
-        setIsBackendConnected(health.status === "ok")
+        console.log("Checking backend health...")
+        await checkHealth()
+        setIsBackendConnected(true)
         setConnectionError(null)
+        console.log("Backend connection successful")
       } catch (error) {
-        console.error("Backend health check failed:", error)
+        console.error("Backend connection failed:", error)
         setIsBackendConnected(false)
-        setConnectionError(error as JSONRPCError | Error | string)
+        setConnectionError(error as JSONRPCError | Error)
       }
     }
-    
-    checkBackendHealth()
+
+    initializeState()
   }, [])
   
   // Scroll to bottom of messages
@@ -201,11 +60,7 @@ export default function ChatInterface() {
 
   const handleNewChat = () => {
     setMessages([])
-    const newSessionId = uuidv4()
-    setSessionId(newSessionId)
-    
-    // Update localStorage
-    localStorage.setItem(STORAGE_KEYS.SESSION_ID, newSessionId)
+    setCurrentTask(null)
   }
 
   const handleSendMessage = async () => {
@@ -222,37 +77,72 @@ export default function ChatInterface() {
     setMessages(prev => [...prev, { role: "agent", content: "", isLoading: true }])
     
     try {
-      // Send the message with the current sessionId
-      const taskResponse = await sendMessage(userMessage, sessionId)
+      // Use A2A streaming
+      let currentResponseText = ""
+      let finalToolCalls: ToolCall[] = []
       
-      // Debug: Log the full task response
-      console.log("Full task response:", taskResponse)
-      console.log("Task history:", taskResponse.history)
-      
-      // Extract the response text and tool calls from the task
-      const responseText = extractResponseText(taskResponse)
-      const toolCalls = extractToolCalls(taskResponse)
-      
-      // Debug: Log extracted tool calls
-      console.log("Extracted tool calls:", toolCalls)
-      
-      // Update the agent's message with the response
-      setMessages(prev => {
-        const updated = [...prev]
-        const lastMessage = updated[updated.length - 1]
-        if (lastMessage.role === "agent") {
-          lastMessage.content = responseText || "I couldn't generate a response. Please try again."
-          lastMessage.toolCalls = toolCalls.length > 0 ? toolCalls : undefined
-          lastMessage.isLoading = false
+      for await (const event of streamMessage(userMessage)) {
+        console.log("Received A2A event:", event)
+        
+        // Handle different event types
+        if (event.kind === "task") {
+          // Initial task created
+          setCurrentTask(event as A2ATask)
+          console.log("Task created:", event.id)
+        } else if (event.kind === "message" && event.role === "agent") {
+          // Streaming message updates
+          const newText = extractResponseText(event)
+          if (newText) {
+            currentResponseText = newText
+            
+            // Update the agent's message in real-time
+            setMessages(prev => {
+              const updated = [...prev]
+              const lastMessage = updated[updated.length - 1]
+              if (lastMessage.role === "agent") {
+                lastMessage.content = currentResponseText
+                lastMessage.isLoading = true // Still loading until final
+              }
+              return updated
+            })
+          }
+        } else if (event.kind === "status-update") {
+          // Handle status updates
+          console.log("Status update:", event.status.state)
+          
+          if (event.final && event.status.state === "completed") {
+            // Final completion - extract tool calls from current task
+            if (currentTask) {
+              finalToolCalls = extractToolCalls(currentTask)
+            }
+            
+            // Mark as complete
+            setMessages(prev => {
+              const updated = [...prev]
+              const lastMessage = updated[updated.length - 1]
+              if (lastMessage.role === "agent") {
+                lastMessage.content = currentResponseText || "I couldn't generate a response. Please try again."
+                lastMessage.toolCalls = finalToolCalls.length > 0 ? finalToolCalls : undefined
+                lastMessage.isLoading = false
+              }
+              return updated
+            })
+            
+            setIsLoading(false)
+            break
+          } else if (event.final && event.status.state === "failed") {
+            // Handle failure
+            throw new Error(extractResponseText(event) || "Task failed")
+          }
         }
-        return updated
-      })
+      }
+      
     } catch (error) {
       console.error("Error getting response from agent:", error)
       
       // Show error toast with development details and specific guidance
       showErrorToast(error, { 
-        title: isMCPError(error) ? "MCP Server Error" : isA2AError(error) ? "A2A Agent Error" : "Message Send Failed",
+        title: "A2A Streaming Error",
         action: isRecoverableError(error) ? (
           <Button variant="outline" size="sm" onClick={() => handleSendMessage()}>
             Retry
