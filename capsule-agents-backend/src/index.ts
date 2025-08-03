@@ -2,17 +2,16 @@ import { Hono } from 'hono';
 import { serve } from '@hono/node-server';
 import { serveStatic } from '@hono/node-server/serve-static';
 import { cors } from 'hono/cors';
-import { streamText as honoStreamText, stream, streamSSE } from 'hono/streaming';
-import { streamText, UIMessage, convertToModelMessages } from 'ai';
-import { openai } from '@ai-sdk/openai';
-import { fileAccessTool } from './tools/file-access.js';
-import { braveSearchTool } from './tools/brave-search.js';
-import { memoryTool } from './tools/memory.js';
-import { a2aTool } from './tools/a2a.js';
-import { createChat, loadChat, saveChat } from './lib/storage.js';
-import { getDb } from './lib/db.js'; // Import getDb to ensure tables are created
+import { streamSSE } from 'hono/streaming';
+import { createChat } from './lib/storage.js';
+import { getDb } from './lib/db.js';
 import { CapsuleAgentA2ARequestHandler } from './lib/a2a-request-handler.js';
 import { JsonRpcTransportHandler } from '@a2a-js/sdk/server';
+
+// Type guard to check if result is an AsyncGenerator (streaming response)
+function isAsyncGenerator(value: any): value is AsyncGenerator<any, void, undefined> {
+  return value && typeof value === 'object' && Symbol.asyncIterator in value;
+}
 
 const app = new Hono();
 
@@ -39,9 +38,6 @@ app.use('/', cors({
 // Initialize database and create tables on startup
 getDb();
 
-// A2A Protocol Endpoints
-
-// Agent Card endpoint (A2A spec requirement)
 app.get('/.well-known/agent.json', async (c) => {
   try {
     const agentCard = await a2aRequestHandler.getAgentCard();
@@ -54,17 +50,15 @@ app.get('/.well-known/agent.json', async (c) => {
 // Main A2A JSON-RPC endpoint
 app.post('/', async (c) => {
   const body = await c.req.json();
-  
+
   try {
     const result = await jsonRpcHandler.handle(body);
-    
-    // Check if the result is an AsyncGenerator (streaming response)
-    if (result && typeof result === 'object' && Symbol.asyncIterator in result) {
-      // Handle streaming response with SSE
+
+    if (isAsyncGenerator(result)) {
       return streamSSE(c, async (stream) => {
         try {
           let eventId = 0;
-          for await (const event of result as AsyncGenerator<any>) {
+          for await (const event of result) {
             await stream.writeSSE({
               data: JSON.stringify(event),
               id: String(eventId++),
@@ -86,7 +80,6 @@ app.post('/', async (c) => {
         }
       });
     } else {
-      // Handle non-streaming response with regular JSON
       return c.json(result);
     }
   } catch (error) {
@@ -111,49 +104,6 @@ app.post('/api/chat/create', async (c) => {
   const { userId } = await c.req.json();
   const chatId = await createChat(userId || 'anonymous');
   return c.json({ chatId });
-});
-
-app.post('/api/chat', async (c) => {
-  const { messages, chatId }: { messages: UIMessage[], chatId: string } = await c.req.json();
-
-  const chatHistory = await loadChat(chatId);
-  const combinedMessages = [...chatHistory, ...messages];
-
-  const tools: any = {};
-  if (process.env.FILE_ACCESS_TOOL_ENABLED === 'true') {
-    tools.fileAccess = fileAccessTool;
-  }
-  if (process.env.BRAVE_SEARCH_TOOL_ENABLED === 'true') {
-    tools.braveSearch = braveSearchTool;
-  }
-  if (process.env.MEMORY_TOOL_ENABLED === 'true') {
-    tools.memory = memoryTool;
-  }
-  if (process.env.A2A_TOOL_ENABLED === 'true') {
-    tools.a2a = a2aTool;
-  }
-
-  const result = streamText({
-    model: openai(process.env.OPENAI_API_MODEL || 'gpt-4o'),
-    messages: convertToModelMessages(combinedMessages),
-    tools,
-    onFinish: async ({ text }) => {
-      try {
-        // Save chat completion - TODO: implement proper message saving
-        // Don't log to console as it can corrupt SSE stream
-      } catch (error) {
-        // Don't log to console as it can corrupt SSE stream
-      }
-    }
-  });
-
-  // Use Hono's streaming helper to properly stream tokens
-  return honoStreamText(c, async (stream) => {
-    // Iterate over the AI SDK's text stream and write each chunk
-    for await (const textPart of result.textStream) {
-      await stream.write(textPart);
-    }
-  });
 });
 
 // Serve static files from the frontend build at /editor path
