@@ -55,55 +55,50 @@ app.get('/.well-known/agent.json', async (c) => {
 app.post('/', async (c) => {
   const body = await c.req.json();
   
-  // Check if this is a streaming method
-  if (body.method === 'message/stream' || body.method === 'tasks/resubscribe') {
-    // Handle streaming methods with SSE
-    return streamSSE(c, async (stream) => {
-      try {
-        if (body.method === 'message/stream') {
+  try {
+    const result = await jsonRpcHandler.handle(body);
+    
+    // Check if the result is an AsyncGenerator (streaming response)
+    if (result && typeof result === 'object' && Symbol.asyncIterator in result) {
+      // Handle streaming response with SSE
+      return streamSSE(c, async (stream) => {
+        try {
           let eventId = 0;
-          for await (const event of a2aRequestHandler.sendMessageStream(body.params)) {
+          for await (const event of result as AsyncGenerator<any>) {
             await stream.writeSSE({
-              data: JSON.stringify({
-                jsonrpc: '2.0',
-                id: body.id,
-                result: event,
-              }),
+              data: JSON.stringify(event),
               id: String(eventId++),
             });
           }
-        } else if (body.method === 'tasks/resubscribe') {
-          let eventId = 0;
-          for await (const event of a2aRequestHandler.resubscribe(body.params)) {
-            await stream.writeSSE({
-              data: JSON.stringify({
-                jsonrpc: '2.0',
-                id: body.id,
-                result: event,
-              }),
-              id: String(eventId++),
-            });
-          }
+        } catch (error) {
+          await stream.writeSSE({
+            data: JSON.stringify({
+              jsonrpc: '2.0',
+              id: body.id,
+              error: {
+                code: -32603,
+                message: 'Streaming error',
+                data: error instanceof Error ? error.message : 'Unknown error'
+              }
+            }),
+            id: 'error',
+          });
         }
-      } catch (error) {
-        await stream.writeSSE({
-          data: JSON.stringify({
-            jsonrpc: '2.0',
-            id: body.id,
-            error: {
-              code: -32603,
-              message: 'Internal error',
-              data: error instanceof Error ? error.message : 'Unknown error'
-            }
-          }),
-          id: 'error',
-        });
+      });
+    } else {
+      // Handle non-streaming response with regular JSON
+      return c.json(result);
+    }
+  } catch (error) {
+    return c.json({
+      jsonrpc: '2.0',
+      id: body.id,
+      error: {
+        code: -32603,
+        message: 'Internal error',
+        data: error instanceof Error ? error.message : 'Unknown error'
       }
-    });
-  } else {
-    // Handle non-streaming methods with JSON-RPC handler
-    const response = await jsonRpcHandler.handle(body);
-    return c.json(response);
+    }, 500);
   }
 });
 
