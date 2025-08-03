@@ -176,7 +176,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
 
   async getAgentCard(): Promise<AgentCard> {
     console.log('CapsuleAgentA2ARequestHandler.getAgentCard() called');
-    const agentUrl = process.env.AGENT_URL || 'http://localhost:80';
+    const agentUrl = process.env.AGENT_URL || 'http://localhost:8080';
 
     let agentName = 'Capsule Agent';
     let agentDescription = 'A versatile AI agent with configurable tools and capabilities';
