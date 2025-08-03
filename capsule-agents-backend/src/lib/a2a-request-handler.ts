@@ -9,11 +9,10 @@ import {
   TaskPushNotificationConfig,
   TaskStatusUpdateEvent,
   TaskArtifactUpdateEvent,
-  Part,
   TextPart,
 } from '@a2a-js/sdk';
 import { A2ARequestHandler } from '@a2a-js/sdk/server';
-import { streamText, convertToModelMessages, UIMessage, Tool } from 'ai';
+import * as Vercel from 'ai';
 import { openai } from '@ai-sdk/openai';
 import { fileAccessTool } from '../tools/file-access.js';
 import { braveSearchTool } from '../tools/brave-search.js';
@@ -52,7 +51,7 @@ class InMemoryStorage {
 }
 
 // Utility function to convert a Vercel AI tool to an A2A skill
-function toolToSkill(toolName: string, tool: Tool, enabled: boolean = true): AgentSkill | null {
+function toolToSkill(toolName: string, tool: Vercel.Tool, enabled: boolean = true): AgentSkill | null {
   if (!enabled) return null;
 
   // Extract tags from the tool description and schema
@@ -111,8 +110,8 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
     }
   }
 
-  private getAvailableTools(): Record<string, Tool> {
-    const tools: Record<string, Tool> = {};
+  private getAvailableTools(): Record<string, Vercel.Tool> {
+    const tools: Record<string, Vercel.Tool> = {};
 
     try {
       console.log('Getting agent info for tools...');
@@ -353,7 +352,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
       const chatHistory = await loadChat(task.id);
       console.log('Chat history loaded:', { messageCount: chatHistory.length });
 
-      const newMessage: UIMessage = {
+      const newMessage: Vercel.UIMessage = {
         id: crypto.randomUUID(),
         role: 'user',
         parts: [{ type: 'text', text: userText }]
@@ -368,9 +367,10 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
       const model = this.getConfiguredModel();
       console.log('Model configured, starting streamText...');
 
-      const result = streamText({
+      const result = Vercel.streamText({
+        system: this.getSystemPrompt(),
         model,
-        messages: convertToModelMessages(combinedMessages),
+        messages: Vercel.convertToModelMessages(combinedMessages),
         tools,
       });
 
@@ -431,7 +431,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
         // First, ensure the session exists for this task ID
         await this.ensureSessionExists(task.id);
 
-        const assistantMessage: UIMessage = {
+        const assistantMessage: Vercel.UIMessage = {
           id: crypto.randomUUID(),
           role: 'assistant',
           parts: [{ type: 'text', text: fullResponse }]
@@ -488,7 +488,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
       const chatHistory = await loadChat(task.id);
 
       // Convert to UI message format
-      const newMessage: UIMessage = {
+      const newMessage: Vercel.UIMessage = {
         id: crypto.randomUUID(),
         role: 'user',
         parts: [
@@ -504,12 +504,12 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
       // Set up tools
       const tools = this.getAvailableTools();
 
-      const messages = convertToModelMessages(combinedMessages);
+      const messages = Vercel.convertToModelMessages(combinedMessages);
 
 
       // Stream the response
       const model = this.getConfiguredModel();
-      const result = streamText({
+      const result = Vercel.streamText({
         model: 'gpt-4o',
         system: this.getSystemPrompt(),
         messages,
@@ -551,7 +551,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
         // First, ensure the session exists for this task ID
         await this.ensureSessionExists(task.id);
 
-        const assistantMessage: UIMessage = {
+        const assistantMessage: Vercel.UIMessage = {
           id: crypto.randomUUID(),
           role: 'assistant',
           parts: [

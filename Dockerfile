@@ -16,49 +16,53 @@ RUN npm install --force
 COPY --chown=app:app capsule-agents-frontend/ ./
 RUN npm run build
 
-# ─── Stage 2: Build Hono backend ───────────────────────
-FROM node:24-alpine AS backend-builder
+# ─── Stage 2: Build/Cache Deno backend ───────────────────────
+FROM denoland/deno:2.1.0 AS backend-builder
 
-# Install build tools for native modules
-RUN apk add --no-cache python3 make g++
+# Set Deno environment variables for production builds
+ENV DENO_NO_UPDATE_CHECK=1
+ENV DENO_NO_PROMPT=1
 
-RUN addgroup -S app && adduser -S app -G app
-USER app
+WORKDIR /app
 
-WORKDIR /home/app/capsule-agents-backend
+# Copy dependency manifest first for better caching
+COPY --chown=deno:deno capsule-agents-backend/deno.json ./
 
-COPY --chown=app:app capsule-agents-backend/package.json ./
-COPY --chown=app:app capsule-agents-backend/package-lock.json ./
-RUN npm install --force
+# Copy source files
+COPY --chown=deno:deno capsule-agents-backend/src ./src
 
-COPY --chown=app:app capsule-agents-backend/ ./
-# Rebuild native modules for Alpine Linux
-RUN npm rebuild better-sqlite3
-# The tsconfig.json specifies that the output is in the dist directory
-RUN npm run build
+# Install dependencies with scripts allowed for better-sqlite3
+RUN deno install --allow-scripts=npm:better-sqlite3@12.2.0
 
-# ─── Stage 3: Final image (merge UI + API) ────────────────────────
-FROM node:24-alpine AS runtime
+# Cache dependencies and compile the application
+RUN deno cache src/index.ts
 
-RUN addgroup -S app && adduser -S app -G app
-USER app
+# ─── Stage 3: Final runtime image (merge UI + API) ────────────────────────
+FROM denoland/deno:2.1.0 AS runtime
 
-WORKDIR /home/app
+# Set production environment variables
+ENV DENO_NO_UPDATE_CHECK=1
+ENV DENO_NO_PROMPT=1
 
-# Copy built backend
-COPY --from=backend-builder /home/app/capsule-agents-backend/dist ./dist
-COPY --from=backend-builder /home/app/capsule-agents-backend/node_modules ./node_modules
+WORKDIR /app
+
+# Copy cached dependencies and compiled code from builder
+COPY --from=backend-builder /app ./
 
 # Create static directory for the Vite-built assets
-RUN mkdir -p ./static
-
-# Add agent-workspace directory in user home
-RUN mkdir -p ./agent-workspace
+USER root
+RUN mkdir -p ./static && chown -R deno:deno ./static
+RUN mkdir -p ./agent-workspace && chown -R deno:deno ./agent-workspace
+USER deno
 
 # Copy Vite's dist/ into static for Hono to serve
-COPY --from=frontend-builder /home/app/capsule-agents-frontend/dist/ ./static/
+COPY --from=frontend-builder --chown=deno:deno /home/app/capsule-agents-frontend/dist/ ./static/
 
 EXPOSE 80
 
-# Use node to run the Hono server
-ENTRYPOINT ["node", "dist/index.js"]
+# Add healthcheck for container orchestration
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+  CMD deno run --allow-net --no-prompt -q -A - <<< "const resp = await fetch('http://localhost:80/api/health'); if (!resp.ok) throw new Error('Health check failed');"
+
+# Run the Deno application with necessary permissions
+CMD ["deno", "run", "--allow-all", "src/index.ts"]
