@@ -1,6 +1,11 @@
 import { v4 as uuidv4 } from 'uuid';
+import { A2AClient } from '@a2a-js/sdk/client';
+import type { Task as A2ATask, Message as A2AMessage, TaskStatusUpdateEvent, TaskArtifactUpdateEvent } from '@a2a-js/sdk';
 
 const API_BASE_URL = '';
+
+// A2A Client instance
+const a2aClient = new A2AClient(API_BASE_URL || 'http://localhost:8080');
 
 // Auth store for credentials
 class AuthStore {
@@ -100,25 +105,6 @@ type Task = {
 };
 
 
-type JSONRPCRequest<P, M extends string> = {
-    jsonrpc: "2.0";
-    id: string | number;
-    method: M;
-    params: P;
-};
-
-type JSONRPCResponse<T = any> = {
-    jsonrpc: "2.0";
-    id: string | number;
-    result?: T;
-    error?: {
-        code: number;
-        message: string;
-        data?: any;
-        user_message?: string;
-        recovery_action?: string;
-    };
-};
 
 
 
@@ -145,31 +131,10 @@ export type AgentInfo = {
     tools?: Tool[];
 };
 
-// A2A Message Types
-type A2AMessage = {
-    kind: "message";
-    messageId: string;
-    parts: Array<{
-        kind: "text";
-        text: string;
-    }>;
-    role: "user" | "agent";
-    taskId?: string;
-    contextId?: string;
-};
 
-type A2AMessageSendParams = {
-    message: A2AMessage;
-    configuration?: {
-        acceptedOutputModes?: string[];
-        blocking?: boolean;
-        historyLength?: number;
-    };
-    metadata?: Record<string, any>;
-};
 
-// Function to send a message to the agent using A2A protocol
-export async function sendMessage(message: string, _sessionId?: string): Promise<Task> {
+// Function to send a message to the agent using A2A SDK
+export async function sendMessage(message: string, _sessionId?: string) {
     const messageId = uuidv4();
 
     const a2aMessage: A2AMessage = {
@@ -182,95 +147,26 @@ export async function sendMessage(message: string, _sessionId?: string): Promise
         role: "user"
     };
 
-    const payload: JSONRPCRequest<A2AMessageSendParams, "message/send"> = {
-        jsonrpc: "2.0",
-        id: uuidv4(),
-        method: "message/send",
-        params: {
+    try {
+        const result = await a2aClient.sendMessage({
             message: a2aMessage,
             configuration: {
                 acceptedOutputModes: ["text/plain"],
                 blocking: true
             }
-        },
-    };
-
-    try {
-        const response = await fetch(`${API_BASE_URL}/`, {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-            },
-            body: JSON.stringify(payload),
         });
 
-        if (!response.ok) {
-            const errorText = await response.text();
-            let errorData;
-            
-            try {
-                errorData = JSON.parse(errorText);
-            } catch {
-                errorData = { message: errorText };
-            }
-            
-            throw {
-                code: response.status,
-                message: `HTTP ${response.status}: ${response.statusText}`,
-                data: errorData,
-                user_message: `Request failed with status ${response.status}`,
-                recovery_action: response.status >= 500 ? "Try again later" : "Check your request and try again",
-                isAPIError: true
-            };
-        }
-
-        const data = await response.json() as JSONRPCResponse<Task>;
-
-        if (data.error) {
-            throw {
-                ...data.error,
-                isAPIError: true
-            };
-        }
-
-        return data.result as Task;
+        return result;
     } catch (error) {
         console.error("Error sending message:", error);
         throw error;
     }
 }
 
-// A2A Streaming Response Types
-type A2ATaskStatusUpdateEvent = {
-    kind: "status-update";
-    taskId: string;
-    contextId: string;
-    status: TaskStatus;
-    final: boolean;
-    metadata?: Record<string, any>;
-};
+// A2A Stream Event Type combining all possible events
+type A2AStreamEventType = A2ATask | A2AMessage | TaskStatusUpdateEvent | TaskArtifactUpdateEvent;
 
-type A2ATaskArtifactUpdateEvent = {
-    kind: "artifact-update";
-    taskId: string;
-    contextId: string;
-    artifact: Artifact;
-    metadata?: Record<string, any>;
-};
-
-type A2ATask = {
-    id: string;
-    kind: "task";
-    contextId: string;
-    status: TaskStatus;
-    history?: A2AMessage[];
-    artifacts?: Artifact[];
-    metadata?: Record<string, any>;
-};
-
-type A2AStreamEventType = A2ATask | A2AMessage | A2ATaskStatusUpdateEvent | A2ATaskArtifactUpdateEvent;
-
-// Function to stream messages from the agent using A2A protocol
+// Function to stream messages from the agent using A2A SDK
 export async function* streamMessage(message: string, _sessionId?: string): AsyncGenerator<A2AStreamEventType> {
     const messageId = uuidv4();
 
@@ -284,82 +180,17 @@ export async function* streamMessage(message: string, _sessionId?: string): Asyn
         role: "user"
     };
 
-    const payload: JSONRPCRequest<A2AMessageSendParams, "message/stream"> = {
-        jsonrpc: "2.0",
-        id: uuidv4(),
-        method: "message/stream",
-        params: {
+    try {
+        const stream = a2aClient.sendMessageStream({
             message: a2aMessage,
             configuration: {
                 acceptedOutputModes: ["text/plain"],
                 blocking: false
             }
-        },
-    };
-
-    try {
-        const response = await fetch(`${API_BASE_URL}/`, {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-            },
-            body: JSON.stringify(payload),
         });
 
-        if (!response.ok) {
-            const errorText = await response.text();
-            let errorData;
-            
-            try {
-                errorData = JSON.parse(errorText);
-            } catch {
-                errorData = { message: errorText };
-            }
-            
-            throw {
-                code: response.status,
-                message: `HTTP ${response.status}: ${response.statusText}`,
-                data: errorData,
-                user_message: `Streaming request failed with status ${response.status}`,
-                recovery_action: response.status >= 500 ? "Try again later" : "Check your request and try again",
-                isAPIError: true
-            };
-        }
-
-        const reader = response.body!.getReader();
-        const decoder = new TextDecoder();
-
-        let buffer = '';
-
-        while (true) {
-            const { value, done } = await reader.read();
-
-            if (done) break;
-
-            buffer += decoder.decode(value, { stream: true });
-
-            const lines = buffer.split('\n\n');
-            buffer = lines.pop() || '';
-
-            for (const line of lines) {
-                if (line.startsWith('data: ')) {
-                    const json = line.slice(6).trim();
-                    if (json) {
-                        const data = JSON.parse(json) as JSONRPCResponse<A2AStreamEventType>;
-
-                        if (data.error) {
-                            throw {
-                                ...data.error,
-                                isAPIError: true
-                            };
-                        }
-
-                        if (data.result) {
-                            yield data.result;
-                        }
-                    }
-                }
-            }
+        for await (const event of stream) {
+            yield event as A2AStreamEventType;
         }
     } catch (error) {
         console.error("Error streaming message:", error);
@@ -370,7 +201,7 @@ export async function* streamMessage(message: string, _sessionId?: string): Asyn
 // Function to get agent health status
 export async function checkHealth(): Promise<{ status: string }> {
     try {
-        const response = await fetch(`${API_BASE_URL}/health`);
+        const response = await fetch(`${API_BASE_URL}/api/health`);
 
         if (!response.ok) {
             throw {
@@ -431,22 +262,10 @@ export async function getSessionHistory(sessionId: string): Promise<SessionHisto
     }
 }
 
-// Function to get agent metadata
+// Function to get agent metadata using A2A SDK
 export async function getAgentCard() {
     try {
-        const response = await fetch(`${API_BASE_URL}/.well-known/agent.json`);
-
-        if (!response.ok) {
-            throw {
-                code: response.status,
-                message: `Failed to fetch agent metadata: ${response.status}`,
-                user_message: "Could not load agent information",
-                recovery_action: "Try again later",
-                isAPIError: true
-            };
-        }
-
-        return await response.json();
+        return await a2aClient.getAgentCard();
     } catch (error) {
         console.error("Failed to fetch agent card:", error);
         throw error;
@@ -671,7 +490,7 @@ export function extractResponseText(taskOrEvent: A2ATask | A2AMessage | Task | A
     
     // Handle status update events
     if ('kind' in taskOrEvent && taskOrEvent.kind === "status-update") {
-        const statusEvent = taskOrEvent as A2ATaskStatusUpdateEvent;
+        const statusEvent = taskOrEvent as TaskStatusUpdateEvent;
         if (statusEvent.status.message) {
             // Handle legacy Content type in status message
             const statusMessage = statusEvent.status.message as any;
@@ -705,4 +524,4 @@ export function extractResponseText(taskOrEvent: A2ATask | A2AMessage | Task | A
 }
 
 // Export A2A types for use in components
-export type { A2AMessage, A2ATask, A2AStreamEventType, A2ATaskStatusUpdateEvent, A2ATaskArtifactUpdateEvent };
+export type { A2AMessage, A2ATask, A2AStreamEventType, TaskStatusUpdateEvent, TaskArtifactUpdateEvent };

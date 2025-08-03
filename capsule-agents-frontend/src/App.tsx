@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import Header from './components/header';
-import NewChatInterface from './components/new-chat-interface';
+import ChatInterface from './components/chat-interface';
 import { LoginDialog } from './components/login-dialog';
 import { Toaster } from './components/ui/toaster';
 import { testLogin } from './lib/api';
@@ -36,7 +36,7 @@ function App() {
         <Header />
         <div className="container mx-auto flex flex-1 flex-col gap-6 p-4 md:flex-row md:p-6 lg:p-8 min-h-0">
           <div className="flex-1 flex flex-col min-h-0">
-            <NewChatInterface key={isAuthenticated ? 'auth' : 'unauth'} />
+            <ChatInterface key={isAuthenticated ? 'auth' : 'unauth'} />
           </div>
         </div>
       </main>
