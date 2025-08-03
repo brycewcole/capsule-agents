@@ -4,7 +4,6 @@ import type { Task as A2ATask, Message as A2AMessage, TaskStatusUpdateEvent, Tas
 
 const API_BASE_URL = '';
 
-// A2A Client instance
 const a2aClient = new A2AClient(API_BASE_URL || 'http://localhost:8080');
 
 // Auth store for credentials
@@ -40,10 +39,10 @@ export async function testLogin(password: string): Promise<boolean> {
     try {
         // Temporarily set credentials
         authStore.setCredentials('admin', password);
-        
+
         // Test with a simple API call
         await getAgentInfo();
-        
+
         return true;
     } catch (error) {
         // Clear credentials on failure
@@ -313,13 +312,13 @@ export async function updateAgentInfo(info: AgentInfo): Promise<AgentInfo> {
     if (!response.ok) {
         const errorText = await response.text();
         let errorData;
-        
+
         try {
             errorData = JSON.parse(errorText);
         } catch {
             errorData = { message: errorText };
         }
-        
+
         throw {
             code: response.status,
             message: `Failed to update agent config: ${response.status}`,
@@ -364,14 +363,14 @@ export async function getAvailableModels(): Promise<Model[]> {
 export function extractToolCalls(taskOrEvent: A2ATask | A2AMessage | any): ToolCall[] {
     console.log("extractToolCalls called with:", taskOrEvent)
     const toolCalls: ToolCall[] = []
-    
+
     // Handle A2A Task type
     if (taskOrEvent.kind === "task" && taskOrEvent.history) {
         console.log("Processing A2A task history with", taskOrEvent.history.length, "messages")
-        
+
         // Track function calls and their responses
         const functionCalls = new Map<string, { name: string; args: Record<string, unknown> }>()
-        
+
         for (const message of taskOrEvent.history) {
             if (message.parts) {
                 for (const part of message.parts) {
@@ -383,13 +382,13 @@ export function extractToolCalls(taskOrEvent: A2ATask | A2AMessage | any): ToolC
                             args: part.function_call.args || {}
                         })
                     }
-                    
+
                     // Check for function responses
                     if ('function_response' in part && part.function_response) {
                         console.log("Found function response:", part.function_response)
                         const callId = part.function_response.id
                         const call = functionCalls.get(callId)
-                        
+
                         if (call) {
                             toolCalls.push({
                                 name: call.name,
@@ -408,7 +407,7 @@ export function extractToolCalls(taskOrEvent: A2ATask | A2AMessage | any): ToolC
         console.log("Processing legacy task history")
         // Keep the old logic for backward compatibility
         const functionCalls = new Map<string, { name: string; args: Record<string, unknown> }>()
-        
+
         for (const event of taskOrEvent.history) {
             if (event.content && event.content.parts) {
                 for (const part of event.content.parts) {
@@ -418,11 +417,11 @@ export function extractToolCalls(taskOrEvent: A2ATask | A2AMessage | any): ToolC
                             args: part.function_call.args || {}
                         })
                     }
-                    
+
                     if (part.function_response) {
                         const callId = part.function_response.id
                         const call = functionCalls.get(callId)
-                        
+
                         if (call) {
                             toolCalls.push({
                                 name: call.name,
@@ -435,7 +434,7 @@ export function extractToolCalls(taskOrEvent: A2ATask | A2AMessage | any): ToolC
             }
         }
     }
-    
+
     console.log("Final extracted tool calls:", toolCalls)
     return toolCalls
 }
@@ -449,11 +448,11 @@ export function extractResponseText(taskOrEvent: A2ATask | A2AMessage | Task | A
             .map(part => part.text)
             .join('');
     }
-    
+
     // Handle A2A Task
     if ('kind' in taskOrEvent && taskOrEvent.kind === "task") {
         const a2aTask = taskOrEvent as A2ATask;
-        
+
         // First try to get text from artifacts if they exist
         if (a2aTask.artifacts && a2aTask.artifacts.length > 0) {
             const textArtifact = a2aTask.artifacts.find(artifact =>
@@ -475,7 +474,7 @@ export function extractResponseText(taskOrEvent: A2ATask | A2AMessage | Task | A
                     .join('');
             }
         }
-        
+
         // Check latest message in history
         if (a2aTask.history && a2aTask.history.length > 0) {
             const lastMessage = a2aTask.history[a2aTask.history.length - 1];
@@ -487,7 +486,7 @@ export function extractResponseText(taskOrEvent: A2ATask | A2AMessage | Task | A
             }
         }
     }
-    
+
     // Handle status update events
     if ('kind' in taskOrEvent && taskOrEvent.kind === "status-update") {
         const statusEvent = taskOrEvent as TaskStatusUpdateEvent;
@@ -501,7 +500,7 @@ export function extractResponseText(taskOrEvent: A2ATask | A2AMessage | Task | A
             }
         }
     }
-    
+
     // Handle legacy Task type for backward compatibility
     const legacyTask = taskOrEvent as Task;
     if (legacyTask.artifacts && legacyTask.artifacts.length > 0) {

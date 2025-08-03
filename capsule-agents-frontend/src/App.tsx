@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import Header from './components/header';
 import ChatInterface from './components/chat-interface';
+import AgentEditor from './components/agent-editor';
 import { LoginDialog } from './components/login-dialog';
 import { Toaster } from './components/ui/toaster';
 import { testLogin } from './lib/api';
@@ -34,9 +35,28 @@ function App() {
     <>
       <main className="flex h-screen flex-col bg-slate-50 overflow-hidden">
         <Header />
-        <div className="container mx-auto flex flex-1 flex-col gap-6 p-4 md:flex-row md:p-6 lg:p-8 min-h-0">
-          <div className="flex-1 flex flex-col min-h-0">
-            <ChatInterface key={isAuthenticated ? 'auth' : 'unauth'} />
+        
+        <div className="container mx-auto flex flex-1 gap-6 p-4 md:p-6 lg:p-8 min-h-0">
+          {/* Agent Editor - Left Side */}
+          <div className="w-1/2 flex flex-col min-h-0">
+            <div className="mb-4">
+              <h2 className="text-lg font-semibold text-foreground">Agent Configuration</h2>
+              <p className="text-sm text-muted-foreground">Configure your agent's settings and tools</p>
+            </div>
+            <div className="flex-1 overflow-hidden">
+              <AgentEditor />
+            </div>
+          </div>
+          
+          {/* Chat Interface - Right Side */}
+          <div className="w-1/2 flex flex-col min-h-0">
+            <div className="mb-4">
+              <h2 className="text-lg font-semibold text-foreground">Chat Interface</h2>
+              <p className="text-sm text-muted-foreground">Test your agent by chatting with it</p>
+            </div>
+            <div className="flex-1 overflow-hidden">
+              <ChatInterface key={isAuthenticated ? 'auth' : 'unauth'} />
+            </div>
           </div>
         </div>
       </main>

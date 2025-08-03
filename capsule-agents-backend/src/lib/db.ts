@@ -60,6 +60,44 @@ function createTables(db: Database.Database) {
         update_time REAL,
         PRIMARY KEY(app_name, user_id)
     );
+
+    CREATE TABLE IF NOT EXISTS agent_info (
+        key               INTEGER PRIMARY KEY,
+        name              TEXT    NOT NULL,
+        description       TEXT    NOT NULL,
+        model_name        TEXT    NOT NULL,
+        model_parameters  TEXT    NOT NULL,
+        tools             TEXT    DEFAULT '[]'
+    );
   `);
+  
+  // Insert default agent info if it doesn't exist
+  try {
+    const existingAgent = db.prepare("SELECT 1 FROM agent_info WHERE key = 1").get();
+    if (!existingAgent) {
+      const mockAgent = {
+        name: "capsule_agent", 
+        description: "You are a Capsule agent. You are a friendly and helpful assistant.",
+        model_name: "openai/gpt-4o",
+        model_parameters: {},
+        tools: []
+      };
+      
+      db.prepare(`
+        INSERT INTO agent_info(key, name, description, model_name, model_parameters, tools) 
+        VALUES(1, ?, ?, ?, ?, ?)
+      `).run(
+        mockAgent.name,
+        mockAgent.description,
+        mockAgent.model_name,
+        JSON.stringify(mockAgent.model_parameters),
+        JSON.stringify(mockAgent.tools)
+      );
+      console.log('Default agent info inserted.');
+    }
+  } catch (error) {
+    console.error('Error initializing default agent info:', error);
+  }
+  
   console.log('Database tables created or already exist.');
 }
