@@ -1,19 +1,19 @@
-import Database from 'better-sqlite3';
+import { Database } from 'better-sqlite3';
 
-const dbPath = './sessions.db';
+const dbPath = './data/sessions.db';
 
-let db: Database.Database;
+let db: Database;
 
 export function getDb() {
   if (!db) {
     db = new Database(dbPath);
-    db.pragma('journal_mode = WAL');
+    db.exec('PRAGMA journal_mode = WAL');
     createTables(db);
   }
   return db;
 }
 
-function createTables(db: Database.Database) {
+function createTables(db: Database) {
   db.exec(`
     CREATE TABLE IF NOT EXISTS sessions (
         app_name    TEXT,
@@ -83,10 +83,11 @@ function createTables(db: Database.Database) {
         tools: []
       };
       
-      db.prepare(`
+      const stmt = db.prepare(`
         INSERT INTO agent_info(key, name, description, model_name, model_parameters, tools) 
         VALUES(1, ?, ?, ?, ?, ?)
-      `).run(
+      `);
+      stmt.run(
         mockAgent.name,
         mockAgent.description,
         mockAgent.model_name,

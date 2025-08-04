@@ -1,4 +1,4 @@
-import {
+import type {
   AgentCard,
   AgentSkill,
   Task,
@@ -11,15 +11,16 @@ import {
   TaskArtifactUpdateEvent,
   TextPart,
 } from '@a2a-js/sdk';
-import { A2ARequestHandler } from '@a2a-js/sdk/server';
+import type { A2ARequestHandler } from '@a2a-js/sdk/server';
+import process from 'node:process';
 import * as Vercel from 'ai';
 import { openai } from '@ai-sdk/openai';
-import { fileAccessTool } from '../tools/file-access.js';
-import { braveSearchTool } from '../tools/brave-search.js';
-import { memoryTool } from '../tools/memory.js';
-import { a2aTool } from '../tools/a2a.js';
-import { saveChat, loadChat, createChatWithId } from './storage.js';
-import { AgentConfigService } from './agent-config.js';
+import { fileAccessTool } from '../tools/file-access.ts';
+import { braveSearchTool } from '../tools/brave-search.ts';
+import { memoryTool } from '../tools/memory.ts';
+import { a2aTool } from '../tools/a2a.ts';
+import { saveChat, loadChat, createChatWithId } from './storage.ts';
+import { AgentConfigService } from './agent-config.ts';
 import { z } from 'zod';
 
 // Simple in-memory storage for this example
@@ -141,7 +142,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
               inputSchema: z.object({
                 message: z.string().describe('Message to send to the agent')
               }),
-              execute: async ({ message }: { message: string }) => {
+              execute: ({ message }: { message: string }) => {
                 // TODO: Implement A2A call to the configured agent URL
                 return `Would call agent at ${agentUrl} with message: ${message}`;
               }
@@ -173,6 +174,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
     return tools;
   }
 
+  // deno-lint-ignore require-await
   async getAgentCard(): Promise<AgentCard> {
     console.log('CapsuleAgentA2ARequestHandler.getAgentCard() called');
     const agentUrl = process.env.AGENT_URL || 'http://localhost:8080';
@@ -230,6 +232,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
     };
   }
 
+  // deno-lint-ignore require-await
   async sendMessage(params: MessageSendParams): Promise<Message | Task> {
     const taskId = this.storage.createTaskId();
     const contextId = this.storage.createContextId();
@@ -255,6 +258,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
     return task;
   }
 
+  // deno-lint-ignore require-await
   async getTask(params: TaskQueryParams): Promise<Task> {
     const task = this.storage.getTask(params.id);
     if (!task) {
@@ -271,6 +275,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
     return task;
   }
 
+  // deno-lint-ignore require-await
   async cancelTask(params: TaskIdParams): Promise<Task> {
     const task = this.storage.getTask(params.id);
     if (!task) {
@@ -291,10 +296,12 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
     return task;
   }
 
+  // deno-lint-ignore require-await
   async setTaskPushNotificationConfig(_params: TaskPushNotificationConfig): Promise<TaskPushNotificationConfig> {
     throw new Error('Push notifications are not supported');
   }
 
+  // deno-lint-ignore require-await
   async getTaskPushNotificationConfig(_params: TaskIdParams): Promise<TaskPushNotificationConfig> {
     throw new Error('Push notifications are not supported');
   }
@@ -347,9 +354,9 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
 
       // Ensure session exists before loading
       console.log('Ensuring session exists...');
-      await this.ensureSessionExists(task.id);
+      this.ensureSessionExists(task.id);
       console.log('Loading chat history...');
-      const chatHistory = await loadChat(task.id);
+      const chatHistory = loadChat(task.id);
       console.log('Chat history loaded:', { messageCount: chatHistory.length });
 
       const newMessage: Vercel.UIMessage = {
@@ -429,14 +436,14 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
       // Save the conversation
       try {
         // First, ensure the session exists for this task ID
-        await this.ensureSessionExists(task.id);
+        this.ensureSessionExists(task.id);
 
         const assistantMessage: Vercel.UIMessage = {
           id: crypto.randomUUID(),
           role: 'assistant',
           parts: [{ type: 'text', text: fullResponse }]
         };
-        await saveChat(task.id, [...combinedMessages, assistantMessage]);
+        saveChat(task.id, [...combinedMessages, assistantMessage]);
       } catch (saveError) {
         // Log the save error but don't fail the task
         console.error('Failed to save chat:', saveError);
@@ -484,8 +491,8 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
       const userText = this.extractTextFromMessage(params.message);
 
       // Ensure session exists and load chat history (use taskId as sessionId)
-      await this.ensureSessionExists(task.id);
-      const chatHistory = await loadChat(task.id);
+      this.ensureSessionExists(task.id);
+      const chatHistory = loadChat(task.id);
 
       // Convert to UI message format
       const newMessage: Vercel.UIMessage = {
@@ -508,7 +515,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
 
 
       // Stream the response
-      const model = this.getConfiguredModel();
+      this.getConfiguredModel(); // Get configured model but use hardcoded for now
       const result = Vercel.streamText({
         model: 'gpt-4o',
         system: this.getSystemPrompt(),
@@ -549,7 +556,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
       // Save the conversation
       try {
         // First, ensure the session exists for this task ID
-        await this.ensureSessionExists(task.id);
+        this.ensureSessionExists(task.id);
 
         const assistantMessage: Vercel.UIMessage = {
           id: crypto.randomUUID(),
@@ -561,7 +568,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
             }
           ]
         };
-        await saveChat(task.id, [...combinedMessages, assistantMessage]);
+        saveChat(task.id, [...combinedMessages, assistantMessage]);
       } catch (saveError) {
         // Log the save error but don't fail the task
         console.error('Failed to save chat:', saveError);
@@ -621,8 +628,8 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
     }
   }
 
-  private async ensureSessionExists(sessionId: string): Promise<void> {
+  private ensureSessionExists(sessionId: string): void {
     // Always ensure the session exists (INSERT OR IGNORE will handle duplicates)
-    await createChatWithId(sessionId, 'a2a-agent');
+    createChatWithId(sessionId, 'a2a-agent');
   }
 }

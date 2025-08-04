@@ -1,10 +1,10 @@
-import { getDb } from './db.js';
-import { UIMessage } from 'ai';
+import { getDb } from './db.ts';
+import type { UIMessage } from 'ai';
 import { v4 as uuidv4 } from 'uuid';
 
 const APP_NAME = 'capsule-agents-backend';
 
-export async function createChat(userId: string): Promise<string> {
+export function createChat(userId: string): string {
   const db = getDb();
   const sessionId = uuidv4();
   const now = Date.now() / 1000;
@@ -17,7 +17,7 @@ export async function createChat(userId: string): Promise<string> {
   return sessionId;
 }
 
-export async function createChatWithId(sessionId: string, userId: string): Promise<void> {
+export function createChatWithId(sessionId: string, userId: string): void {
   const db = getDb();
   const now = Date.now() / 1000;
 
@@ -27,7 +27,7 @@ export async function createChatWithId(sessionId: string, userId: string): Promi
   stmt.run(APP_NAME, userId, sessionId, JSON.stringify({}), now, now);
 }
 
-export async function loadChat(sessionId: string): Promise<UIMessage[]> {
+export function loadChat(sessionId: string): UIMessage[] {
   const db = getDb();
   const stmt = db.prepare('SELECT content FROM events WHERE session_id = ? ORDER BY timestamp ASC');
   const rows = stmt.all(sessionId) as { content: string }[];
@@ -35,13 +35,13 @@ export async function loadChat(sessionId: string): Promise<UIMessage[]> {
   return rows.map(row => JSON.parse(row.content));
 }
 
-export async function saveChat(sessionId: string, messages: UIMessage[]) {
+export function saveChat(sessionId: string, messages: UIMessage[]): void {
   const db = getDb();
   const stmt = db.prepare(
     'INSERT INTO events (id, app_name, user_id, session_id, author, content, timestamp) VALUES (?, ?, ?, ?, ?, ?, ?)'
   );
 
-  const insert = db.transaction((msgs) => {
+  const insert = db.transaction((msgs: UIMessage[]) => {
     for (const message of msgs) {
       const author = message.role;
       // This is a simplified mapping. We can expand this to match your original schema more closely.

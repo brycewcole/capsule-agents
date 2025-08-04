@@ -31,10 +31,7 @@ COPY --chown=deno:deno capsule-agents-backend/deno.json ./
 # Copy source files
 COPY --chown=deno:deno capsule-agents-backend/src ./src
 
-# Install dependencies with scripts allowed for better-sqlite3
-RUN deno install --allow-scripts=npm:better-sqlite3@12.2.0
-
-# Cache dependencies and compile the application
+# Cache dependencies (no native compilation needed with Deno SQLite)
 RUN deno cache src/index.ts
 
 # ─── Stage 3: Final runtime image (merge UI + API) ────────────────────────
@@ -49,10 +46,11 @@ WORKDIR /app
 # Copy cached dependencies and compiled code from builder
 COPY --from=backend-builder /app ./
 
-# Create static directory for the Vite-built assets
+# Create directories with proper permissions
 USER root
 RUN mkdir -p ./static && chown -R deno:deno ./static
 RUN mkdir -p ./agent-workspace && chown -R deno:deno ./agent-workspace
+RUN mkdir -p ./data && chown -R deno:deno ./data
 USER deno
 
 # Copy Vite's dist/ into static for Hono to serve

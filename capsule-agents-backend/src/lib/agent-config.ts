@@ -1,17 +1,25 @@
-import { getDb } from './db.js';
+import { getDb } from './db.ts';
 
 // Types for agent configuration
+interface AgentInfoRow {
+  name: string;
+  description: string;
+  model_name: string;
+  model_parameters: string;
+  tools: string;
+}
+
 export type Tool = {
   name: string;
   type: string;
-  tool_schema: Record<string, any>;
+  tool_schema: Record<string, unknown>;
 };
 
 export type AgentInfo = {
   name: string;
   description: string;
   model_name: string;
-  model_parameters: Record<string, any>;
+  model_parameters: Record<string, unknown>;
   tools: Tool[];
 };
 
@@ -38,7 +46,7 @@ export class AgentConfigService {
         FROM agent_info WHERE key = 1
       `);
       
-      const row = stmt.get() as any;
+      const row = stmt.get() as AgentInfoRow | undefined;
       if (!row) {
         console.error('No agent info found in database');
         throw new Error('Agent info not found');

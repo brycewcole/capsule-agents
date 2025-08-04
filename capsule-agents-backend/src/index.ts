@@ -1,17 +1,17 @@
 import { Hono } from 'hono';
-import { serve } from '@hono/node-server';
-import { serveStatic } from '@hono/node-server/serve-static';
+// Using Deno's built-in serve - no import needed
+import { serveStatic } from 'hono/deno';
 import { cors } from 'hono/cors';
 import { streamSSE } from 'hono/streaming';
-import { createChat } from './lib/storage.js';
-import { getDb } from './lib/db.js';
-import { CapsuleAgentA2ARequestHandler } from './lib/a2a-request-handler.js';
+import { createChat } from './lib/storage.ts';
+import { getDb } from './lib/db.ts';
+import { CapsuleAgentA2ARequestHandler } from './lib/a2a-request-handler.ts';
 import { JsonRpcTransportHandler } from '@a2a-js/sdk/server';
-import { AgentConfigService } from './lib/agent-config.js';
+import { AgentConfigService } from './lib/agent-config.ts';
 
 // Type guard to check if result is an AsyncGenerator (streaming response)
-function isAsyncGenerator(value: any): value is AsyncGenerator<any, void, undefined> {
-  return value && typeof value === 'object' && Symbol.asyncIterator in value;
+function isAsyncGenerator(value: unknown): value is AsyncGenerator<unknown, void, undefined> {
+  return Boolean(value && typeof value === 'object' && value !== null && Symbol.asyncIterator in value);
 }
 
 const app = new Hono();
@@ -105,7 +105,7 @@ app.post('/', async (c) => {
         try {
           let eventId = 0;
           for await (const event of result) {
-            console.log('Streaming event:', { eventId, eventType: (event as any).kind || typeof event });
+            console.log('Streaming event:', { eventId, eventType: (event && typeof event === 'object' && 'kind' in event) ? event.kind : typeof event });
             await stream.writeSSE({
               data: JSON.stringify(event),
               id: String(eventId++),
@@ -147,18 +147,18 @@ app.post('/', async (c) => {
 });
 
 // Regular API endpoints
-app.get('/api/health', async (c) => {
+app.get('/api/health', (c) => {
   return c.json({ status: 'ok' });
 });
 
 app.post('/api/chat/create', async (c) => {
   const { userId } = await c.req.json();
-  const chatId = await createChat(userId || 'anonymous');
+  const chatId = createChat(userId || 'anonymous');
   return c.json({ chatId });
 });
 
 // Agent configuration endpoints
-app.get('/api/agent', async (c) => {
+app.get('/api/agent', (c) => {
   console.log('GET /api/agent - Getting agent configuration');
   try {
     const agentInfo = agentConfigService.getAgentInfo();
@@ -223,7 +223,7 @@ app.put('/api/agent', async (c) => {
   }
 });
 
-app.get('/api/models', async (c) => {
+app.get('/api/models', (c) => {
   try {
     const models = agentConfigService.getAvailableModels();
     return c.json(models);
@@ -245,10 +245,8 @@ app.get('/editor', serveStatic({
   rewriteRequestPath: () => '/index.html',
 }));
 
-// Start the server
-const port = process.env.PORT ? parseInt(process.env.PORT) : 80;
+// Start the server using Deno's built-in serve
+const port = parseInt(Deno.env.get('PORT') || '80');
 
-serve({
-  fetch: app.fetch,
-  port,
-});
+console.log(`Starting server on port ${port}...`);
+Deno.serve({ port }, app.fetch);
