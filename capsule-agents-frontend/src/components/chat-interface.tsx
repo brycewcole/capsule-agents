@@ -173,7 +173,7 @@ export default function ChatInterface() {
   }
 
   return (
-    <Card className="flex flex-col flex-1 overflow-hidden shadow-md">
+    <Card className="flex flex-col h-full overflow-hidden shadow-md">
       <CardHeader className="pb-4 flex flex-row justify-between items-center">
         <div>
           <CardTitle className="flex items-center gap-2 text-xl">

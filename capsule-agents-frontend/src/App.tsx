@@ -43,7 +43,7 @@ function App() {
               <h2 className="text-lg font-semibold text-foreground">Agent Configuration</h2>
               <p className="text-sm text-muted-foreground">Configure your agent's settings and tools</p>
             </div>
-            <div className="flex-1 overflow-hidden">
+            <div className="flex-1 overflow-y-auto min-h-0">
               <AgentEditor />
             </div>
           </div>
@@ -54,7 +54,7 @@ function App() {
               <h2 className="text-lg font-semibold text-foreground">Chat Interface</h2>
               <p className="text-sm text-muted-foreground">Test your agent by chatting with it</p>
             </div>
-            <div className="flex-1 overflow-hidden">
+            <div className="flex-1 min-h-0">
               <ChatInterface key={isAuthenticated ? 'auth' : 'unauth'} />
             </div>
           </div>

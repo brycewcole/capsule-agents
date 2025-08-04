@@ -619,13 +619,8 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
   }
 
   private getSystemPrompt(): string {
-    try {
-      const agentInfo = this.agentConfigService.getAgentInfo();
-      return agentInfo.description || "You are a capsule agent that can use various tools to assist users.";
-    } catch (error) {
-      console.error('Error loading agent description:', error);
-      return "You are a capsule agent that can use various tools to assist users.";
-    }
+    const agentInfo = this.agentConfigService.getAgentInfo();
+    return agentInfo.description;
   }
 
   private ensureSessionExists(sessionId: string): void {
