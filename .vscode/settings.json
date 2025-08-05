@@ -16,5 +16,8 @@
     "deno.enable": true,
     "deno.enablePaths": [
         "capsule-agents-backend"
+    ],
+    "cSpell.words": [
+        "uuidv"
     ]
 }
