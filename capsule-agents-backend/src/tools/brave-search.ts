@@ -1,6 +1,7 @@
 import { tool } from 'ai';
 import { z } from 'zod';
 import process from "node:process";
+import type { AgentSkill } from '@a2a-js/sdk';
 
 export const braveSearchTool = tool({
   description: 'Perform a web search using the Brave Search API.',
@@ -26,3 +27,19 @@ export const braveSearchTool = tool({
     return response.json();
   },
 });
+
+export const braveSearchSkill: AgentSkill = {
+  id: 'brave-search',
+  name: 'Web Search',
+  description: 'Perform web searches using the Brave Search API to find current information',
+  tags: ['search', 'web', 'information', 'research', 'internet'],
+  examples: [
+    'Search for current news',
+    'Find technical documentation',
+    'Research topics and facts',
+    'Look up recent events',
+    'Find product information'
+  ],
+  inputModes: ['text/plain'],
+  outputModes: ['application/json'],
+};

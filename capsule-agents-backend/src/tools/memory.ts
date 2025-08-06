@@ -1,5 +1,6 @@
 import { tool } from 'ai';
 import { z } from 'zod';
+import type { AgentSkill } from '@a2a-js/sdk';
 
 const memoryStore: Record<string, string> = {};
 
@@ -10,7 +11,7 @@ export const memoryTool = tool({
     key: z.string().describe('The key to store or retrieve.'),
     value: z.string().optional().describe('The value to store.'),
   }),
-  execute: async ({ operation, key, value }) => {
+  execute: ({ operation, key, value }) => {
     switch (operation) {
       case 'set':
         if (value === undefined) {
@@ -23,3 +24,19 @@ export const memoryTool = tool({
     }
   },
 });
+
+export const memorySkill: AgentSkill = {
+  id: 'memory',
+  name: 'Memory Storage',
+  description: 'Store and retrieve information in memory for persistence across conversations',
+  tags: ['memory', 'persistence', 'storage', 'data'],
+  examples: [
+    'Store important information',
+    'Retrieve past conversations',
+    'Remember user preferences',
+    'Cache frequently used data',
+    'Maintain context between sessions'
+  ],
+  inputModes: ['text/plain'],
+  outputModes: ['text/plain', 'application/json'],
+};

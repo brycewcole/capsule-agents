@@ -15,10 +15,9 @@ import type { A2ARequestHandler } from '@a2a-js/sdk/server';
 import process from 'node:process';
 import * as Vercel from 'ai';
 import { openai } from '@ai-sdk/openai';
-import { fileAccessTool } from '../tools/file-access.ts';
-import { braveSearchTool } from '../tools/brave-search.ts';
-import { memoryTool } from '../tools/memory.ts';
-import { a2aTool } from '../tools/a2a.ts';
+import { fileAccessTool, fileAccessSkill } from '../tools/file-access.ts';
+import { braveSearchTool, braveSearchSkill } from '../tools/brave-search.ts';
+import { memoryTool, memorySkill } from '../tools/memory.ts';
 import { saveChat, loadChat, createChatWithId } from './storage.ts';
 import { AgentConfigService } from './agent-config.ts';
 import { z } from 'zod';
@@ -38,10 +37,6 @@ class InMemoryStorage {
     return `msg-${++this.messageCounter}`;
   }
 
-  createContextId(): string {
-    return `ctx-${++this.contextCounter}`;
-  }
-
   setTask(id: string, task: Task): void {
     this.tasks.set(id, task);
   }
@@ -49,51 +44,6 @@ class InMemoryStorage {
   getTask(id: string): Task | undefined {
     return this.tasks.get(id);
   }
-}
-
-// Utility function to convert a Vercel AI tool to an A2A skill
-function toolToSkill(toolName: string, tool: Vercel.Tool, enabled: boolean = true): AgentSkill | null {
-  if (!enabled) return null;
-
-  // Extract tags from the tool description and schema
-  const tags: string[] = [];
-  const description = tool.description || '';
-
-  // Add tags based on tool name and description
-  if (toolName.includes('file') || description.toLowerCase().includes('file')) {
-    tags.push('filesystem', 'io');
-  }
-  if (toolName.includes('search') || description.toLowerCase().includes('search')) {
-    tags.push('search', 'web', 'information');
-  }
-  if (toolName.includes('memory') || description.toLowerCase().includes('memory')) {
-    tags.push('memory', 'persistence');
-  }
-  if (toolName.includes('a2a') || description.toLowerCase().includes('agent')) {
-    tags.push('communication', 'agents', 'collaboration');
-  }
-
-  // Generate examples based on the tool's input schema
-  const examples: string[] = [];
-  if (toolName === 'fileAccess') {
-    examples.push('Read file contents', 'Write data to file', 'List directory contents');
-  } else if (toolName === 'braveSearch') {
-    examples.push('Search for current news', 'Find technical documentation', 'Research topics');
-  } else if (toolName === 'memory') {
-    examples.push('Store important information', 'Retrieve past conversations', 'Remember user preferences');
-  } else if (toolName === 'a2a') {
-    examples.push('Communicate with other agents', 'Delegate tasks to specialized agents', 'Coordinate multi-agent workflows');
-  }
-
-  return {
-    id: toolName.toLowerCase().replace(/([A-Z])/g, '-$1').toLowerCase().replace(/^-/, ''),
-    name: toolName.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase()).replace(/^([a-z])/, str => str.toUpperCase()),
-    description: description || `Tool for ${toolName}`,
-    tags,
-    examples: examples.length > 0 ? examples : undefined,
-    inputModes: ['text/plain'],
-    outputModes: ['text/plain'],
-  };
 }
 
 export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
@@ -165,9 +115,6 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
       if (process.env.MEMORY_TOOL_ENABLED === 'true') {
         tools.memory = memoryTool;
       }
-      if (process.env.A2A_TOOL_ENABLED === 'true') {
-        tools.a2a = a2aTool;
-      }
       console.log('Tools loaded from environment:', Object.keys(tools));
     }
 
@@ -192,15 +139,19 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
       console.error('Error loading agent configuration for card, using defaults:', error);
     }
 
-    // Dynamically generate skills from available tools
+    // Get enabled skills based on available tools
     const availableTools = this.getAvailableTools();
     const skills: AgentSkill[] = [];
 
-    for (const [toolName, tool] of Object.entries(availableTools)) {
-      const skill = toolToSkill(toolName, tool, true);
-      if (skill) {
-        skills.push(skill);
-      }
+    // Add skills for enabled tools
+    if ('fileAccess' in availableTools) {
+      skills.push(fileAccessSkill);
+    }
+    if ('braveSearch' in availableTools) {
+      skills.push(braveSearchSkill);
+    }
+    if ('memory' in availableTools) {
+      skills.push(memorySkill);
     }
 
     // Add a general chat skill if no tools are enabled
@@ -387,12 +338,18 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
       console.log('StreamText initialized, starting to process fullStream...');
 
       let fullResponse = '';
-      const toolCalls: Array<{ name: string; args: unknown; result?: unknown }> = [];
+      const toolCalls: Array<{
+        id: string;
+        name: string;
+        args: unknown;
+        result?: unknown;
+        hasError?: boolean
+      }> = [];
 
       // Process the full stream including text and tool calls
       for await (const chunk of result.fullStream) {
         console.log('Processing stream chunk:', { type: chunk.type });
-        
+
         switch (chunk.type) {
           case 'text-delta': {
             // Handle streaming text
@@ -415,32 +372,92 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
 
           case 'tool-call': {
             // Handle tool call initiation
-            console.log('Tool call initiated:', { 
-              toolCallId: chunk.toolCallId, 
-              toolName: chunk.toolName, 
-              input: chunk.input 
+            console.log('Tool call initiated:', {
+              toolCallId: chunk.toolCallId,
+              toolName: chunk.toolName,
+              input: chunk.input
             });
-            
+
             toolCalls.push({
+              id: chunk.toolCallId,
               name: chunk.toolName,
               args: chunk.input,
             });
+
+            // Add tool call to task history
+            const toolCallMessage: Message = {
+              kind: 'message',
+              messageId: this.storage.createMessageId(),
+              role: 'agent',
+              parts: [{
+                kind: 'function_call',
+                function_call: {
+                  id: chunk.toolCallId,
+                  name: chunk.toolName,
+                  args: chunk.input
+                }
+              }],
+              taskId: task.id,
+              contextId: task.contextId,
+            };
+
+            if (!task.history) task.history = [];
+            task.history.push(toolCallMessage);
+            this.storage.setTask(task.id, task);
             break;
           }
 
           case 'tool-result': {
             // Handle tool execution result
-            console.log('Tool result received:', { 
-              toolCallId: chunk.toolCallId, 
-              toolName: chunk.toolName, 
-              output: chunk.output 
+            console.log('Tool result received:', {
+              toolCallId: chunk.toolCallId,
+              toolName: chunk.toolName,
+              output: chunk.output
             });
-            
+
             // Find and update the corresponding tool call
-            const toolCall = toolCalls.find(tc => tc.name === chunk.toolName);
+            const toolCall = toolCalls.find(tc => tc.id === chunk.toolCallId);
             if (toolCall) {
               toolCall.result = chunk.output;
+
+              // Check if result contains an error
+              const isError = chunk.output &&
+                typeof chunk.output === 'object' &&
+                'error' in chunk.output;
+              toolCall.hasError = isError;
+
+              if (isError) {
+                console.log('🚨 Tool execution failed:', {
+                  toolName: chunk.toolName,
+                  error: (chunk.output as any).error
+                });
+
+                // Add error message to response text
+                const errorMessage = `\n\n⚠️ **Tool Error**: ${chunk.toolName} failed - ${(chunk.output as any).error}`;
+                fullResponse += errorMessage;
+              }
             }
+
+            // Add tool result to task history  
+            const toolResultMessage: Message = {
+              kind: 'message',
+              messageId: this.storage.createMessageId(),
+              role: 'agent',
+              parts: [{
+                kind: 'function_response',
+                function_response: {
+                  id: chunk.toolCallId,
+                  name: chunk.toolName,
+                  response: chunk.output
+                }
+              } as any],
+              taskId: task.id,
+              contextId: task.contextId,
+            };
+
+            if (!task.history) task.history = [];
+            task.history.push(toolResultMessage);
+            this.storage.setTask(task.id, task);
             break;
           }
 
@@ -506,15 +523,15 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
       console.error('Error stack:', error instanceof Error ? error.stack : 'No stack available');
       console.error('Task ID:', task.id);
       console.error('Context ID:', task.contextId);
-      
+
       // Error handling
       task.status.state = 'failed';
       task.status.message = {
         kind: 'message',
         messageId: this.storage.createMessageId(),
         role: 'agent',
-        parts: [{ 
-          kind: 'text', 
+        parts: [{
+          kind: 'text',
           text: `Error processing task: ${error instanceof Error ? error.message : error}\n\nError type: ${error instanceof Error ? error.constructor.name : typeof error}`
         } as TextPart],
         taskId: task.id,
@@ -593,16 +610,16 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
             break;
           }
           case 'tool-call': {
-            console.log('Tool call in async processing:', { 
-              toolName: chunk.toolName, 
-              input: chunk.input 
+            console.log('Tool call in async processing:', {
+              toolName: chunk.toolName,
+              input: chunk.input
             });
             break;
           }
           case 'tool-result': {
-            console.log('Tool result in async processing:', { 
-              toolName: chunk.toolName, 
-              output: chunk.output 
+            console.log('Tool result in async processing:', {
+              toolName: chunk.toolName,
+              output: chunk.output
             });
             break;
           }
@@ -661,15 +678,15 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
       console.error('Error stack:', error instanceof Error ? error.stack : 'No stack available');
       console.error('Task ID:', task.id);
       console.error('Context ID:', task.contextId);
-      
+
       // Update task to failed state
       task.status.state = 'failed';
       task.status.message = {
         kind: 'message',
         messageId: this.storage.createMessageId(),
         role: 'agent',
-        parts: [{ 
-          kind: 'text', 
+        parts: [{
+          kind: 'text',
           text: `Error processing task: ${error instanceof Error ? error.message : error}\n\nError type: ${error instanceof Error ? error.constructor.name : typeof error}`
         } as TextPart],
         taskId: task.id,

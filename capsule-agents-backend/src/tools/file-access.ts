@@ -2,8 +2,10 @@ import { tool } from 'ai';
 import { z } from 'zod';
 import { ensureDir } from '@std/fs';
 import { join, resolve } from '@std/path';
+import type { AgentSkill } from '@a2a-js/sdk';
 
-const AGENT_WORKSPACE = '/agent-workspace';
+// Use relative path that works both in Docker (/app/agent-workspace) and locally
+const AGENT_WORKSPACE = './agent-workspace';
 
 export const fileAccessTool = tool({
   description: 'Access files in the agent workspace.',
@@ -17,14 +19,21 @@ export const fileAccessTool = tool({
     path: string;
     content?: string;
   }) => {
-    const absolutePath = join(AGENT_WORKSPACE, relativePath);
+    // Resolve to absolute paths for security check
+    const workspaceAbsolute = resolve(AGENT_WORKSPACE);
+    const requestedPath = resolve(join(AGENT_WORKSPACE, relativePath));
 
     // Basic security check to prevent path traversal
-    if (!absolutePath.startsWith(AGENT_WORKSPACE)) {
-      return { error: 'Invalid path' };
+    if (!requestedPath.startsWith(workspaceAbsolute)) {
+      return { error: 'Invalid path - path traversal detected' };
     }
 
+    const absolutePath = requestedPath;
+
     try {
+      // Ensure workspace directory exists
+      await ensureDir(AGENT_WORKSPACE);
+      
       switch (operation) {
         case 'read': {
           return { content: await Deno.readTextFile(absolutePath) };
@@ -33,10 +42,27 @@ export const fileAccessTool = tool({
           if (content === undefined) {
             return { error: 'Content is required for write operation' };
           }
-          // Ensure directory exists
-          await ensureDir(resolve(absolutePath, '..'));
+          
+          console.log('📝 File write operation:', {
+            requestedPath: relativePath,
+            absolutePath,
+            workspaceDir: AGENT_WORKSPACE,
+            contentLength: content.length
+          });
+          
+          // Ensure parent directory exists
+          const parentDir = resolve(absolutePath, '..');
+          await ensureDir(parentDir);
+          
+          // Write the file
           await Deno.writeTextFile(absolutePath, content);
-          return { success: true };
+          
+          console.log('✅ File written successfully:', absolutePath);
+          return { 
+            success: true, 
+            path: absolutePath,
+            message: `File written to ${relativePath}` 
+          };
         }
         case 'list': {
           const files = [];
@@ -48,7 +74,29 @@ export const fileAccessTool = tool({
       }
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : 'Unknown error';
-      return { error: message };
+      console.error('🚨 File access error:', {
+        operation,
+        requestedPath: relativePath,
+        absolutePath: requestedPath,
+        error: message,
+        errorType: error instanceof Error ? error.constructor.name : typeof error
+      });
+      return { error: `File ${operation} failed: ${message}` };
     }
   },
 });
+
+export const fileAccessSkill: AgentSkill = {
+  id: 'file-access',
+  name: 'File Access',
+  description: 'Access files in the agent workspace for reading, writing, and listing operations',
+  tags: ['filesystem', 'io', 'files', 'workspace'],
+  examples: [
+    'Read file contents',
+    'Write data to file', 
+    'List directory contents',
+    'Create new files and directories'
+  ],
+  inputModes: ['text/plain'],
+  outputModes: ['text/plain', 'application/json'],
+};

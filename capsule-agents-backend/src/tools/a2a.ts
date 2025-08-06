@@ -1,5 +1,6 @@
 import { tool } from 'ai';
 import { z } from 'zod';
+import type { AgentSkill } from '@a2a-js/sdk';
 
 export const a2aTool = tool({
   description: 'Communicate with other agents using the Agent-to-Agent (A2A) protocol.',
@@ -29,3 +30,19 @@ export const a2aTool = tool({
     return response.json();
   },
 });
+
+export const a2aMetadata: AgentSkill = {
+  id: 'a2a-communication',
+  name: 'Agent Communication',
+  description: 'Communicate with other agents using the Agent-to-Agent (A2A) protocol for collaboration',
+  tags: ['communication', 'agents', 'collaboration', 'a2a', 'json-rpc'],
+  examples: [
+    'Communicate with other agents',
+    'Delegate tasks to specialized agents',
+    'Coordinate multi-agent workflows',
+    'Send JSON-RPC requests to agents',
+    'Collaborate on complex tasks'
+  ],
+  inputModes: ['text/plain'],
+  outputModes: ['application/json'],
+};
