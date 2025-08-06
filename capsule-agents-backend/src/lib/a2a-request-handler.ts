@@ -220,6 +220,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
       name: agentName,
       description: agentDescription,
       url: agentUrl,
+      // preferredTransport: 'json-rpc',
       version: '1.0.0',
       capabilities: {
         streaming: true,
@@ -235,7 +236,8 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
   // deno-lint-ignore require-await
   async sendMessage(params: MessageSendParams): Promise<Message | Task> {
     const taskId = this.storage.createTaskId();
-    const contextId = this.storage.createContextId();
+    // contextId should always be provided now - it IS the session ID
+    const contextId = params.message.contextId!;
 
     // Create task with initial message
     const task: Task = {
@@ -309,7 +311,8 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
   async* sendMessageStream(params: MessageSendParams): AsyncGenerator<Task | Message | TaskStatusUpdateEvent | TaskArtifactUpdateEvent, void, undefined> {
     console.log('CapsuleAgentA2ARequestHandler.sendMessageStream() called');
     const taskId = this.storage.createTaskId();
-    const contextId = this.storage.createContextId();
+    // contextId should always be provided now - it IS the session ID
+    const contextId = params.message.contextId!;
     console.log('Created task and context IDs:', { taskId, contextId });
 
     // Create task with initial message
@@ -352,11 +355,11 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
       const userText = this.extractTextFromMessage(params.message);
       console.log('Extracted user text:', { length: userText.length });
 
-      // Ensure session exists before loading
-      console.log('Ensuring session exists...');
-      this.ensureSessionExists(task.id);
+      // Use contextId as the session ID for chat continuity
+      console.log('Ensuring context exists for contextId:', task.contextId);
+      this.ensureContextExists(task.contextId);
       console.log('Loading chat history...');
-      const chatHistory = loadChat(task.id);
+      const chatHistory = loadChat(task.contextId);
       console.log('Chat history loaded:', { messageCount: chatHistory.length });
 
       const newMessage: Vercel.UIMessage = {
@@ -381,25 +384,71 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
         tools,
       });
 
-      console.log('StreamText initialized, starting to process stream...');
+      console.log('StreamText initialized, starting to process fullStream...');
 
       let fullResponse = '';
+      const toolCalls: Array<{ name: string; args: unknown; result?: unknown }> = [];
 
-      // Stream the response and yield partial updates
-      for await (const textPart of result.textStream) {
-        fullResponse += textPart;
+      // Process the full stream including text and tool calls
+      for await (const chunk of result.fullStream) {
+        console.log('Processing stream chunk:', { type: chunk.type });
+        
+        switch (chunk.type) {
+          case 'text-delta': {
+            // Handle streaming text
+            fullResponse += chunk.text;
+            console.log('Text delta received, total length:', fullResponse.length);
 
-        // Create a partial response message
-        const partialMessage: Message = {
-          kind: 'message',
-          messageId: this.storage.createMessageId(),
-          role: 'agent',
-          parts: [{ kind: 'text', text: fullResponse } as TextPart],
-          taskId: task.id,
-          contextId: task.contextId,
-        };
+            // Create a partial response message with current text
+            const partialMessage: Message = {
+              kind: 'message',
+              messageId: this.storage.createMessageId(),
+              role: 'agent',
+              parts: [{ kind: 'text', text: fullResponse } as TextPart],
+              taskId: task.id,
+              contextId: task.contextId,
+            };
 
-        yield partialMessage;
+            yield partialMessage;
+            break;
+          }
+
+          case 'tool-call': {
+            // Handle tool call initiation
+            console.log('Tool call initiated:', { 
+              toolCallId: chunk.toolCallId, 
+              toolName: chunk.toolName, 
+              input: chunk.input 
+            });
+            
+            toolCalls.push({
+              name: chunk.toolName,
+              args: chunk.input,
+            });
+            break;
+          }
+
+          case 'tool-result': {
+            // Handle tool execution result
+            console.log('Tool result received:', { 
+              toolCallId: chunk.toolCallId, 
+              toolName: chunk.toolName, 
+              output: chunk.output 
+            });
+            
+            // Find and update the corresponding tool call
+            const toolCall = toolCalls.find(tc => tc.name === chunk.toolName);
+            if (toolCall) {
+              toolCall.result = chunk.output;
+            }
+            break;
+          }
+
+          case 'finish': {
+            console.log('Stream finished, final processing...');
+            break;
+          }
+        }
       }
 
       // Final completion
@@ -433,30 +482,41 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
       };
       yield finalStatusUpdate;
 
-      // Save the conversation
+      // Save the conversation using contextId as session ID
       try {
-        // First, ensure the session exists for this task ID
-        this.ensureSessionExists(task.id);
+        // First, ensure the session exists for this contextId
+        this.ensureContextExists(task.contextId);
 
         const assistantMessage: Vercel.UIMessage = {
           id: crypto.randomUUID(),
           role: 'assistant',
           parts: [{ type: 'text', text: fullResponse }]
         };
-        saveChat(task.id, [...combinedMessages, assistantMessage]);
+        saveChat(task.contextId, [...combinedMessages, assistantMessage]);
       } catch (saveError) {
-        // Log the save error but don't fail the task
-        console.error('Failed to save chat:', saveError);
+        // Enhanced logging for save errors
+        console.error('⚠️  CHAT SAVE ERROR (non-critical):', saveError);
+        console.error('Save error stack:', saveError instanceof Error ? saveError.stack : 'No stack available');
+        console.error('Context ID for failed save:', task.contextId);
       }
 
     } catch (error) {
+      // Enhanced error logging
+      console.error('🚨 STREAM MESSAGE ERROR:', error);
+      console.error('Error stack:', error instanceof Error ? error.stack : 'No stack available');
+      console.error('Task ID:', task.id);
+      console.error('Context ID:', task.contextId);
+      
       // Error handling
       task.status.state = 'failed';
       task.status.message = {
         kind: 'message',
         messageId: this.storage.createMessageId(),
         role: 'agent',
-        parts: [{ kind: 'text', text: `Error processing task: ${error}` } as TextPart],
+        parts: [{ 
+          kind: 'text', 
+          text: `Error processing task: ${error instanceof Error ? error.message : error}\n\nError type: ${error instanceof Error ? error.constructor.name : typeof error}`
+        } as TextPart],
         taskId: task.id,
         contextId: task.contextId,
       };
@@ -490,9 +550,9 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
       // Extract text from the message
       const userText = this.extractTextFromMessage(params.message);
 
-      // Ensure session exists and load chat history (use taskId as sessionId)
-      this.ensureSessionExists(task.id);
-      const chatHistory = loadChat(task.id);
+      // Use contextId as the session ID for chat continuity
+      this.ensureContextExists(task.contextId);
+      const chatHistory = loadChat(task.contextId);
 
       // Convert to UI message format
       const newMessage: Vercel.UIMessage = {
@@ -525,9 +585,28 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
 
       let fullResponse = '';
 
-      // Process the stream
-      for await (const textPart of result.textStream) {
-        fullResponse += textPart;
+      // Process the full stream including text and tool calls
+      for await (const chunk of result.fullStream) {
+        switch (chunk.type) {
+          case 'text-delta': {
+            fullResponse += chunk.text;
+            break;
+          }
+          case 'tool-call': {
+            console.log('Tool call in async processing:', { 
+              toolName: chunk.toolName, 
+              input: chunk.input 
+            });
+            break;
+          }
+          case 'tool-result': {
+            console.log('Tool result in async processing:', { 
+              toolName: chunk.toolName, 
+              output: chunk.output 
+            });
+            break;
+          }
+        }
       }
 
       // Create response message
@@ -553,10 +632,10 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
 
       this.storage.setTask(task.id, task);
 
-      // Save the conversation
+      // Save the conversation using contextId as session ID
       try {
-        // First, ensure the session exists for this task ID
-        this.ensureSessionExists(task.id);
+        // First, ensure the session exists for this contextId
+        this.ensureContextExists(task.contextId);
 
         const assistantMessage: Vercel.UIMessage = {
           id: crypto.randomUUID(),
@@ -568,20 +647,31 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
             }
           ]
         };
-        saveChat(task.id, [...combinedMessages, assistantMessage]);
+        saveChat(task.contextId, [...combinedMessages, assistantMessage]);
       } catch (saveError) {
-        // Log the save error but don't fail the task
-        console.error('Failed to save chat:', saveError);
+        // Enhanced logging for save errors
+        console.error('⚠️  CHAT SAVE ERROR (non-critical):', saveError);
+        console.error('Save error stack:', saveError instanceof Error ? saveError.stack : 'No stack available');
+        console.error('Context ID for failed save:', task.contextId);
       }
 
     } catch (error) {
+      // Enhanced error logging for async processing
+      console.error('🚨 ASYNC MESSAGE PROCESSING ERROR:', error);
+      console.error('Error stack:', error instanceof Error ? error.stack : 'No stack available');
+      console.error('Task ID:', task.id);
+      console.error('Context ID:', task.contextId);
+      
       // Update task to failed state
       task.status.state = 'failed';
       task.status.message = {
         kind: 'message',
         messageId: this.storage.createMessageId(),
         role: 'agent',
-        parts: [{ kind: 'text', text: `Error processing task: ${error}` } as TextPart],
+        parts: [{ 
+          kind: 'text', 
+          text: `Error processing task: ${error instanceof Error ? error.message : error}\n\nError type: ${error instanceof Error ? error.constructor.name : typeof error}`
+        } as TextPart],
         taskId: task.id,
         contextId: task.contextId,
       };
@@ -623,8 +713,8 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
     return agentInfo.description;
   }
 
-  private ensureSessionExists(sessionId: string): void {
-    // Always ensure the session exists (INSERT OR IGNORE will handle duplicates)
-    createChatWithId(sessionId, 'a2a-agent');
+  private ensureContextExists(contextId: string): void {
+    // Always ensure the context exists (INSERT OR IGNORE will handle duplicates)
+    createChatWithId(contextId, 'a2a-agent');
   }
 }

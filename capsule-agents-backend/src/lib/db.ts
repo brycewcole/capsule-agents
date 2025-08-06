@@ -15,7 +15,7 @@ export function getDb() {
 
 function createTables(db: Database) {
   db.exec(`
-    CREATE TABLE IF NOT EXISTS sessions (
+    CREATE TABLE IF NOT EXISTS contexts (
         app_name    TEXT,
         user_id     TEXT,
         id          TEXT PRIMARY KEY,
@@ -28,7 +28,7 @@ function createTables(db: Database) {
         id                    TEXT PRIMARY KEY,
         app_name              TEXT,
         user_id               TEXT,
-        session_id            TEXT,
+        context_id            TEXT,
         invocation_id         TEXT,
         author                TEXT,
         branch                TEXT,
@@ -42,8 +42,8 @@ function createTables(db: Database) {
         error_code            TEXT,
         error_message         TEXT,
         interrupted           INTEGER,
-        FOREIGN KEY(session_id)
-          REFERENCES sessions(id)
+        FOREIGN KEY(context_id)
+          REFERENCES contexts(id)
           ON DELETE CASCADE
     );
 

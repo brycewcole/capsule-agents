@@ -1,5 +1,6 @@
 import { tool } from 'ai';
 import { z } from 'zod';
+import process from "node:process";
 
 export const braveSearchTool = tool({
   description: 'Perform a web search using the Brave Search API.',

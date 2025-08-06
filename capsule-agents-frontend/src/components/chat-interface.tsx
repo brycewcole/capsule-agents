@@ -10,6 +10,7 @@ import Markdown from "react-markdown"
 import { ToolCallDisplay } from "@/components/tool-call-display"
 import { showErrorToast, getErrorMessage, isRecoverableError, type JSONRPCError } from "@/lib/error-utils"
 import { ErrorDisplay } from "@/components/ui/error-display"
+import { v4 as uuidv4 } from 'uuid'
 
 type ToolCall = ApiToolCall
 
@@ -28,6 +29,7 @@ export default function ChatInterface() {
   const [isBackendConnected, setIsBackendConnected] = useState(false)
   const [connectionError, setConnectionError] = useState<JSONRPCError | Error | string | null>(null)
   const [currentTask, setCurrentTask] = useState<A2ATask | null>(null)
+  const [contextId, setContextId] = useState<string>(() => uuidv4()) // Always have a contextId
   const messagesEndRef = useRef<HTMLDivElement>(null)
   
   // Initialize state - check backend connection
@@ -61,6 +63,7 @@ export default function ChatInterface() {
   const handleNewChat = () => {
     setMessages([])
     setCurrentTask(null)
+    setContextId(uuidv4()) // Generate new contextId for new conversation
   }
 
   const handleSendMessage = async () => {
@@ -81,14 +84,19 @@ export default function ChatInterface() {
       let currentResponseText = ""
       let finalToolCalls: ToolCall[] = []
       
-      for await (const event of streamMessage(userMessage)) {
+      for await (const event of streamMessage(userMessage, contextId)) {
         console.log("Received A2A event:", event)
         
         // Handle different event types
         if (event.kind === "task") {
           // Initial task created
-          setCurrentTask(event as A2ATask)
-          console.log("Task created:", event.id)
+          const task = event as A2ATask
+          setCurrentTask(task)
+          // Verify contextId matches what we sent (should be the same since we provide it)
+          if (task.contextId !== contextId) {
+            console.warn('Task contextId does not match expected contextId:', { expected: contextId, received: task.contextId })
+          }
+          console.log("Task created:", task.id, "contextId:", task.contextId)
         } else if (event.kind === "message" && event.role === "agent") {
           // Streaming message updates
           const newText = extractResponseText(event)
@@ -121,7 +129,7 @@ export default function ChatInterface() {
               const updated = [...prev]
               const lastMessage = updated[updated.length - 1]
               if (lastMessage.role === "agent") {
-                lastMessage.content = currentResponseText || "I couldn't generate a response. Please try again."
+                lastMessage.content = currentResponseText
                 lastMessage.toolCalls = finalToolCalls.length > 0 ? finalToolCalls : undefined
                 lastMessage.isLoading = false
               }
@@ -182,7 +190,7 @@ export default function ChatInterface() {
           </CardTitle>
           <CardDescription>
             {isBackendConnected 
-              ? "Test your agent with real-time conversation" 
+              ? `Conversation context: ${contextId.slice(-8)}` 
               : "⚠️ Backend not connected. Check your API connection."}
           </CardDescription>
         </div>

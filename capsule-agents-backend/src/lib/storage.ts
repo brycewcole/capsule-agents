@@ -6,50 +6,66 @@ const APP_NAME = 'capsule-agents-backend';
 
 export function createChat(userId: string): string {
   const db = getDb();
-  const sessionId = uuidv4();
+  const contextId = uuidv4();
   const now = Date.now() / 1000;
 
   const stmt = db.prepare(
-    'INSERT INTO sessions (app_name, user_id, id, state, create_time, update_time) VALUES (?, ?, ?, ?, ?, ?)'
+    'INSERT INTO contexts (app_name, user_id, id, state, create_time, update_time) VALUES (?, ?, ?, ?, ?, ?)'
   );
-  stmt.run(APP_NAME, userId, sessionId, JSON.stringify({}), now, now);
+  stmt.run(APP_NAME, userId, contextId, JSON.stringify({}), now, now);
 
-  return sessionId;
+  return contextId;
 }
 
-export function createChatWithId(sessionId: string, userId: string): void {
+export function createChatWithId(contextId: string, userId: string): void {
   const db = getDb();
   const now = Date.now() / 1000;
 
   const stmt = db.prepare(
-    'INSERT OR IGNORE INTO sessions (app_name, user_id, id, state, create_time, update_time) VALUES (?, ?, ?, ?, ?, ?)'
+    'INSERT OR IGNORE INTO contexts (app_name, user_id, id, state, create_time, update_time) VALUES (?, ?, ?, ?, ?, ?)'
   );
-  stmt.run(APP_NAME, userId, sessionId, JSON.stringify({}), now, now);
+  stmt.run(APP_NAME, userId, contextId, JSON.stringify({}), now, now);
 }
 
-export function loadChat(sessionId: string): UIMessage[] {
+export function loadChat(contextId: string): UIMessage[] {
   const db = getDb();
-  const stmt = db.prepare('SELECT content FROM events WHERE session_id = ? ORDER BY timestamp ASC');
-  const rows = stmt.all(sessionId) as { content: string }[];
+  const stmt = db.prepare('SELECT content FROM events WHERE context_id = ? ORDER BY timestamp ASC');
+  const rows = stmt.all(contextId) as { content: string }[];
 
   return rows.map(row => JSON.parse(row.content));
 }
 
-export function saveChat(sessionId: string, messages: UIMessage[]): void {
+export function saveChat(contextId: string, messages: UIMessage[]): void {
   const db = getDb();
+  
+  // Get existing message IDs to avoid duplicates
+  const existingIds = new Set(
+    (db.prepare('SELECT id FROM events WHERE context_id = ?').all(contextId) as { id: string }[])
+      .map(row => row.id)
+  );
+
+  // Only insert new messages
+  const newMessages = messages.filter(msg => !existingIds.has(msg.id));
+  
+  if (newMessages.length === 0) {
+    // Still update the context timestamp even if no new messages
+    const updateStmt = db.prepare('UPDATE contexts SET update_time = ? WHERE id = ?');
+    updateStmt.run(Date.now() / 1000, contextId);
+    return;
+  }
+
   const stmt = db.prepare(
-    'INSERT INTO events (id, app_name, user_id, session_id, author, content, timestamp) VALUES (?, ?, ?, ?, ?, ?, ?)'
+    'INSERT INTO events (id, app_name, user_id, context_id, author, content, timestamp) VALUES (?, ?, ?, ?, ?, ?, ?)'
   );
 
   const insert = db.transaction((msgs: UIMessage[]) => {
     for (const message of msgs) {
       const author = message.role;
-      // This is a simplified mapping. We can expand this to match your original schema more closely.
       stmt.run(
         message.id,
         APP_NAME,
         'user', // Assuming a single user for now
-        sessionId,
+        contextId,
         author,
         JSON.stringify(message),
         Date.now() / 1000
@@ -57,9 +73,9 @@ export function saveChat(sessionId: string, messages: UIMessage[]): void {
     }
   });
 
-  insert(messages);
+  insert(newMessages);
 
-  // Also update the session's update_time
-  const updateStmt = db.prepare('UPDATE sessions SET update_time = ? WHERE id = ?');
-  updateStmt.run(Date.now() / 1000, sessionId);
+  // Also update the context's update_time
+  const updateStmt = db.prepare('UPDATE contexts SET update_time = ? WHERE id = ?');
+  updateStmt.run(Date.now() / 1000, contextId);
 }

@@ -133,12 +133,13 @@ export type AgentInfo = {
 
 
 // Function to send a message to the agent using A2A SDK
-export async function sendMessage(message: string, _sessionId?: string) {
+export async function sendMessage(message: string, contextId: string) {
     const messageId = uuidv4();
 
     const a2aMessage: A2AMessage = {
         kind: "message",
         messageId,
+        contextId,
         parts: [{
             kind: "text",
             text: message
@@ -166,12 +167,13 @@ export async function sendMessage(message: string, _sessionId?: string) {
 type A2AStreamEventType = A2ATask | A2AMessage | TaskStatusUpdateEvent | TaskArtifactUpdateEvent;
 
 // Function to stream messages from the agent using A2A SDK
-export async function* streamMessage(message: string, _sessionId?: string): AsyncGenerator<A2AStreamEventType> {
+export async function* streamMessage(message: string, contextId: string): AsyncGenerator<A2AStreamEventType> {
     const messageId = uuidv4();
 
     const a2aMessage: A2AMessage = {
         kind: "message",
         messageId,
+        contextId,
         parts: [{
             kind: "text",
             text: message
@@ -189,7 +191,7 @@ export async function* streamMessage(message: string, _sessionId?: string): Asyn
         });
 
         for await (const event of stream) {
-            yield event as A2AStreamEventType;
+            yield event;
         }
     } catch (error) {
         console.error("Error streaming message:", error);

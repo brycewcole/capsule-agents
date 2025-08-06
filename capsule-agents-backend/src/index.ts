@@ -61,8 +61,12 @@ app.get('/.well-known/agent.json', async (c) => {
     console.log('Agent card retrieved successfully:', { name: agentCard.name, skillCount: agentCard.skills.length });
     return c.json(agentCard);
   } catch (error) {
-    console.error('Failed to get agent card:', error);
-    return c.json({ error: 'Failed to get agent card' }, 500);
+    console.error('🚨 FAILED TO GET AGENT CARD:', error);
+    console.error('Stack trace:', error instanceof Error ? error.stack : 'No stack available');
+    return c.json({ 
+      error: 'Failed to get agent card',
+      details: error instanceof Error ? error.message : String(error)
+    }, 500);
   }
 });
 
@@ -113,7 +117,10 @@ app.post('/', async (c) => {
           }
           console.log('SSE stream completed successfully');
         } catch (streamError) {
-          console.error('SSE streaming error:', streamError);
+          console.error('🚨 SSE STREAMING ERROR:', streamError);
+          console.error('Stream error stack:', streamError instanceof Error ? streamError.stack : 'No stack available');
+          console.error('Request method during stream error:', body.method);
+          
           await stream.writeSSE({
             data: JSON.stringify({
               jsonrpc: '2.0',
@@ -121,7 +128,11 @@ app.post('/', async (c) => {
               error: {
                 code: -32603,
                 message: 'Streaming error',
-                data: streamError instanceof Error ? streamError.message : 'Unknown streaming error'
+                data: {
+                  message: streamError instanceof Error ? streamError.message : 'Unknown streaming error',
+                  type: streamError instanceof Error ? streamError.constructor.name : typeof streamError,
+                  method: body.method
+                }
               }
             }),
             id: 'error',
@@ -133,14 +144,22 @@ app.post('/', async (c) => {
       return c.json(result);
     }
   } catch (error) {
-    console.error('JSON-RPC handler error:', error);
+    console.error('🚨 JSON-RPC HANDLER ERROR:', error);
+    console.error('Stack trace:', error instanceof Error ? error.stack : 'No stack available');
+    console.error('Request method:', body.method);
+    console.error('Request ID:', body.id);
+    
     return c.json({
       jsonrpc: '2.0',
       id: body.id,
       error: {
         code: -32603,
         message: 'Internal error',
-        data: error instanceof Error ? error.message : 'Unknown error'
+        data: {
+          message: error instanceof Error ? error.message : 'Unknown error',
+          type: error instanceof Error ? error.constructor.name : typeof error,
+          method: body.method
+        }
       }
     }, 500);
   }
