@@ -329,172 +329,139 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
       const model = this.getConfiguredModel();
       console.log('Model configured, starting streamText...');
 
+      let fullResponse = '';
+
       const result = Vercel.streamText({
         system: this.getSystemPrompt(),
         model,
         messages: Vercel.convertToModelMessages(combinedMessages),
         tools,
-      });
+        onFinish: async ({ text, toolCalls, toolResults, finishReason, usage }) => {
+          console.log('Stream finished:', { 
+            textLength: text.length, 
+            toolCallsCount: toolCalls?.length || 0,
+            finishReason,
+            usage 
+          });
 
-      console.log('StreamText initialized, starting to process fullStream...');
+          fullResponse = text;
 
-      let fullResponse = '';
-      const toolCalls: Array<{
-        id: string;
-        name: string;
-        args: unknown;
-        result?: unknown;
-        hasError?: boolean
-      }> = [];
+          // Add tool calls and results to task history
+          if (toolCalls && toolCalls.length > 0) {
+            for (const toolCall of toolCalls) {
+              const toolCallData: ToolCallData = {
+                type: 'tool_call',
+                id: toolCall.toolCallId,
+                name: toolCall.toolName,
+                args: (toolCall as any).args || (toolCall as any).arguments || {}
+              };
 
-      // Process the full stream including text and tool calls
-      for await (const chunk of result.fullStream) {
-        console.log('Processing stream chunk:', { type: chunk.type });
+              const toolCallMessage: Message = {
+                kind: 'message',
+                messageId: createMessageId(),
+                role: 'agent',
+                parts: [{
+                  kind: 'data',
+                  data: toolCallData
+                }],
+                taskId: task.id,
+                contextId: task.contextId,
+              };
 
-        switch (chunk.type) {
-          case 'text-delta': {
-            // Handle streaming text
-            fullResponse += chunk.text;
-            console.log('Text delta received, total length:', fullResponse.length);
-
-            // Create a partial response message with current text
-            const partialMessage: Message = {
-              kind: 'message',
-              messageId: createMessageId(),
-              role: 'agent',
-              parts: [{ kind: 'text', text: fullResponse } as TextPart],
-              taskId: task.id,
-              contextId: task.contextId,
-            };
-
-            yield partialMessage;
-            break;
-          }
-
-          case 'tool-call': {
-            // Handle tool call initiation
-            console.log('Tool call initiated:', {
-              toolCallId: chunk.toolCallId,
-              toolName: chunk.toolName,
-              input: chunk.input
-            });
-
-            toolCalls.push({
-              id: chunk.toolCallId,
-              name: chunk.toolName,
-              args: chunk.input,
-            });
-
-            // Add tool call to task history
-            const toolCallData: ToolCallData = {
-              type: 'tool_call',
-              id: chunk.toolCallId,
-              name: chunk.toolName,
-              args: chunk.input
-            };
-
-            const toolCallMessage: Message = {
-              kind: 'message',
-              messageId: createMessageId(),
-              role: 'agent',
-              parts: [{
-                kind: 'data',
-                data: toolCallData
-              }],
-              taskId: task.id,
-              contextId: task.contextId,
-            };
-
-            if (!task.history) task.history = [];
-            task.history.push(toolCallMessage);
-            this.taskStorage.setTask(task.id, task);
-            break;
-          }
-
-          case 'tool-result': {
-            // Handle tool execution result
-            console.log('Tool result received:', {
-              toolCallId: chunk.toolCallId,
-              toolName: chunk.toolName,
-              output: chunk.output
-            });
-
-            // Find and update the corresponding tool call
-            const toolCall = toolCalls.find(tc => tc.id === chunk.toolCallId);
-            if (toolCall) {
-              toolCall.result = chunk.output;
-
-              // Check if result contains an error
-              const isError = chunk.output &&
-                typeof chunk.output === 'object' &&
-                'error' in chunk.output;
-              toolCall.hasError = isError;
-
-              if (isError) {
-                console.log('🚨 Tool execution failed:', {
-                  toolName: chunk.toolName,
-                  error: (chunk.output as any).error
-                });
-
-                // Add error message to response text
-                const errorMessage = `\n\n⚠️ **Tool Error**: ${chunk.toolName} failed - ${(chunk.output as any).error}`;
-                fullResponse += errorMessage;
-              }
+              if (!task.history) task.history = [];
+              task.history.push(toolCallMessage);
             }
-
-            // Add tool result to task history  
-            const toolResultData: ToolResultData = {
-              type: 'tool_result',
-              id: chunk.toolCallId,
-              name: chunk.toolName,
-              result: chunk.output
-            };
-
-            const toolResultMessage: Message = {
-              kind: 'message',
-              messageId: createMessageId(),
-              role: 'agent',
-              parts: [{
-                kind: 'data',
-                data: toolResultData
-              }],
-              taskId: task.id,
-              contextId: task.contextId,
-            };
-
-            if (!task.history) task.history = [];
-            task.history.push(toolResultMessage);
-            this.taskStorage.setTask(task.id, task);
-            break;
           }
 
-          case 'finish': {
-            console.log('Stream finished, final processing...');
-            break;
+          if (toolResults && toolResults.length > 0) {
+            for (const toolResult of toolResults) {
+              const toolResultData: ToolResultData = {
+                type: 'tool_result',
+                id: toolResult.toolCallId,
+                name: toolResult.toolName,
+                result: (toolResult as any).result || (toolResult as any).value
+              };
+
+              const toolResultMessage: Message = {
+                kind: 'message',
+                messageId: createMessageId(),
+                role: 'agent',
+                parts: [{
+                  kind: 'data',
+                  data: toolResultData
+                }],
+                taskId: task.id,
+                contextId: task.contextId,
+              };
+
+              if (!task.history) task.history = [];
+              task.history.push(toolResultMessage);
+            }
+          }
+
+          // Create final response message
+          const responseMessage: Message = {
+            kind: 'message',
+            messageId: createMessageId(),
+            role: 'agent',
+            parts: [{ kind: 'text', text: fullResponse } as TextPart],
+            taskId: task.id,
+            contextId: task.contextId,
+          };
+
+          // Update task to completed state
+          task.status.state = 'completed';
+          task.status.message = responseMessage;
+          task.status.timestamp = new Date().toISOString();
+
+          if (!task.history) {
+            task.history = [];
+          }
+          task.history.push(responseMessage);
+
+          this.taskStorage.setTask(task.id, task);
+
+          // Save the conversation using contextId as session ID
+          try {
+            this.ensureContextExists(task.contextId);
+            const assistantMessage: Vercel.UIMessage = {
+              id: crypto.randomUUID(),
+              role: 'assistant',
+              parts: [{ type: 'text', text: fullResponse }]
+            };
+            saveChat(task.contextId, [...combinedMessages, assistantMessage]);
+          } catch (saveError) {
+            console.error('⚠️  CHAT SAVE ERROR (non-critical):', saveError);
+            console.error('Context ID for failed save:', task.contextId);
           }
         }
+      });
+
+      console.log('StreamText initialized, starting to process text stream...');
+
+      // Stream text deltas to client - much simpler!
+      let currentText = '';
+      for await (const delta of result.textStream) {
+        currentText += delta;
+        console.log('Text delta received, total length:', currentText.length);
+
+        // Create a partial response message with current text
+        const partialMessage: Message = {
+          kind: 'message',
+          messageId: createMessageId(),
+          role: 'agent',
+          parts: [{ kind: 'text', text: currentText } as TextPart],
+          taskId: task.id,
+          contextId: task.contextId,
+        };
+
+        yield partialMessage;
       }
 
-      // Final completion
-      const responseMessage: Message = {
-        kind: 'message',
-        messageId: createMessageId(),
-        role: 'agent',
-        parts: [{ kind: 'text', text: fullResponse } as TextPart],
-        taskId: task.id,
-        contextId: task.contextId,
-      };
-
-      task.status.state = 'completed';
-      task.status.message = responseMessage;
-      task.status.timestamp = new Date().toISOString();
-
-      if (!task.history) {
-        task.history = [];
-      }
-      task.history.push(responseMessage);
-
-      this.taskStorage.setTask(task.id, task);
+      console.log('Text streaming complete, waiting for onFinish...');
+      
+      // Wait for onFinish to complete (it handles tool calls and final task update)
+      await result.text; // This ensures onFinish has completed
 
       // Final status update
       const finalStatusUpdate: TaskStatusUpdateEvent = {
@@ -505,24 +472,6 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
         final: true,
       };
       yield finalStatusUpdate;
-
-      // Save the conversation using contextId as session ID
-      try {
-        // First, ensure the session exists for this contextId
-        this.ensureContextExists(task.contextId);
-
-        const assistantMessage: Vercel.UIMessage = {
-          id: crypto.randomUUID(),
-          role: 'assistant',
-          parts: [{ type: 'text', text: fullResponse }]
-        };
-        saveChat(task.contextId, [...combinedMessages, assistantMessage]);
-      } catch (saveError) {
-        // Enhanced logging for save errors
-        console.error('⚠️  CHAT SAVE ERROR (non-critical):', saveError);
-        console.error('Save error stack:', saveError instanceof Error ? saveError.stack : 'No stack available');
-        console.error('Context ID for failed save:', task.contextId);
-      }
 
     } catch (error) {
       // Enhanced error logging
