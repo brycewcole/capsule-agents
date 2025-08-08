@@ -20,34 +20,35 @@ import { braveSearchTool, braveSearchSkill } from '../tools/brave-search.ts';
 import { memoryTool, memorySkill } from '../tools/memory.ts';
 import { saveChat, loadChat, createChatWithId } from './storage.ts';
 import { AgentConfigService } from './agent-config.ts';
+import { TaskStorage } from './task-storage.ts';
 import { z } from 'zod';
 
-// Simple in-memory storage for this example
-class InMemoryStorage {
-  private tasks = new Map<string, Task>();
-  private taskCounter = 0;
-  private messageCounter = 0;
-  private contextCounter = 0;
+// Custom types for tool call data structures
+interface ToolCallData {
+  type: 'tool_call';
+  id: string;
+  name: string;
+  args: unknown;
+  [k: string]: unknown;
+}
 
-  createTaskId(): string {
-    return `task-${++this.taskCounter}`;
-  }
+interface ToolResultData {
+  type: 'tool_result';
+  id: string;
+  name: string;
+  result: unknown;
+  [k: string]: unknown;
+}
 
-  createMessageId(): string {
-    return `msg-${++this.messageCounter}`;
-  }
+// Message ID counter for generating unique message IDs
+let messageCounter = 0;
 
-  setTask(id: string, task: Task): void {
-    this.tasks.set(id, task);
-  }
-
-  getTask(id: string): Task | undefined {
-    return this.tasks.get(id);
-  }
+function createMessageId(): string {
+  return `msg-${++messageCounter}-${Date.now()}`;
 }
 
 export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
-  private storage = new InMemoryStorage();
+  private taskStorage = new TaskStorage();
   private agentConfigService: AgentConfigService;
 
   constructor() {
@@ -186,7 +187,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
 
   // deno-lint-ignore require-await
   async sendMessage(params: MessageSendParams): Promise<Message | Task> {
-    const taskId = this.storage.createTaskId();
+    const taskId = this.taskStorage.createTaskId();
     // contextId should always be provided now - it IS the session ID
     const contextId = params.message.contextId!;
 
@@ -203,7 +204,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
       metadata: params.metadata || {},
     };
 
-    this.storage.setTask(taskId, task);
+    this.taskStorage.setTask(taskId, task);
 
     // Process the message asynchronously
     this.processMessageAsync(task, params);
@@ -213,7 +214,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
 
   // deno-lint-ignore require-await
   async getTask(params: TaskQueryParams): Promise<Task> {
-    const task = this.storage.getTask(params.id);
+    const task = this.taskStorage.getTask(params.id);
     if (!task) {
       throw new Error('Task not found');
     }
@@ -230,7 +231,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
 
   // deno-lint-ignore require-await
   async cancelTask(params: TaskIdParams): Promise<Task> {
-    const task = this.storage.getTask(params.id);
+    const task = this.taskStorage.getTask(params.id);
     if (!task) {
       throw new Error('Task not found');
     }
@@ -244,7 +245,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
 
     task.status.state = 'canceled';
     task.status.timestamp = new Date().toISOString();
-    this.storage.setTask(task.id, task);
+    this.taskStorage.setTask(task.id, task);
 
     return task;
   }
@@ -261,7 +262,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
 
   async* sendMessageStream(params: MessageSendParams): AsyncGenerator<Task | Message | TaskStatusUpdateEvent | TaskArtifactUpdateEvent, void, undefined> {
     console.log('CapsuleAgentA2ARequestHandler.sendMessageStream() called');
-    const taskId = this.storage.createTaskId();
+    const taskId = this.taskStorage.createTaskId();
     // contextId should always be provided now - it IS the session ID
     const contextId = params.message.contextId!;
     console.log('Created task and context IDs:', { taskId, contextId });
@@ -279,7 +280,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
       metadata: params.metadata || {},
     };
 
-    this.storage.setTask(taskId, task);
+    this.taskStorage.setTask(taskId, task);
     console.log('Task created and stored');
 
     // Yield initial task
@@ -289,7 +290,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
     // Update to working state and yield update
     task.status.state = 'working';
     task.status.timestamp = new Date().toISOString();
-    this.storage.setTask(taskId, task);
+    this.taskStorage.setTask(taskId, task);
 
     const statusUpdate: TaskStatusUpdateEvent = {
       kind: 'status-update',
@@ -359,7 +360,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
             // Create a partial response message with current text
             const partialMessage: Message = {
               kind: 'message',
-              messageId: this.storage.createMessageId(),
+              messageId: createMessageId(),
               role: 'agent',
               parts: [{ kind: 'text', text: fullResponse } as TextPart],
               taskId: task.id,
@@ -385,17 +386,20 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
             });
 
             // Add tool call to task history
+            const toolCallData: ToolCallData = {
+              type: 'tool_call',
+              id: chunk.toolCallId,
+              name: chunk.toolName,
+              args: chunk.input
+            };
+
             const toolCallMessage: Message = {
               kind: 'message',
-              messageId: this.storage.createMessageId(),
+              messageId: createMessageId(),
               role: 'agent',
               parts: [{
-                kind: 'function_call',
-                function_call: {
-                  id: chunk.toolCallId,
-                  name: chunk.toolName,
-                  args: chunk.input
-                }
+                kind: 'data',
+                data: toolCallData
               }],
               taskId: task.id,
               contextId: task.contextId,
@@ -403,7 +407,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
 
             if (!task.history) task.history = [];
             task.history.push(toolCallMessage);
-            this.storage.setTask(task.id, task);
+            this.taskStorage.setTask(task.id, task);
             break;
           }
 
@@ -439,25 +443,28 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
             }
 
             // Add tool result to task history  
+            const toolResultData: ToolResultData = {
+              type: 'tool_result',
+              id: chunk.toolCallId,
+              name: chunk.toolName,
+              result: chunk.output
+            };
+
             const toolResultMessage: Message = {
               kind: 'message',
-              messageId: this.storage.createMessageId(),
+              messageId: createMessageId(),
               role: 'agent',
               parts: [{
-                kind: 'function_response',
-                function_response: {
-                  id: chunk.toolCallId,
-                  name: chunk.toolName,
-                  response: chunk.output
-                }
-              } as any],
+                kind: 'data',
+                data: toolResultData
+              }],
               taskId: task.id,
               contextId: task.contextId,
             };
 
             if (!task.history) task.history = [];
             task.history.push(toolResultMessage);
-            this.storage.setTask(task.id, task);
+            this.taskStorage.setTask(task.id, task);
             break;
           }
 
@@ -471,7 +478,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
       // Final completion
       const responseMessage: Message = {
         kind: 'message',
-        messageId: this.storage.createMessageId(),
+        messageId: createMessageId(),
         role: 'agent',
         parts: [{ kind: 'text', text: fullResponse } as TextPart],
         taskId: task.id,
@@ -487,7 +494,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
       }
       task.history.push(responseMessage);
 
-      this.storage.setTask(task.id, task);
+      this.taskStorage.setTask(task.id, task);
 
       // Final status update
       const finalStatusUpdate: TaskStatusUpdateEvent = {
@@ -528,7 +535,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
       task.status.state = 'failed';
       task.status.message = {
         kind: 'message',
-        messageId: this.storage.createMessageId(),
+        messageId: createMessageId(),
         role: 'agent',
         parts: [{
           kind: 'text',
@@ -539,7 +546,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
       };
       task.status.timestamp = new Date().toISOString();
 
-      this.storage.setTask(task.id, task);
+      this.taskStorage.setTask(task.id, task);
 
       const errorStatusUpdate: TaskStatusUpdateEvent = {
         kind: 'status-update',
@@ -562,7 +569,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
       // Update task to working state
       task.status.state = 'working';
       task.status.timestamp = new Date().toISOString();
-      this.storage.setTask(task.id, task);
+      this.taskStorage.setTask(task.id, task);
 
       // Extract text from the message
       const userText = this.extractTextFromMessage(params.message);
@@ -629,7 +636,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
       // Create response message
       const responseMessage: Message = {
         kind: 'message',
-        messageId: this.storage.createMessageId(),
+        messageId: createMessageId(),
         role: 'agent',
         parts: [{ kind: 'text', text: fullResponse } as TextPart],
         taskId: task.id,
@@ -647,7 +654,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
       }
       task.history.push(responseMessage);
 
-      this.storage.setTask(task.id, task);
+      this.taskStorage.setTask(task.id, task);
 
       // Save the conversation using contextId as session ID
       try {
@@ -683,7 +690,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
       task.status.state = 'failed';
       task.status.message = {
         kind: 'message',
-        messageId: this.storage.createMessageId(),
+        messageId: createMessageId(),
         role: 'agent',
         parts: [{
           kind: 'text',
@@ -694,7 +701,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
       };
       task.status.timestamp = new Date().toISOString();
 
-      this.storage.setTask(task.id, task);
+      this.taskStorage.setTask(task.id, task);
     }
   }
 

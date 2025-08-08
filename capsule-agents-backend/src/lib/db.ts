@@ -69,6 +69,16 @@ function createTables(db: Database) {
         model_parameters  TEXT    NOT NULL,
         tools             TEXT    DEFAULT '[]'
     );
+
+    CREATE TABLE IF NOT EXISTS a2a_tasks (
+        id                TEXT PRIMARY KEY,
+        context_id        TEXT NOT NULL,
+        status            TEXT NOT NULL, -- JSON serialized status object
+        history           TEXT NOT NULL, -- JSON array of messages
+        metadata          TEXT NOT NULL, -- JSON object
+        created_at        REAL NOT NULL,
+        updated_at        REAL NOT NULL
+    );
   `);
   
   // Insert default agent info if it doesn't exist
