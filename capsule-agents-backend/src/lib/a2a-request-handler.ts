@@ -9,7 +9,6 @@ import type {
   TaskPushNotificationConfig,
   TaskStatusUpdateEvent,
   TaskArtifactUpdateEvent,
-  TextPart,
 } from '@a2a-js/sdk';
 import type { A2ARequestHandler } from '@a2a-js/sdk/server';
 import process from 'node:process';
@@ -21,30 +20,13 @@ import { memoryTool, memorySkill } from '../tools/memory.ts';
 import { saveChat, loadChat, createChatWithId } from './storage.ts';
 import { AgentConfigService } from './agent-config.ts';
 import { TaskStorage } from './task-storage.ts';
+import { TaskService } from './task-service.ts';
 import { z } from 'zod';
 
-interface ToolCallData {
-  type: 'tool_call';
-  id: string;
-  name: string;
-  args: unknown;
-  [k: string]: unknown;
-}
-
-interface ToolResultData {
-  type: 'tool_result';
-  id: string;
-  name: string;
-  result: unknown;
-  [k: string]: unknown;
-}
-
-function createMessageId(): string {
-  return `msg_${crypto.randomUUID()}`;
-}
 
 export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
   private taskStorage = new TaskStorage();
+  private taskService = new TaskService(this.taskStorage);
   private agentConfigService: AgentConfigService;
 
   constructor() {
@@ -183,24 +165,9 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
 
   // deno-lint-ignore require-await
   async sendMessage(params: MessageSendParams): Promise<Message | Task> {
-    const taskId = this.taskStorage.createTaskId();
     const contextId = crypto.randomUUID();
-
-
     const initialMessage = { ...params.message, contextId };
-    const task: Task = {
-      id: taskId,
-      kind: 'task',
-      contextId,
-      status: {
-        state: 'submitted',
-        timestamp: new Date().toISOString(),
-      },
-      history: [initialMessage],
-      metadata: params.metadata || {},
-    };
-
-    this.taskStorage.setTask(taskId, task);
+    const task = this.taskService.createTask(contextId, initialMessage, params.metadata);
 
     // Process the message asynchronously
     this.processMessageAsync(task, params);
@@ -232,17 +199,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
       throw new Error('Task not found');
     }
 
-    // Only allow cancellation of certain states
-    if (task.status.state === 'completed' ||
-      task.status.state === 'canceled' ||
-      task.status.state === 'failed') {
-      throw new Error('Task cannot be canceled');
-    }
-
-    task.status.state = 'canceled';
-    task.status.timestamp = new Date().toISOString();
-    this.taskStorage.setTask(task.id, task);
-
+    this.taskService.cancelTask(task);
     return task;
   }
 
@@ -260,52 +217,22 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
     params: MessageSendParams
   ): AsyncGenerator<Task | Message | TaskStatusUpdateEvent | TaskArtifactUpdateEvent, void, undefined> {
     console.log('CapsuleAgentA2ARequestHandler.sendMessageStream() called');
-    const taskId = this.taskStorage.createTaskId();
-    // Server always generates contextId - client will receive and use for subsequent messages
-    const contextId = crypto.randomUUID();
-    console.log('Created task and context IDs:', { taskId, contextId });
+    if (params.message.contextId == null) {
+      params.message.contextId = crypto.randomUUID();
+    }
 
-    // Create task with initial message (set the contextId on the message)
-    const initialMessage = { ...params.message, contextId };
-    const task: Task = {
-      id: taskId,
-      kind: 'task',
-      contextId,
-      status: {
-        state: 'submitted',
-        timestamp: new Date().toISOString(),
-      },
-      history: [initialMessage],
-      metadata: params.metadata || {},
-    };
-
-    this.taskStorage.setTask(taskId, task);
+    const task = this.taskService.createTask(params.message.contextId, params.message, params.metadata);
     console.log('Task created and stored');
 
     // Yield initial task
-    console.log('Yielding initial task');
     yield task;
 
     // Update to working state and yield update
-    task.status.state = 'working';
-    task.status.timestamp = new Date().toISOString();
-    this.taskStorage.setTask(taskId, task);
-
-    const statusUpdate: TaskStatusUpdateEvent = {
-      kind: 'status-update',
-      taskId: task.id,
-      contextId: task.contextId,
-      status: task.status,
-      final: false,
-    };
-    yield statusUpdate;
+    const workingStatusUpdate = this.taskService.transitionState(task, 'working');
+    yield workingStatusUpdate;
 
     try {
-      // Process the message with streaming
-      console.log('Processing message with streaming...');
-      const userText = this.extractTextFromMessage(params.message);
-      console.log('Extracted user text:', { length: userText.length });
-
+      const userText = this.taskService.extractTextFromMessage(params.message);
       // Use contextId as the session ID for chat continuity
       console.log('Ensuring context exists for contextId:', task.contextId);
       this.ensureContextExists(task.contextId);
@@ -335,7 +262,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
         model,
         messages: Vercel.convertToModelMessages(combinedMessages),
         tools,
-        onFinish: async ({ text, toolCalls, toolResults, finishReason, usage }) => {
+        onFinish: ({ text, toolCalls, toolResults, finishReason, usage }) => {
           console.log('Stream finished:', {
             textLength: text.length,
             toolCallsCount: toolCalls?.length || 0,
@@ -345,84 +272,21 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
 
           fullResponse = text;
 
-          // Add tool calls to task history (single messages summarizing the events)
+          // Add tool calls and results to task history
           if (toolCalls && toolCalls.length > 0) {
-            for (const toolCall of toolCalls) {
-              const toolCallData: ToolCallData = {
-                type: 'tool_call',
-                id: toolCall.toolCallId,
-                name: toolCall.toolName,
-                // prefer known fields; fall back defensively
-                args: (toolCall as any).input ?? (toolCall as any).args ?? (toolCall as any).arguments ?? {},
-              };
-
-              const toolCallMessage: Message = {
-                kind: 'message',
-                messageId: createMessageId(),
-                role: 'agent',
-                parts: [
-                  {
-                    kind: 'data',
-                    data: toolCallData,
-                  },
-                ],
-                taskId: task.id,
-                contextId: task.contextId,
-              };
-
-              if (!task.history) task.history = [];
-              task.history.push(toolCallMessage);
-            }
+            this.taskService.addToolCallsToHistory(task, toolCalls);
           }
 
-          // Add tool results to task history
           if (toolResults && toolResults.length > 0) {
-            for (const toolResult of toolResults) {
-              const toolResultData: ToolResultData = {
-                type: 'tool_result',
-                id: toolResult.toolCallId,
-                name: toolResult.toolName,
-                result: (toolResult as any).output ?? (toolResult as any).result ?? (toolResult as any).value,
-              };
-
-              const toolResultMessage: Message = {
-                kind: 'message',
-                messageId: createMessageId(),
-                role: 'agent',
-                parts: [
-                  {
-                    kind: 'data',
-                    data: toolResultData,
-                  },
-                ],
-                taskId: task.id,
-                contextId: task.contextId,
-              };
-
-              if (!task.history) task.history = [];
-              task.history.push(toolResultMessage);
-            }
+            this.taskService.addToolResultsToHistory(task, toolResults);
           }
 
-          // Create final response message
-          const responseMessage: Message = {
-            kind: 'message',
-            messageId: createMessageId(),
-            role: 'agent',
-            parts: [{ kind: 'text', text: fullResponse } as TextPart],
-            taskId: task.id,
-            contextId: task.contextId,
-          };
+          // Create and add response message to history
+          const responseMessage = this.taskService.createResponseMessage(task, fullResponse);
+          this.taskService.addMessageToHistory(task, responseMessage);
 
           // Update task to completed state
-          task.status.state = 'completed';
-          task.status.message = responseMessage;
-          task.status.timestamp = new Date().toISOString();
-
-          if (!task.history) {
-            task.history = [];
-          }
-          task.history.push(responseMessage);
+          this.taskService.transitionState(task, 'completed', responseMessage, true);
 
           this.taskStorage.setTask(task.id, task);
 
@@ -447,31 +311,15 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
       // Stream *deltas only* to the client; still build fullResponse server-side
       for await (const delta of result.textStream) {
         fullResponse += delta;
-
-        const partialDeltaMessage: Message = {
-          kind: 'message',
-          messageId: createMessageId(),
-          role: 'agent',
-          parts: [{ kind: 'text', text: delta } as TextPart],
-          taskId: task.id,
-          contextId: task.contextId,
-        };
-
-        yield partialDeltaMessage;
+        yield this.taskService.createTextDeltaMessage(task, delta);
       }
 
       console.log('Text streaming complete, waiting for onFinish...');
       // Ensure onFinish work (tool events, finalization, persistence) completed
       await result.text;
 
-      // Final status update
-      const finalStatusUpdate: TaskStatusUpdateEvent = {
-        kind: 'status-update',
-        taskId: task.id,
-        contextId: task.contextId,
-        status: task.status,
-        final: true,
-      };
+      // Final status update (already generated by transitionState)
+      const finalStatusUpdate = this.taskService.transitionState(task, task.status.state, undefined, true);
       yield finalStatusUpdate;
     } catch (error) {
       // Enhanced error logging
@@ -481,32 +329,10 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
       console.error('Context ID:', task.contextId);
 
       // Error handling
-      task.status.state = 'failed';
-      task.status.message = {
-        kind: 'message',
-        messageId: createMessageId(),
-        role: 'agent',
-        parts: [
-          {
-            kind: 'text',
-            text: `Error processing task: ${error instanceof Error ? error.message : String(error)
-              }\n\nError type: ${error instanceof Error ? error.constructor.name : typeof error}`,
-          } as TextPart,
-        ],
-        taskId: task.id,
-        contextId: task.contextId,
-      };
-      task.status.timestamp = new Date().toISOString();
-
-      this.taskStorage.setTask(task.id, task);
-
-      const errorStatusUpdate: TaskStatusUpdateEvent = {
-        kind: 'status-update',
-        taskId: task.id,
-        contextId: task.contextId,
-        status: task.status,
-        final: true,
-      };
+      const errorMessage = `Error processing task: ${error instanceof Error ? error.message : String(error)
+        }\n\nError type: ${error instanceof Error ? error.constructor.name : typeof error}`;
+      
+      const errorStatusUpdate = this.taskService.transitionState(task, 'failed', errorMessage, true);
       yield errorStatusUpdate;
     }
   }
@@ -519,12 +345,10 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
   private async processMessageAsync(task: Task, params: MessageSendParams): Promise<void> {
     try {
       // Update task to working state
-      task.status.state = 'working';
-      task.status.timestamp = new Date().toISOString();
-      this.taskStorage.setTask(task.id, task);
+      this.taskService.transitionState(task, 'working');
 
       // Extract text from the message
-      const userText = this.extractTextFromMessage(params.message);
+      const userText = this.taskService.extractTextFromMessage(params.message);
 
       // Use contextId as the session ID for chat continuity
       this.ensureContextExists(task.contextId);
@@ -584,28 +408,10 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
         }
       }
 
-      // Create response message
-      const responseMessage: Message = {
-        kind: 'message',
-        messageId: createMessageId(),
-        role: 'agent',
-        parts: [{ kind: 'text', text: fullResponse } as TextPart],
-        taskId: task.id,
-        contextId: task.contextId,
-      };
-
-      // Update task to completed state
-      task.status.state = 'completed';
-      task.status.message = responseMessage;
-      task.status.timestamp = new Date().toISOString();
-
-      // Add response to history
-      if (!task.history) {
-        task.history = [];
-      }
-      task.history.push(responseMessage);
-
-      this.taskStorage.setTask(task.id, task);
+      // Create response message and update task to completed state
+      const responseMessage = this.taskService.createResponseMessage(task, fullResponse);
+      this.taskService.addMessageToHistory(task, responseMessage);
+      this.taskService.transitionState(task, 'completed', responseMessage, true);
 
       // Save the conversation using contextId as session ID
       try {
@@ -636,34 +442,13 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
       console.error('Context ID:', task.contextId);
 
       // Update task to failed state
-      task.status.state = 'failed';
-      task.status.message = {
-        kind: 'message',
-        messageId: createMessageId(),
-        role: 'agent',
-        parts: [
-          {
-            kind: 'text',
-            text: `Error processing task: ${error instanceof Error ? error.message : String(error)
-              }\n\nError type: ${error instanceof Error ? error.constructor.name : typeof error}`,
-          },
-        ],
-        taskId: task.id,
-        contextId: task.contextId,
-      };
-      task.status.timestamp = new Date().toISOString();
-
-      this.taskStorage.setTask(task.id, task);
+      const errorMessage = `Error processing task: ${error instanceof Error ? error.message : String(error)
+        }\n\nError type: ${error instanceof Error ? error.constructor.name : typeof error}`;
+      
+      this.taskService.transitionState(task, 'failed', errorMessage, true);
     }
   }
 
-  private extractTextFromMessage(message: Message): string {
-    return message.parts
-      .filter((part): part is TextPart => part.kind === 'text')
-      .map(part => part.text)
-      .filter(Boolean)
-      .join(' ');
-  }
 
   private getConfiguredModel() {
     try {

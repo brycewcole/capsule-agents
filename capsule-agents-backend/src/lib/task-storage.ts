@@ -9,17 +9,18 @@ export class TaskStorage implements TaskStore {
     return `task-${++this.taskCounter}-${Date.now()}`;
   }
 
-  // TaskStore interface implementation
+  // deno-lint-ignore require-await
   async save(task: Task): Promise<void> {
     this.setTask(task.id, task);
   }
 
+  // deno-lint-ignore require-await
   async load(taskId: string): Promise<Task | undefined> {
     const taskWithTimestamps = this.getTask(taskId);
     if (!taskWithTimestamps) return undefined;
-    
+
     // Return just the Task without our additional timestamp fields
-    const { created_at, updated_at, ...task } = taskWithTimestamps;
+    const { created_at: _createdAt, updated_at: _updatedAt, ...task } = taskWithTimestamps;
     return task;
   }
 
@@ -55,7 +56,7 @@ export class TaskStorage implements TaskStore {
       FROM a2a_tasks 
       WHERE id = ?
     `);
-    
+
     const row = stmt.get(id) as {
       id: string;
       context_id: string;
@@ -87,7 +88,7 @@ export class TaskStorage implements TaskStore {
       FROM a2a_tasks 
       ORDER BY created_at DESC
     `);
-    
+
     const rows = stmt.all() as {
       id: string;
       context_id: string;
@@ -118,7 +119,7 @@ export class TaskStorage implements TaskStore {
       WHERE context_id = ?
       ORDER BY created_at ASC
     `);
-    
+
     const rows = stmt.all(contextId) as {
       id: string;
       context_id: string;
@@ -152,13 +153,13 @@ export class TaskStorage implements TaskStore {
   cleanupOldTasks(olderThanDays: number = 7): number {
     const db = getDb();
     const cutoffTime = (Date.now() / 1000) - (olderThanDays * 24 * 60 * 60);
-    
+
     const stmt = db.prepare(`
       DELETE FROM a2a_tasks 
       WHERE updated_at < ? 
       AND JSON_EXTRACT(status, '$.state') IN ('completed', 'failed', 'canceled')
     `);
-    
+
     const result = stmt.run(cutoffTime) as unknown as { changes: number };
     return result.changes;
   }
