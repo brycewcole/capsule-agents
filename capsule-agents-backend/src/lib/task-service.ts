@@ -4,7 +4,7 @@ import type {
   TaskStatusUpdateEvent,
   TextPart,
 } from '@a2a-js/sdk';
-import { TaskStorage } from './task-storage.ts';
+import type { TaskStorage } from './task-storage.ts';
 
 interface ToolCallData {
   type: 'tool_call';
@@ -22,7 +22,7 @@ interface ToolResultData {
   [k: string]: unknown;
 }
 
-type TaskState = 'submitted' | 'working' | 'completed' | 'canceled' | 'failed';
+type TaskState = Task['status']['state'];
 
 export class TaskService {
   private taskStorage: TaskStorage;
