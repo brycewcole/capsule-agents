@@ -10,7 +10,7 @@ import Markdown from "react-markdown"
 import { ToolCallDisplay } from "@/components/tool-call-display"
 import { showErrorToast, getErrorMessage, isRecoverableError, type JSONRPCError } from "@/lib/error-utils"
 import { ErrorDisplay } from "@/components/ui/error-display"
-import { v4 as uuidv4 } from 'uuid'
+
 
 type ToolCall = ApiToolCall
 
@@ -29,7 +29,8 @@ export default function ChatInterface() {
   const [isBackendConnected, setIsBackendConnected] = useState(false)
   const [connectionError, setConnectionError] = useState<JSONRPCError | Error | string | null>(null)
   const [currentTask, setCurrentTask] = useState<A2ATask | null>(null)
-  const [contextId, setContextId] = useState<string>(() => uuidv4()) // Always have a contextId
+  // Defer contextId assignment to backend on first message
+  const [contextId, setContextId] = useState<string | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   
   // Initialize state - check backend connection
@@ -63,7 +64,8 @@ export default function ChatInterface() {
   const handleNewChat = () => {
     setMessages([])
     setCurrentTask(null)
-    setContextId(uuidv4()) // Generate new contextId for new conversation
+    // Clear contextId so backend will assign a fresh one on next message
+    setContextId(null)
   }
 
   const handleSendMessage = async () => {
@@ -92,9 +94,11 @@ export default function ChatInterface() {
           // Initial task created
           const task = event as A2ATask
           setCurrentTask(task)
-          // Verify contextId matches what we sent (should be the same since we provide it)
-          if (task.contextId !== contextId) {
-            console.warn('Task contextId does not match expected contextId:', { expected: contextId, received: task.contextId })
+          // Capture backend-assigned contextId on first response
+          if (!contextId && task.contextId) {
+            setContextId(task.contextId)
+          } else if (contextId && task.contextId !== contextId) {
+            console.warn('Task contextId changed from expected contextId:', { expected: contextId, received: task.contextId })
           }
           console.log("Task created:", task.id, "contextId:", task.contextId)
         } else if (event.kind === "message" && event.role === "agent") {
@@ -190,7 +194,7 @@ export default function ChatInterface() {
           </CardTitle>
           <CardDescription>
             {isBackendConnected 
-              ? `Conversation context: ${contextId.slice(-8)}` 
+              ? (contextId ? `Conversation context: ${contextId.slice(-8)}` : "New conversation")
               : "⚠️ Backend not connected. Check your API connection."}
           </CardDescription>
         </div>

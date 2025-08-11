@@ -44,10 +44,12 @@ ENV DENO_NO_PROMPT=1
 WORKDIR /app
 
 # Copy cached dependencies and compiled code from builder
-COPY --from=backend-builder /app ./
+COPY --from=backend-builder --chown=deno:deno /app ./
 
 # Create directories with proper permissions
 USER root
+# Ensure /app and its contents are writable by deno
+RUN chown -R deno:deno /app
 RUN mkdir -p ./static && chown -R deno:deno ./static
 RUN mkdir -p ./agent-workspace && chown -R deno:deno ./agent-workspace
 RUN mkdir -p ./data && chown -R deno:deno ./data

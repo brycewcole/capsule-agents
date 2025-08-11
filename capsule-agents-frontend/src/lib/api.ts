@@ -6,6 +6,9 @@ const API_BASE_URL = '';
 
 const a2aClient = new A2AClient(API_BASE_URL || 'http://localhost:8080');
 
+// Helper type: allow backend-assigned contextId on first message
+type OutboundMessage = Omit<A2AMessage, 'contextId'> & { contextId?: string };
+
 // Auth store for credentials
 class AuthStore {
     private credentials: string | null = null;
@@ -133,18 +136,19 @@ export type AgentInfo = {
 
 
 // Function to send a message to the agent using A2A SDK
-export async function sendMessage(message: string, contextId: string) {
+export async function sendMessage(message: string, contextId?: string | null) {
     const messageId = uuidv4();
 
-    const a2aMessage: A2AMessage = {
+    // Build message allowing backend to assign context/session on first send
+    const a2aMessage: OutboundMessage = {
         kind: "message",
         messageId,
-        contextId,
         parts: [{
             kind: "text",
             text: message
         }],
-        role: "user"
+        role: "user",
+        ...(contextId ? { contextId } : {})
     };
 
     try {
@@ -167,18 +171,18 @@ export async function sendMessage(message: string, contextId: string) {
 type A2AStreamEventType = A2ATask | A2AMessage | TaskStatusUpdateEvent | TaskArtifactUpdateEvent;
 
 // Function to stream messages from the agent using A2A SDK
-export async function* streamMessage(message: string, contextId: string): AsyncGenerator<A2AStreamEventType> {
+export async function* streamMessage(message: string, contextId?: string | null): AsyncGenerator<A2AStreamEventType> {
     const messageId = uuidv4();
 
     const a2aMessage: A2AMessage = {
         kind: "message",
         messageId,
-        contextId,
         parts: [{
             kind: "text",
             text: message
         }],
-        role: "user"
+        role: "user",
+        contextId: contextId || uuidv4()
     };
 
     try {

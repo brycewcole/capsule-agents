@@ -22,7 +22,6 @@ import { saveChat, loadChat, createChatWithId } from './storage.ts';
 import { AgentConfigService } from './agent-config.ts';
 import { TaskStorage } from './task-storage.ts';
 import { z } from 'zod';
-import { ulid } from 'ulid';
 
 interface ToolCallData {
   type: 'tool_call';
@@ -41,7 +40,7 @@ interface ToolResultData {
 }
 
 function createMessageId(): string {
-  return `msg_${ulid()}`;
+  return `msg_${crypto.randomUUID()}`;
 }
 
 export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
@@ -185,10 +184,10 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
   // deno-lint-ignore require-await
   async sendMessage(params: MessageSendParams): Promise<Message | Task> {
     const taskId = this.taskStorage.createTaskId();
-    // contextId should always be provided now - it IS the session ID
-    const contextId = params.message.contextId!;
+    const contextId = crypto.randomUUID();
 
-    // Create task with initial message
+
+    const initialMessage = { ...params.message, contextId };
     const task: Task = {
       id: taskId,
       kind: 'task',
@@ -197,7 +196,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
         state: 'submitted',
         timestamp: new Date().toISOString(),
       },
-      history: [params.message],
+      history: [initialMessage],
       metadata: params.metadata || {},
     };
 
@@ -262,10 +261,12 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
   ): AsyncGenerator<Task | Message | TaskStatusUpdateEvent | TaskArtifactUpdateEvent, void, undefined> {
     console.log('CapsuleAgentA2ARequestHandler.sendMessageStream() called');
     const taskId = this.taskStorage.createTaskId();
-    const contextId = params.message.contextId!;
+    // Server always generates contextId - client will receive and use for subsequent messages
+    const contextId = crypto.randomUUID();
     console.log('Created task and context IDs:', { taskId, contextId });
 
-    // Create task with initial message
+    // Create task with initial message (set the contextId on the message)
+    const initialMessage = { ...params.message, contextId };
     const task: Task = {
       id: taskId,
       kind: 'task',
@@ -274,7 +275,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
         state: 'submitted',
         timestamp: new Date().toISOString(),
       },
-      history: [params.message],
+      history: [initialMessage],
       metadata: params.metadata || {},
     };
 
