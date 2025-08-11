@@ -102,21 +102,28 @@ export default function ChatInterface() {
           }
           console.log("Task created:", task.id, "contextId:", task.contextId)
         } else if (event.kind === "message" && event.role === "agent") {
-          // Streaming message updates
+          // Agent message response (could be streaming or final)
           const newText = extractResponseText(event)
           if (newText) {
             currentResponseText = newText
             
-            // Update the agent's message in real-time
+            // Update the agent's message
             setMessages(prev => {
               const updated = [...prev]
               const lastMessage = updated[updated.length - 1]
               if (lastMessage.role === "agent") {
                 lastMessage.content = currentResponseText
-                lastMessage.isLoading = true // Still loading until final
+                // For simple messages (no task), this is the final response
+                lastMessage.isLoading = currentTask !== null
               }
               return updated
             })
+            
+            // If no task was created, this is a simple message and we're done
+            if (currentTask === null) {
+              setIsLoading(false)
+              break
+            }
           }
         } else if (event.kind === "status-update") {
           // Handle status updates

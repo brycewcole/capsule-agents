@@ -1,5 +1,5 @@
 import { getDb } from './db.ts';
-import type { Task } from '@a2a-js/sdk';
+import type * as A2A from '@a2a-js/sdk';
 import type { TaskStore } from '@a2a-js/sdk/server';
 
 export class TaskStorage implements TaskStore {
@@ -10,12 +10,12 @@ export class TaskStorage implements TaskStore {
   }
 
   // deno-lint-ignore require-await
-  async save(task: Task): Promise<void> {
+  async save(task: A2A.Task): Promise<void> {
     this.setTask(task.id, task);
   }
 
   // deno-lint-ignore require-await
-  async load(taskId: string): Promise<Task | undefined> {
+  async load(taskId: string): Promise<A2A.Task | undefined> {
     const taskWithTimestamps = this.getTask(taskId);
     if (!taskWithTimestamps) return undefined;
 
@@ -24,7 +24,7 @@ export class TaskStorage implements TaskStore {
     return task;
   }
 
-  setTask(id: string, task: Task): void {
+  setTask(id: string, task: A2A.Task): void {
     const db = getDb();
     const now = Date.now() / 1000;
 
@@ -49,7 +49,7 @@ export class TaskStorage implements TaskStore {
     );
   }
 
-  getTask(id: string): (Task & { created_at: number; updated_at: number }) | undefined {
+  getTask(id: string): (A2A.Task & { created_at: number; updated_at: number }) | undefined {
     const db = getDb();
     const stmt = db.prepare(`
       SELECT id, context_id, status, history, metadata, created_at, updated_at 
@@ -81,7 +81,7 @@ export class TaskStorage implements TaskStore {
     };
   }
 
-  getAllTasks(): (Task & { created_at: number; updated_at: number })[] {
+  getAllTasks(): (A2A.Task & { created_at: number; updated_at: number })[] {
     const db = getDb();
     const stmt = db.prepare(`
       SELECT id, context_id, status, history, metadata, created_at, updated_at 
@@ -111,7 +111,7 @@ export class TaskStorage implements TaskStore {
     }));
   }
 
-  getTasksByContext(contextId: string): (Task & { created_at: number; updated_at: number })[] {
+  getTasksByContext(contextId: string): (A2A.Task & { created_at: number; updated_at: number })[] {
     const db = getDb();
     const stmt = db.prepare(`
       SELECT id, context_id, status, history, metadata, created_at, updated_at 

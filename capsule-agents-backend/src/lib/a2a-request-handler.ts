@@ -1,15 +1,4 @@
-import type {
-  AgentCard,
-  AgentSkill,
-  Task,
-  Message,
-  MessageSendParams,
-  TaskQueryParams,
-  TaskIdParams,
-  TaskPushNotificationConfig,
-  TaskStatusUpdateEvent,
-  TaskArtifactUpdateEvent,
-} from '@a2a-js/sdk';
+import type * as A2A from '@a2a-js/sdk';
 import type { A2ARequestHandler } from '@a2a-js/sdk/server';
 import process from 'node:process';
 import * as Vercel from 'ai';
@@ -21,6 +10,7 @@ import { saveChat, loadChat, createChatWithId } from './storage.ts';
 import { AgentConfigService } from './agent-config.ts';
 import { TaskStorage } from './task-storage.ts';
 import { TaskService } from './task-service.ts';
+import { VercelService } from './vercel-service.ts';
 import { z } from 'zod';
 
 
@@ -101,7 +91,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
   }
 
   // deno-lint-ignore require-await
-  async getAgentCard(): Promise<AgentCard> {
+  async getAgentCard(): Promise<A2A.AgentCard> {
     console.log('CapsuleAgentA2ARequestHandler.getAgentCard() called');
     const agentUrl = process.env.AGENT_URL || 'http://localhost:8080';
 
@@ -120,7 +110,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
 
     // Get enabled skills based on available tools
     const availableTools = this.getAvailableTools();
-    const skills: AgentSkill[] = [];
+    const skills: A2A.AgentSkill[] = [];
 
     // Add skills for enabled tools
     if ('fileAccess' in availableTools) {
@@ -164,7 +154,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
   }
 
   // deno-lint-ignore require-await
-  async sendMessage(params: MessageSendParams): Promise<Message | Task> {
+  async sendMessage(params: A2A.MessageSendParams): Promise<A2A.Message | A2A.Task> {
     const contextId = crypto.randomUUID();
     const initialMessage = { ...params.message, contextId };
     const task = this.taskService.createTask(contextId, initialMessage, params.metadata);
@@ -176,7 +166,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
   }
 
   // deno-lint-ignore require-await
-  async getTask(params: TaskQueryParams): Promise<Task> {
+  async getTask(params: A2A.TaskQueryParams): Promise<A2A.Task> {
     const task = this.taskStorage.getTask(params.id);
     if (!task) {
       throw new Error('Task not found');
@@ -193,7 +183,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
   }
 
   // deno-lint-ignore require-await
-  async cancelTask(params: TaskIdParams): Promise<Task> {
+  async cancelTask(params: A2A.TaskIdParams): Promise<A2A.Task> {
     const task = this.taskStorage.getTask(params.id);
     if (!task) {
       throw new Error('Task not found');
@@ -204,40 +194,32 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
   }
 
   // deno-lint-ignore require-await
-  async setTaskPushNotificationConfig(_params: TaskPushNotificationConfig): Promise<TaskPushNotificationConfig> {
+  async setTaskPushNotificationConfig(_params: A2A.TaskPushNotificationConfig): Promise<A2A.TaskPushNotificationConfig> {
     throw new Error('Push notifications are not supported');
   }
 
   // deno-lint-ignore require-await
-  async getTaskPushNotificationConfig(_params: TaskIdParams): Promise<TaskPushNotificationConfig> {
+  async getTaskPushNotificationConfig(_params: A2A.TaskIdParams): Promise<A2A.TaskPushNotificationConfig> {
     throw new Error('Push notifications are not supported');
   }
 
   async* sendMessageStream(
-    params: MessageSendParams
-  ): AsyncGenerator<Task | Message | TaskStatusUpdateEvent | TaskArtifactUpdateEvent, void, undefined> {
+    params: A2A.MessageSendParams
+  ): AsyncGenerator<A2A.Task | A2A.Message | A2A.TaskStatusUpdateEvent | A2A.TaskArtifactUpdateEvent, void, undefined> {
     console.log('CapsuleAgentA2ARequestHandler.sendMessageStream() called');
     if (params.message.contextId == null) {
       params.message.contextId = crypto.randomUUID();
     }
 
-    const task = this.taskService.createTask(params.message.contextId, params.message, params.metadata);
-    console.log('Task created and stored');
-
-    // Yield initial task
-    yield task;
-
-    // Update to working state and yield update
-    const workingStatusUpdate = this.taskService.transitionState(task, 'working');
-    yield workingStatusUpdate;
+    let task: A2A.Task | null = null;
+    let hasToolCalls = false;
 
     try {
-      const userText = this.taskService.extractTextFromMessage(params.message);
-      // Use contextId as the session ID for chat continuity
-      console.log('Ensuring context exists for contextId:', task.contextId);
-      this.ensureContextExists(task.contextId);
+      const userText = VercelService.extractText(params.message);
+      console.log('Ensuring context exists for contextId:', params.message.contextId);
+      this.ensureContextExists(params.message.contextId);
       console.log('Loading chat history...');
-      const chatHistory = loadChat(task.contextId);
+      const chatHistory = loadChat(params.message.contextId);
       console.log('Chat history loaded:', { messageCount: chatHistory.length });
 
       const newMessage: Vercel.UIMessage = {
@@ -247,15 +229,14 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
       };
 
       const combinedMessages = [...chatHistory, newMessage];
-      console.log('Getting available tools...');
       const tools = this.getAvailableTools();
       console.log('Tools retrieved:', { toolCount: Object.keys(tools).length });
 
-      console.log('Getting configured model...');
       const model = this.getConfiguredModel();
       console.log('Model configured, starting streamText...');
 
       let fullResponse = '';
+      let responseMessage: A2A.Message | null = null;
 
       const result = Vercel.streamText({
         system: this.getSystemPrompt(),
@@ -271,100 +252,96 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
           });
 
           fullResponse = text;
+          hasToolCalls = (toolCalls && toolCalls.length > 0) || (toolResults && toolResults.length > 0);
 
-          // Add tool calls and results to task history
-          if (toolCalls && toolCalls.length > 0) {
-            this.taskService.addToolCallsToHistory(task, toolCalls);
-          }
+          if (hasToolCalls) {
+            if (!task) {
+              throw new Error('Task should have been created on tool call start');
+            }
 
-          if (toolResults && toolResults.length > 0) {
-            this.taskService.addToolResultsToHistory(task, toolResults);
-          }
+            responseMessage = this.taskService.addVercelResultToHistory(task, fullResponse, toolCalls, toolResults);
 
-          // Create and add response message to history
-          const responseMessage = this.taskService.createResponseMessage(task, fullResponse);
-          this.taskService.addMessageToHistory(task, responseMessage);
-
-          // Update task to completed state
-          this.taskService.transitionState(task, 'completed', responseMessage, true);
-
-          this.taskStorage.setTask(task.id, task);
-
-          // Save the conversation using contextId as session ID
-          try {
-            this.ensureContextExists(task.contextId);
-            const assistantMessage: Vercel.UIMessage = {
-              id: crypto.randomUUID(),
-              role: 'assistant',
-              parts: [{ type: 'text', text: fullResponse }],
+            this.taskService.transitionState(task, 'completed', responseMessage, true);
+          } else {
+            // Create simple response message
+            console.log('No tool calls, creating simple message response...');
+            responseMessage = {
+              kind: 'message',
+              messageId: `msg_${crypto.randomUUID()}`,
+              role: 'agent',
+              parts: [{ kind: 'text', text: fullResponse }],
+              contextId: params.message.contextId!,
             };
-            saveChat(task.contextId, [...combinedMessages, assistantMessage]);
+          }
+
+          try {
+            this.ensureContextExists(params.message.contextId!);
+            const assistantMessage = VercelService.createUIMessage(fullResponse, 'assistant');
+            saveChat(params.message.contextId!, [...combinedMessages, assistantMessage]);
           } catch (saveError) {
             console.error('⚠️  CHAT SAVE ERROR (non-critical):', saveError);
-            console.error('Context ID for failed save:', task.contextId);
+            console.error('Context ID for failed save:', params.message.contextId);
           }
         },
       });
 
-      console.log('StreamText initialized, starting to process text stream...');
+      console.log('StreamText initialized, consuming stream...');
 
-      // Stream *deltas only* to the client; still build fullResponse server-side
-      for await (const delta of result.textStream) {
-        fullResponse += delta;
-        yield this.taskService.createTextDeltaMessage(task, delta);
+      // Consume the stream to trigger onFinish (but don't yield the deltas)
+      for await (const e of result.fullStream) {
+        switch (e.type) {
+          case "tool-input-start":
+            console.log('Tool input started:', { toolName: e.toolName });
+            task = this.taskService.createTask(params.message.contextId!, params.message, params.metadata);
+            yield task;
+            yield this.taskService.transitionState(task, 'working');
+            break;
+        }
       }
 
-      console.log('Text streaming complete, waiting for onFinish...');
-      // Ensure onFinish work (tool events, finalization, persistence) completed
-      await result.text;
-
-      // Final status update (already generated by transitionState)
-      const finalStatusUpdate = this.taskService.transitionState(task, task.status.state, undefined, true);
-      yield finalStatusUpdate;
+      // After stream processing, yield the response message if it was created
+      if (responseMessage) {
+        console.log('Yielding response message after stream completion');
+        yield responseMessage;
+      }
     } catch (error) {
       // Enhanced error logging
       console.error('🚨 STREAM MESSAGE ERROR:', error);
       console.error('Error stack:', error instanceof Error ? error.stack : 'No stack available');
-      console.error('Task ID:', task.id);
-      console.error('Context ID:', task.contextId);
+      console.error('Context ID:', params.message.contextId);
 
-      // Error handling
-      const errorMessage = `Error processing task: ${error instanceof Error ? error.message : String(error)
-        }\n\nError type: ${error instanceof Error ? error.constructor.name : typeof error}`;
-      
-      const errorStatusUpdate = this.taskService.transitionState(task, 'failed', errorMessage, true);
-      yield errorStatusUpdate;
+      if (task) {
+        // If we have a task, transition it to failed state
+        console.error('Task ID:', (task as A2A.Task).id);
+        const errorMessage = `Error processing task: ${error instanceof Error ? error.message : String(error)}`;
+        const errorStatusUpdate = this.taskService.transitionState(task as A2A.Task, 'failed', errorMessage, true);
+        yield errorStatusUpdate;
+      } else {
+        // If no task was created, let the JSON-RPC error bubble up
+        throw error;
+      }
     }
   }
 
-  async* resubscribe(params: TaskIdParams): AsyncGenerator<Task | TaskStatusUpdateEvent | TaskArtifactUpdateEvent, void, undefined> {
+  async* resubscribe(params: A2A.TaskIdParams): AsyncGenerator<A2A.Task | A2A.TaskStatusUpdateEvent | A2A.TaskArtifactUpdateEvent, void, undefined> {
     const task = await this.getTask(params);
     yield task;
   }
 
-  private async processMessageAsync(task: Task, params: MessageSendParams): Promise<void> {
+  private async processMessageAsync(task: A2A.Task, params: A2A.MessageSendParams): Promise<void> {
     try {
       // Update task to working state
       this.taskService.transitionState(task, 'working');
 
       // Extract text from the message
-      const userText = this.taskService.extractTextFromMessage(params.message);
+      const userText = VercelService.extractText(params.message);
 
       // Use contextId as the session ID for chat continuity
       this.ensureContextExists(task.contextId);
       const chatHistory = loadChat(task.contextId);
 
       // Convert to UI message format
-      const newMessage: Vercel.UIMessage = {
-        id: crypto.randomUUID(),
-        role: 'user',
-        parts: [
-          {
-            type: 'text',
-            text: userText,
-          },
-        ],
-      };
+      const newMessage = VercelService.createUIMessage(userText, 'user');
 
       const combinedMessages = [...chatHistory, newMessage];
 
@@ -417,16 +394,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
       try {
         this.ensureContextExists(task.contextId);
 
-        const assistantMessage: Vercel.UIMessage = {
-          id: crypto.randomUUID(),
-          role: 'assistant',
-          parts: [
-            {
-              type: 'text',
-              text: fullResponse,
-            },
-          ],
-        };
+        const assistantMessage = VercelService.createUIMessage(fullResponse, 'assistant');
         saveChat(task.contextId, [...combinedMessages, assistantMessage]);
       } catch (saveError) {
         // Enhanced logging for save errors
@@ -444,7 +412,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
       // Update task to failed state
       const errorMessage = `Error processing task: ${error instanceof Error ? error.message : String(error)
         }\n\nError type: ${error instanceof Error ? error.constructor.name : typeof error}`;
-      
+
       this.taskService.transitionState(task, 'failed', errorMessage, true);
     }
   }
