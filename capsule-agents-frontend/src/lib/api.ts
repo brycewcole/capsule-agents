@@ -6,9 +6,6 @@ const API_BASE_URL = '';
 
 const a2aClient = new A2AClient(API_BASE_URL || 'http://localhost:8080');
 
-// Helper type: allow backend-assigned contextId on first message
-type OutboundMessage = Omit<A2AMessage, 'contextId'> & { contextId?: string };
-
 // Auth store for credentials
 class AuthStore {
     private credentials: string | null = null;
@@ -139,8 +136,7 @@ export type AgentInfo = {
 export async function sendMessage(message: string, contextId?: string | null) {
     const messageId = uuidv4();
 
-    // Build message allowing backend to assign context/session on first send
-    const a2aMessage: OutboundMessage = {
+    const a2aMessage: A2AMessage = {
         kind: "message",
         messageId,
         parts: [{
@@ -148,7 +144,7 @@ export async function sendMessage(message: string, contextId?: string | null) {
             text: message
         }],
         role: "user",
-        ...(contextId ? { contextId } : {})
+        contextId: contextId || uuidv4()
     };
 
     try {
