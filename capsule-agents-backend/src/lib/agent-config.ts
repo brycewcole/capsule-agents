@@ -52,13 +52,6 @@ export class AgentConfigService {
         throw new Error('Agent info not found');
       }
 
-      console.log('Raw database row:', {
-        name: row.name,
-        model_name: row.model_name,
-        hasTools: !!row.tools,
-        hasModelParams: !!row.model_parameters
-      });
-
       const tools = JSON.parse(row.tools || '[]');
       const modelParameters = JSON.parse(row.model_parameters || '{}');
 

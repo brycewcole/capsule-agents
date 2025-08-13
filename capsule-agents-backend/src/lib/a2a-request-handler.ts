@@ -169,7 +169,6 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
   async* sendMessageStream(
     params: A2A.MessageSendParams
   ): AsyncGenerator<A2A.Task | A2A.Message | A2A.TaskStatusUpdateEvent | A2A.TaskArtifactUpdateEvent, void, undefined> {
-    console.log('CapsuleAgentA2ARequestHandler.sendMessageStream() called');
     if (params.message.contextId == null) {
       params.message.contextId = crypto.randomUUID();
     }
@@ -178,27 +177,16 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
     let hasToolCalls = false;
 
     try {
-      const userText = VercelService.extractText(params.message);
-      console.log('Ensuring context exists for contextId:', params.message.contextId);
       this.ensureContextExists(params.message.contextId);
-      console.log('Loading chat history...');
       const chatHistory = loadChat(params.message.contextId);
       console.log('Chat history loaded:', { messageCount: chatHistory.length });
 
-      const newMessage: Vercel.UIMessage = {
-        id: crypto.randomUUID(),
-        role: 'user',
-        parts: [{ type: 'text', text: userText }],
-      };
+      const newMessage: Vercel.UIMessage = VercelService.createUIMessage(params.message);
 
       const combinedMessages = [...chatHistory, newMessage];
       const tools = this.getAvailableTools();
-      console.log('Tools retrieved:', { toolCount: Object.keys(tools).length });
-
       const model = this.getConfiguredModel();
-      console.log('Model configured, starting streamText...');
 
-      let fullResponse = '';
       let responseMessage: A2A.Message | null = null;
 
       const result = Vercel.streamText({
@@ -206,15 +194,10 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
         model,
         messages: Vercel.convertToModelMessages(combinedMessages),
         tools,
-        onFinish: ({ text, toolCalls, toolResults, finishReason, usage }) => {
-          console.log('Stream finished:', {
-            textLength: text.length,
-            toolCallsCount: toolCalls?.length || 0,
-            finishReason,
-            usage,
-          });
+        stopWhen: Vercel.stepCountIs(10),
+        onStepFinish: ({ text, toolCalls, toolResults, finishReason, usage }) => {
+          console.log('Stream finished:', { text, toolCalls, toolResults, finishReason, usage });
 
-          fullResponse = text;
           hasToolCalls = (toolCalls && toolCalls.length > 0) || (toolResults && toolResults.length > 0);
 
           if (hasToolCalls) {
@@ -222,35 +205,28 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
               throw new Error('Task should have been created on tool call start');
             }
 
-            responseMessage = this.taskService.addVercelResultToHistory(task, fullResponse, toolCalls, toolResults);
+            responseMessage = this.taskService.addVercelResultToHistory(task, text, toolCalls, toolResults);
 
             this.taskService.transitionState(task, 'completed', responseMessage, true);
           } else {
             // Create simple response message
-            console.log('No tool calls, creating simple message response...');
             responseMessage = {
               kind: 'message',
               messageId: `msg_${crypto.randomUUID()}`,
               role: 'agent',
-              parts: [{ kind: 'text', text: fullResponse }],
+              parts: [{ kind: 'text', text }],
               contextId: params.message.contextId!,
             };
           }
 
-          try {
-            this.ensureContextExists(params.message.contextId!);
-            const assistantMessage = VercelService.createAssistantUIMessage(fullResponse);
-            saveChat(params.message.contextId!, [...combinedMessages, assistantMessage]);
-          } catch (saveError) {
-            console.error('⚠️  CHAT SAVE ERROR (non-critical):', saveError);
-            console.error('Context ID for failed save:', params.message.contextId);
-          }
+          this.ensureContextExists(params.message.contextId!);
+          const assistantMessage = VercelService.createAssistantUIMessage(text);
+          saveChat(params.message.contextId!, [...combinedMessages, assistantMessage]);
         },
       });
 
       console.log('StreamText initialized, consuming stream...');
 
-      // Consume the stream to trigger onFinish (but don't yield the deltas)
       for await (const e of result.fullStream) {
         switch (e.type) {
           case "tool-input-start":
@@ -268,14 +244,12 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
         yield responseMessage;
       }
     } catch (error) {
-      // Enhanced error logging
       console.error('🚨 STREAM MESSAGE ERROR:', error);
       console.error('Error stack:', error instanceof Error ? error.stack : 'No stack available');
       console.error('Context ID:', params.message.contextId);
 
       if (task) {
-        // If we have a task, transition it to failed state
-        console.error('Task ID:', (task as A2A.Task).id);
+        console.error('Task ID:', task.id);
         const errorMessage = `Error processing task: ${error instanceof Error ? error.message : String(error)}`;
         const errorStatusUpdate = this.taskService.transitionState(task as A2A.Task, 'failed', errorMessage, true);
         yield errorStatusUpdate;
