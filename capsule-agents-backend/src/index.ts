@@ -7,24 +7,7 @@ import { getDb } from './lib/db.ts';
 import { CapsuleAgentA2ARequestHandler } from './lib/a2a-request-handler.ts';
 import { JsonRpcTransportHandler } from '@a2a-js/sdk/server';
 import { AgentConfigService } from './lib/agent-config.ts';
-import * as log from "https://deno.land/std@0.203.0/log/mod.ts";
-import { ConsoleHandler } from "https://deno.land/std@0.203.0/log/handlers.ts";
-import { LogLevels } from "https://deno.land/std@0.203.0/log/mod.ts";
-
-// Setup the Deno logger
-log.setup({
-  handlers: {
-          console: new ConsoleHandler("INFO", {
-      formatter: "{levelName} {msg}",
-    }),
-  },
-  loggers: {
-    default: {
-      level: "INFO",
-      handlers: ["console"],
-    },
-  },
-});
+import * as log from "@std/log";
 
 // Type guard to check if result is an AsyncGenerator (streaming response)
 function isAsyncGenerator(value: unknown): value is AsyncGenerator<unknown, void, undefined> {

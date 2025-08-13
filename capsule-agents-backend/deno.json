@@ -21,10 +21,14 @@
     "uuid": "npm:uuid@^11.1.0",
     "@std/fs": "jsr:@std/fs@^1.0.0",
     "@std/path": "jsr:@std/path@^1.0.0",
+    "@std/log": "jsr:@std/log",
     "zod": "npm:zod@^3.25.0"
   },
   "compilerOptions": {
-    "lib": ["deno.window", "deno.ns"],
+    "lib": [
+      "deno.window",
+      "deno.ns"
+    ],
     "strict": true
   },
   "nodeModulesDir": "auto",

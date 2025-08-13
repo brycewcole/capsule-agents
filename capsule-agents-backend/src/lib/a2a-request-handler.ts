@@ -12,7 +12,7 @@ import { TaskStorage } from './task-storage.ts';
 import { TaskService } from './task-service.ts';
 import { VercelService } from './vercel-service.ts';
 import { z } from 'zod';
-import * as log from "https://deno.land/std@0.203.0/log/mod.ts";
+import * as log from "@std/log";
 
 
 export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
@@ -375,7 +375,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
         const model = modelName.replace('openai/', '');
         return openai(model);
       } else {
-        log.warn(`Unsupported model ${modelName}, defaulting to gpt-4o`);
+        log.warning(`Unsupported model ${modelName}, defaulting to gpt-4o`);
         return openai('gpt-4o');
       }
     } catch (error) {
