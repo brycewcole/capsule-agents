@@ -45,16 +45,16 @@ export class AgentConfigService {
         SELECT name, description, model_name, model_parameters, tools 
         FROM agent_info WHERE key = 1
       `);
-      
+
       const row = stmt.get() as AgentInfoRow | undefined;
       if (!row) {
         console.error('No agent info found in database');
         throw new Error('Agent info not found');
       }
 
-      console.log('Raw database row:', { 
-        name: row.name, 
-        model_name: row.model_name, 
+      console.log('Raw database row:', {
+        name: row.name,
+        model_name: row.model_name,
         hasTools: !!row.tools,
         hasModelParams: !!row.model_parameters
       });
@@ -70,10 +70,10 @@ export class AgentConfigService {
         tools: tools
       };
 
-      console.log('AgentConfigService.getAgentInfo() returning:', { 
-        name: result.name, 
-        model_name: result.model_name, 
-        toolCount: result.tools.length 
+      console.debug('AgentConfigService.getAgentInfo() returning:', {
+        name: result.name,
+        model_name: result.model_name,
+        toolCount: result.tools.length
       });
 
       return result;
@@ -84,10 +84,10 @@ export class AgentConfigService {
   }
 
   updateAgentInfo(info: AgentInfo): AgentInfo {
-    console.log('AgentConfigService.updateAgentInfo() called with:', { 
-      name: info.name, 
-      model_name: info.model_name, 
-      toolCount: info.tools.length 
+    console.log('AgentConfigService.updateAgentInfo() called with:', {
+      name: info.name,
+      model_name: info.model_name,
+      toolCount: info.tools.length
     });
 
     try {

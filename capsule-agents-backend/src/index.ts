@@ -17,7 +17,7 @@ function isAsyncGenerator(value: unknown): value is AsyncGenerator<unknown, void
 const app = new Hono();
 
 // Initialize A2A request handler
-console.log('Creating A2A request handler...');
+console.debug('Creating A2A request handler...');
 const a2aRequestHandler = new CapsuleAgentA2ARequestHandler();
 console.log('A2A request handler created successfully');
 
@@ -63,7 +63,7 @@ app.get('/.well-known/agent.json', async (c) => {
   } catch (error) {
     console.error('🚨 FAILED TO GET AGENT CARD:', error);
     console.error('Stack trace:', error instanceof Error ? error.stack : 'No stack available');
-    return c.json({ 
+    return c.json({
       error: 'Failed to get agent card',
       details: error instanceof Error ? error.message : String(error)
     }, 500);
@@ -73,14 +73,14 @@ app.get('/.well-known/agent.json', async (c) => {
 // Main A2A JSON-RPC endpoint
 app.post('/', async (c) => {
   console.log('POST / - A2A JSON-RPC endpoint called');
-  
+
   let body;
   try {
     body = await c.req.json();
-    console.log('JSON-RPC request parsed:', { 
-      method: body.method, 
-      id: body.id, 
-      hasParams: !!body.params 
+    console.log('JSON-RPC request parsed:', {
+      method: body.method,
+      id: body.id,
+      hasParams: !!body.params
     });
   } catch (error) {
     console.error('Failed to parse JSON-RPC request body:', error);
@@ -98,9 +98,9 @@ app.post('/', async (c) => {
   try {
     console.log('Calling JSON-RPC handler...');
     const result = await jsonRpcHandler.handle(body);
-    console.log('JSON-RPC handler returned:', { 
-      type: typeof result, 
-      isAsyncGenerator: isAsyncGenerator(result) 
+    console.log('JSON-RPC handler returned:', {
+      type: typeof result,
+      isAsyncGenerator: isAsyncGenerator(result)
     });
 
     if (isAsyncGenerator(result)) {
@@ -109,7 +109,7 @@ app.post('/', async (c) => {
         try {
           let eventId = 0;
           for await (const event of result) {
-            console.log('Streaming event:', { eventId, eventType: (event && typeof event === 'object' && 'kind' in event) ? event.kind : typeof event });
+            console.debug('Streaming event:', { eventId, eventType: (event && typeof event === 'object' && 'kind' in event) ? event.kind : typeof event });
             await stream.writeSSE({
               data: JSON.stringify(event),
               id: String(eventId++),
@@ -120,7 +120,7 @@ app.post('/', async (c) => {
           console.error('🚨 SSE STREAMING ERROR:', streamError);
           console.error('Stream error stack:', streamError instanceof Error ? streamError.stack : 'No stack available');
           console.error('Request method during stream error:', body.method);
-          
+
           await stream.writeSSE({
             data: JSON.stringify({
               jsonrpc: '2.0',
@@ -140,7 +140,6 @@ app.post('/', async (c) => {
         }
       });
     } else {
-      console.log('Returning JSON-RPC response');
       return c.json(result);
     }
   } catch (error) {
@@ -148,7 +147,7 @@ app.post('/', async (c) => {
     console.error('Stack trace:', error instanceof Error ? error.stack : 'No stack available');
     console.error('Request method:', body.method);
     console.error('Request ID:', body.id);
-    
+
     return c.json({
       jsonrpc: '2.0',
       id: body.id,
@@ -181,12 +180,12 @@ app.get('/api/agent', (c) => {
   console.log('GET /api/agent - Getting agent configuration');
   try {
     const agentInfo = agentConfigService.getAgentInfo();
-    console.log('Agent info retrieved:', { 
-      name: agentInfo.name, 
-      modelName: agentInfo.model_name, 
-      toolCount: agentInfo.tools.length 
+    console.log('Agent info retrieved:', {
+      name: agentInfo.name,
+      modelName: agentInfo.model_name,
+      toolCount: agentInfo.tools.length
     });
-    
+
     // Transform to match frontend expectations
     const response = {
       name: agentInfo.name,
@@ -195,7 +194,7 @@ app.get('/api/agent', (c) => {
       modelParameters: agentInfo.model_parameters,
       tools: agentInfo.tools
     };
-    
+
     return c.json(response);
   } catch (error) {
     console.error('Error getting agent info:', error);
@@ -207,12 +206,12 @@ app.put('/api/agent', async (c) => {
   console.log('PUT /api/agent - Updating agent configuration');
   try {
     const body = await c.req.json();
-    console.log('Update request received:', { 
-      name: body.name, 
-      modelName: body.modelName, 
-      toolCount: body.tools?.length || 0 
+    console.log('Update request received:', {
+      name: body.name,
+      modelName: body.modelName,
+      toolCount: body.tools?.length || 0
     });
-    
+
     // Transform from frontend format to backend format
     const agentInfo = {
       name: body.name,
@@ -221,11 +220,11 @@ app.put('/api/agent', async (c) => {
       model_parameters: body.modelParameters || {},
       tools: body.tools || []
     };
-    
+
     console.log('Calling agentConfigService.updateAgentInfo...');
     const updatedInfo = agentConfigService.updateAgentInfo(agentInfo);
     console.log('Agent info updated successfully');
-    
+
     // Transform back to frontend format
     const response = {
       name: updatedInfo.name,
@@ -234,7 +233,7 @@ app.put('/api/agent', async (c) => {
       modelParameters: updatedInfo.model_parameters,
       tools: updatedInfo.tools
     };
-    
+
     return c.json(response);
   } catch (error) {
     console.error('Error updating agent info:', error);

@@ -124,7 +124,7 @@ export class TaskService {
           type: 'tool_call',
           id: toolCall.toolCallId,
           name: toolCall.toolName,
-          args: (toolCall as any).args ?? {},
+          args: toolCall.input,
         };
 
         const toolCallMessage: A2A.Message = {

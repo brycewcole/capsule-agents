@@ -33,59 +33,40 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
   private getAvailableTools(): Record<string, Vercel.Tool> {
     const tools: Record<string, Vercel.Tool> = {};
 
-    try {
-      console.log('Getting agent info for tools...');
-      const agentInfo = this.agentConfigService.getAgentInfo();
-      console.log('Agent info retrieved:', { name: agentInfo.name, toolCount: agentInfo.tools.length });
-
-      for (const tool of agentInfo.tools) {
-        if (tool.type === 'prebuilt') {
-          const toolType = tool.tool_schema?.type;
-          switch (toolType) {
-            case 'file_access':
-              tools.fileAccess = fileAccessTool;
-              break;
-            case 'brave_search':
-              tools.braveSearch = braveSearchTool;
-              break;
-            case 'memory':
-              tools.memory = memoryTool;
-              break;
-          }
-        } else if (tool.type === 'a2a_call') {
-          // Create A2A tool with configured agent URL
-          const agentUrl = tool.tool_schema?.agent_url;
-          if (agentUrl) {
-            tools[tool.name] = {
-              description: `Call agent at ${agentUrl}`,
-              inputSchema: z.object({
-                message: z.string().describe('Message to send to the agent'),
-              }),
-              execute: ({ message }: { message: string }) => {
-                // TODO: Implement A2A call to the configured agent URL
-                return `Would call agent at ${agentUrl} with message: ${message}`;
-              },
-            };
-          }
+    const agentInfo = this.agentConfigService.getAgentInfo();
+    for (const tool of agentInfo.tools) {
+      if (tool.type === 'prebuilt') {
+        const toolType = tool.tool_schema?.type;
+        switch (toolType) {
+          case 'file_access':
+            tools.fileAccess = fileAccessTool;
+            break;
+          case 'brave_search':
+            tools.braveSearch = braveSearchTool;
+            break;
+          case 'memory':
+            tools.memory = memoryTool;
+            break;
         }
-        // TODO: Add support for other tool types like mcp_server
+      } else if (tool.type === 'a2a_call') {
+        const agentUrl = tool.tool_schema?.agent_url;
+        if (agentUrl) {
+          tools[tool.name] = {
+            description: `Call agent at ${agentUrl}`,
+            inputSchema: z.object({
+              message: z.string().describe('Message to send to the agent'),
+            }),
+            execute: ({ message }: { message: string }) => {
+              // TODO: Implement A2A call to the configured agent URL
+              return `Would call agent at ${agentUrl} with message: ${message}`;
+            },
+          };
+        }
       }
-
-      console.log('Tools loaded from agent config:', Object.keys(tools));
-    } catch (error) {
-      console.error('Error loading agent configuration, using environment variable fallback:', error);
-      // Fallback to environment variables if agent config fails
-      if (process.env.FILE_ACCESS_TOOL_ENABLED === 'true') {
-        tools.fileAccess = fileAccessTool;
-      }
-      if (process.env.BRAVE_SEARCH_TOOL_ENABLED === 'true') {
-        tools.braveSearch = braveSearchTool;
-      }
-      if (process.env.MEMORY_TOOL_ENABLED === 'true') {
-        tools.memory = memoryTool;
-      }
-      console.log('Tools loaded from environment:', Object.keys(tools));
+      // TODO: Add support for other tool types like mcp_server
     }
+
+    console.log('Tools loaded from agent config:', Object.keys(tools));
 
     return tools;
   }
@@ -98,21 +79,16 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
     let agentName = 'Capsule Agent';
     let agentDescription = 'A versatile AI agent with configurable tools and capabilities';
 
-    try {
-      console.log('Loading agent configuration for card...');
-      const agentInfo = this.agentConfigService.getAgentInfo();
-      agentName = agentInfo.name;
-      agentDescription = agentInfo.description;
-      console.log('Agent config loaded for card:', { name: agentName });
-    } catch (error) {
-      console.error('Error loading agent configuration for card, using defaults:', error);
-    }
+    const agentInfo = this.agentConfigService.getAgentInfo();
+    agentName = agentInfo.name;
+    agentDescription = agentInfo.description;
+    console.log('Agent config loaded for card:', { name: agentName });
 
     // Get enabled skills based on available tools
     const availableTools = this.getAvailableTools();
     const skills: A2A.AgentSkill[] = [];
 
-    // Add skills for enabled tools
+    // TODO add A2A and MCP server skills
     if ('fileAccess' in availableTools) {
       skills.push(fileAccessSkill);
     }
@@ -121,19 +97,6 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
     }
     if ('memory' in availableTools) {
       skills.push(memorySkill);
-    }
-
-    // Add a general chat skill if no tools are enabled
-    if (skills.length === 0) {
-      skills.push({
-        id: 'general-chat',
-        name: 'General Chat',
-        description: 'General purpose conversational AI capabilities',
-        tags: ['chat', 'conversation', 'general'],
-        examples: ['Answer questions', 'Have conversations', 'Provide assistance'],
-        inputModes: ['text/plain'],
-        outputModes: ['text/plain'],
-      });
     }
 
     return {
@@ -153,13 +116,13 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
     };
   }
 
+  // TODO update this to not always return a task
   // deno-lint-ignore require-await
   async sendMessage(params: A2A.MessageSendParams): Promise<A2A.Message | A2A.Task> {
-    const contextId = crypto.randomUUID();
+    const contextId = params.message.contextId || crypto.randomUUID();
     const initialMessage = { ...params.message, contextId };
     const task = this.taskService.createTask(contextId, initialMessage, params.metadata);
 
-    // Process the message asynchronously
     this.processMessageAsync(task, params);
 
     return task;
@@ -276,7 +239,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
 
           try {
             this.ensureContextExists(params.message.contextId!);
-            const assistantMessage = VercelService.createUIMessage(fullResponse, 'assistant');
+            const assistantMessage = VercelService.createAssistantUIMessage(fullResponse);
             saveChat(params.message.contextId!, [...combinedMessages, assistantMessage]);
           } catch (saveError) {
             console.error('⚠️  CHAT SAVE ERROR (non-critical):', saveError);
@@ -330,20 +293,14 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
 
   private async processMessageAsync(task: A2A.Task, params: A2A.MessageSendParams): Promise<void> {
     try {
-      // Update task to working state
       this.taskService.transitionState(task, 'working');
 
-      // Extract text from the message
-      const userText = VercelService.extractText(params.message);
-
-      // Use contextId as the session ID for chat continuity
       this.ensureContextExists(task.contextId);
       const chatHistory = loadChat(task.contextId);
 
-      // Convert to UI message format
-      const newMessage = VercelService.createUIMessage(userText, 'user');
+      const vercelMessage = VercelService.createUIMessage(params.message);
 
-      const combinedMessages = [...chatHistory, newMessage];
+      const combinedMessages = [...chatHistory, vercelMessage];
 
       // Set up tools
       const tools = this.getAvailableTools();
@@ -351,7 +308,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
       const messages = Vercel.convertToModelMessages(combinedMessages);
 
       // Stream the response
-      this.getConfiguredModel(); // Get configured model but use hardcoded for now
+      this.getConfiguredModel();
       const result = Vercel.streamText({
         model: 'gpt-4o',
         system: this.getSystemPrompt(),
@@ -394,7 +351,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
       try {
         this.ensureContextExists(task.contextId);
 
-        const assistantMessage = VercelService.createUIMessage(fullResponse, 'assistant');
+        const assistantMessage = VercelService.createAssistantUIMessage(fullResponse);
         saveChat(task.contextId, [...combinedMessages, assistantMessage]);
       } catch (saveError) {
         // Enhanced logging for save errors
