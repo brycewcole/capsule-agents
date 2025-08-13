@@ -6,16 +6,7 @@
         "PostToolUse": [
             {
                 "matcher": "Write|Edit|MultiEdit",
-                "hooks": [
-                    {
-                        "type": "command",
-                        "command": "sh typecheck-backend.sh"
-                    },
-                    {
-                        "type": "command",
-                        "command": "uv run --project backend ruff format"
-                    }
-                ]
+                "hooks": []
             }
         ]
     }

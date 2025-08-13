@@ -492,8 +492,15 @@ export function extractResponseText(taskOrEvent: A2ATask | A2AMessage | Task | A
     if ('kind' in taskOrEvent && taskOrEvent.kind === "status-update") {
         const statusEvent = taskOrEvent as TaskStatusUpdateEvent;
         if (statusEvent.status.message) {
-            // Handle legacy Content type in status message
             const statusMessage = statusEvent.status.message as any;
+            // Handle A2A message format with kind and parts
+            if (statusMessage.kind === "message" && statusMessage.parts) {
+                return statusMessage.parts
+                    .filter((part: any) => part.kind === "text")
+                    .map((part: any) => part.text || '')
+                    .join('');
+            }
+            // Handle legacy Content type in status message
             if (statusMessage.parts) {
                 return statusMessage.parts
                     .map((part: any) => part.text || '')

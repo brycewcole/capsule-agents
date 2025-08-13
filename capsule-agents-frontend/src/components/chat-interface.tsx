@@ -130,26 +130,44 @@ export default function ChatInterface() {
           // Handle status updates
           console.log("Status update:", event.status.state)
           
-          // Update the current task with the new status
-          if (currentTask) {
-            setCurrentTask(prev => prev ? {
-              ...prev,
-              status: event.status
-            } : null)
-          }
+          // Create or update the task using the event data directly (fixes race condition)
+          setCurrentTask(prev => {
+            if (prev && prev.id === event.taskId) {
+              // Update existing task
+              return {
+                ...prev,
+                status: event.status
+              }
+            } else {
+              // Create task from status update event if not exists (race condition case)
+              return {
+                id: event.taskId,
+                kind: "task" as const,
+                contextId: event.contextId,
+                status: event.status,
+                history: []
+              }
+            }
+          })
           
           if (event.final && event.status.state === "completed") {
+            // Extract final response text from the completion status event
+            const finalResponseText = extractResponseText(event) || currentResponseText
+            
             // Final completion - extract tool calls from current task
-            if (currentTask) {
-              finalToolCalls = extractToolCalls(currentTask)
-            }
+            setCurrentTask(prev => {
+              if (prev && prev.id === event.taskId) {
+                finalToolCalls = extractToolCalls(prev)
+              }
+              return prev
+            })
             
             // Mark as complete
             setMessages(prev => {
               const updated = [...prev]
               const lastMessage = updated[updated.length - 1]
               if (lastMessage.role === "agent") {
-                lastMessage.content = currentResponseText
+                lastMessage.content = finalResponseText
                 lastMessage.toolCalls = finalToolCalls.length > 0 ? finalToolCalls : undefined
                 lastMessage.isLoading = false
               }

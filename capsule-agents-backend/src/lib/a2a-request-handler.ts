@@ -166,6 +166,12 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
     throw new Error('Push notifications are not supported');
   }
 
+  // Utility to truncate long JSON strings for logging
+  private truncateForLog(obj: any, maxLen = 100): string {
+    const str = typeof obj === 'string' ? obj : JSON.stringify(obj);
+    return str.length > maxLen ? str.slice(0, maxLen) + '...' : str;
+  }
+
   async* sendMessageStream(
     params: A2A.MessageSendParams
   ): AsyncGenerator<A2A.Task | A2A.Message | A2A.TaskStatusUpdateEvent | A2A.TaskArtifactUpdateEvent, void, undefined> {
@@ -199,21 +205,23 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
         tools,
         stopWhen: Vercel.stepCountIs(10),
         onStepFinish: ({ text, toolCalls, toolResults, finishReason, usage }) => {
-          log.info('Step finished:', { text, toolCalls, toolResults, finishReason, usage });
+          log.info(
+            `Step finished - text: "${this.truncateForLog(text)}", toolCalls: ${this.truncateForLog(toolCalls)}, toolResults: ${this.truncateForLog(toolResults)}, finishReason: "${this.truncateForLog(finishReason)}", usage: ${this.truncateForLog(usage)}`
+          );
 
-          hasToolCalls = (toolCalls && toolCalls.length > 0) || (toolResults && toolResults.length > 0);
+          // Track if ANY step had tool calls (don't reset to false)
+          if ((toolCalls && toolCalls.length > 0) || (toolResults && toolResults.length > 0)) {
+            hasToolCalls = true;
+          }
 
           if (hasToolCalls) {
             if (!task) {
               throw new Error('Task should have been created on tool call start');
             }
 
+            // Don't queue completion status here - we'll do it in onFinish with the full text
             responseMessage = this.taskService.addVercelResultToHistory(task, text, toolCalls, toolResults);
-
-            // Queue the completion status update to be yielded after the stream
-            const completionStatusUpdate = this.taskService.transitionState(task, 'completed', responseMessage, true);
-            statusUpdateQueue.push(completionStatusUpdate);
-            log.info('Queued completion status update');
+            log.info('Tool calls completed, will queue final status in onFinish');
           } else {
             // Create simple response message
             responseMessage = {
@@ -230,27 +238,58 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
           saveChat(params.message.contextId!, [...combinedMessages, assistantMessage]);
         },
         onFinish: ({ text, toolCalls, toolResults, finishReason, usage }) => {
-          log.info('stream finished:', { text, toolCalls, toolResults, finishReason, usage });
+          log.info(
+            `Stream finished - text: "${this.truncateForLog(text)}", toolCalls: ${this.truncateForLog(toolCalls)}, toolResults: ${this.truncateForLog(toolResults)}, finishReason: "${this.truncateForLog(finishReason)}", usage: ${this.truncateForLog(usage)}`
+          );
+          log.info(`onFinish debug - hasToolCalls: ${hasToolCalls}, task: ${task ? 'exists' : 'null'}`);
+
+          // Queue completion status update with the final full text if we have tool calls
+          if (hasToolCalls && task) {
+            // Update the response message with the final text
+            const finalResponseMessage = this.taskService.addVercelResultToHistory(task, text, toolCalls, toolResults);
+            const completionStatusUpdate = this.taskService.transitionState(task, 'completed', finalResponseMessage, true);
+            statusUpdateQueue.push(completionStatusUpdate);
+            log.info('Queued completion status update with final text');
+            responseMessage = finalResponseMessage;
+          } else {
+            log.info(`Skipping completion status - hasToolCalls: ${hasToolCalls}, task: ${task ? 'exists' : 'null'}`);
+          }
         },
       });
 
       log.info('StreamText initialized, consuming stream...');
 
       for await (const e of result.fullStream) {
-        log.debug('Stream event:', e);
+        log.debug(`Stream event: ${e.type} - ${this.truncateForLog(e)}`);
         switch (e.type) {
           case "tool-input-start":
-            log.info('Tool input started:', { toolName: e.toolName });
-            task = this.taskService.createTask(params.message.contextId!, params.message, params.metadata);
-            yield task;
-            yield this.taskService.transitionState(task, 'working');
+            {
+              log.info(`Tool input started: ${this.truncateForLog(e)}`);
+              task = this.taskService.createTask(params.message.contextId!, params.message, params.metadata);
+              yield task;
+              const workingStatus = this.taskService.transitionState(task, 'working');
+              log.info(`Yielding working status: ${JSON.stringify(workingStatus)}`);
+              yield workingStatus;
+              break;
+            }
+          case "tool-call":
+            log.info(`Tool call event: ${this.truncateForLog(e)}`);
+            break;
+          case "tool-result":
+            log.info(`Tool result event: ${this.truncateForLog(e)}`);
+            break;
+          case "finish":
+            log.info(`Finish event in stream: ${this.truncateForLog(e)}`);
+            break;
+          default:
+            log.debug(`Unhandled stream event type: ${e.type}`);
             break;
         }
       }
 
       // Yield any queued status updates
       for (const statusUpdate of statusUpdateQueue) {
-        log.info('Yielding queued status update:', statusUpdate.status.state);
+        log.info(`Yielding queued status update: ${this.truncateForLog(statusUpdate)}`);
         yield statusUpdate;
       }
 
@@ -260,7 +299,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
         yield responseMessage;
       }
     } catch (error) {
-      log.error('🚨 STREAM MESSAGE ERROR:', error);
+      log.error('🚨 STREAM MESSAGE ERROR:', this.truncateForLog(error));
       log.error('Error stack:', error instanceof Error ? error.stack : 'No stack available');
       log.error('Context ID:', params.message.contextId);
 
