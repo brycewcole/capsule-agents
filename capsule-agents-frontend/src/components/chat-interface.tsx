@@ -8,6 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter }
 import { checkHealth, streamMessage, extractResponseText, extractToolCalls, type ToolCall as ApiToolCall, type A2ATask } from "@/lib/api"
 import Markdown from "react-markdown"
 import { ToolCallDisplay } from "@/components/tool-call-display"
+import { TaskStatusDisplay } from "@/components/task-status-display"
 import { showErrorToast, getErrorMessage, isRecoverableError, type JSONRPCError } from "@/lib/error-utils"
 import { ErrorDisplay } from "@/components/ui/error-display"
 
@@ -129,6 +130,14 @@ export default function ChatInterface() {
           // Handle status updates
           console.log("Status update:", event.status.state)
           
+          // Update the current task with the new status
+          if (currentTask) {
+            setCurrentTask(prev => prev ? {
+              ...prev,
+              status: event.status
+            } : null)
+          }
+          
           if (event.final && event.status.state === "completed") {
             // Final completion - extract tool calls from current task
             if (currentTask) {
@@ -147,10 +156,13 @@ export default function ChatInterface() {
               return updated
             })
             
+            // Clear current task since it's completed
+            setCurrentTask(null)
             setIsLoading(false)
             break
           } else if (event.final && event.status.state === "failed") {
-            // Handle failure
+            // Clear task and handle failure
+            setCurrentTask(null)
             throw new Error(extractResponseText(event) || "Task failed")
           }
         }
@@ -249,26 +261,35 @@ export default function ChatInterface() {
           ) : (
             messages.map((message, index) => (
               <div key={index} className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}>
-                <div
-                  className={`max-w-[80%] rounded-2xl px-4 py-2 ${
-                    message.role === "user" ? "bg-primary text-primary-foreground" : "bg-muted text-left"
-                  }`}
-                >
-                  {message.role === "agent" ? (
-                    <div className="space-y-2">
-                      {message.toolCalls && (
-                        <ToolCallDisplay toolCalls={message.toolCalls} />
-                      )}
-                      <div className="markdown">
-                        <Markdown>{message.content}</Markdown>
+                <div className={`max-w-[80%] ${message.role === "agent" ? "w-full" : ""}`}>
+                  {/* Show task status for the last agent message if there's a current task */}
+                  {message.role === "agent" && 
+                   currentTask && 
+                   index === messages.length - 1 && (
+                    <TaskStatusDisplay task={currentTask} className="mb-2" />
+                  )}
+                  
+                  <div
+                    className={`rounded-2xl px-4 py-2 ${
+                      message.role === "user" ? "bg-primary text-primary-foreground" : "bg-muted text-left"
+                    }`}
+                  >
+                    {message.role === "agent" ? (
+                      <div className="space-y-2">
+                        {message.toolCalls && (
+                          <ToolCallDisplay toolCalls={message.toolCalls} />
+                        )}
+                        <div className="markdown">
+                          <Markdown>{message.content}</Markdown>
+                        </div>
                       </div>
-                    </div>
-                  ) : (
-                    message.content
-                  )}
-                  {message.isLoading && (
-                    <Loader2 className="h-4 w-4 ml-1 inline animate-spin" />
-                  )}
+                    ) : (
+                      message.content
+                    )}
+                    {message.isLoading && (
+                      <Loader2 className="h-4 w-4 ml-1 inline animate-spin" />
+                    )}
+                  </div>
                 </div>
               </div>
             ))
