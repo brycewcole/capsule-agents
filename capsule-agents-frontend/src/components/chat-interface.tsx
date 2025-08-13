@@ -20,6 +20,7 @@ type Message = {
   content: string
   isLoading?: boolean
   toolCalls?: ToolCall[]
+  task?: A2ATask
 }
 
 
@@ -154,15 +155,21 @@ export default function ChatInterface() {
             // Extract final response text from the completion status event
             const finalResponseText = extractResponseText(event) || currentResponseText
             
-            // Final completion - extract tool calls from current task
+            // Final completion - extract tool calls from current task and store final task state
+            let completedTask: A2ATask | undefined
             setCurrentTask(prev => {
               if (prev && prev.id === event.taskId) {
                 finalToolCalls = extractToolCalls(prev)
+                // Create final task state with completed status
+                completedTask = {
+                  ...prev,
+                  status: event.status
+                }
               }
               return prev
             })
             
-            // Mark as complete
+            // Mark as complete and store the completed task
             setMessages(prev => {
               const updated = [...prev]
               const lastMessage = updated[updated.length - 1]
@@ -170,6 +177,7 @@ export default function ChatInterface() {
                 lastMessage.content = finalResponseText
                 lastMessage.toolCalls = finalToolCalls.length > 0 ? finalToolCalls : undefined
                 lastMessage.isLoading = false
+                lastMessage.task = completedTask
               }
               return updated
             })
@@ -280,11 +288,14 @@ export default function ChatInterface() {
             messages.map((message, index) => (
               <div key={index} className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}>
                 <div className={`max-w-[80%] ${message.role === "agent" ? "w-full" : ""}`}>
-                  {/* Show task status for the last agent message if there's a current task */}
-                  {message.role === "agent" && 
-                   currentTask && 
-                   index === messages.length - 1 && (
-                    <TaskStatusDisplay task={currentTask} className="mb-2" />
+                  {/* Show task status for agent messages */}
+                  {message.role === "agent" && (
+                    (currentTask && index === messages.length - 1) || message.task
+                  ) && (
+                    <TaskStatusDisplay 
+                      task={message.task || currentTask!} 
+                      className="mb-2" 
+                    />
                   )}
                   
                   <div
