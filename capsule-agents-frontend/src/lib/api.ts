@@ -363,7 +363,6 @@ export async function getAvailableModels(): Promise<Model[]> {
 
 // Helper function to extract tool calls from A2A task or message
 export function extractToolCalls(taskOrEvent: A2ATask | A2AMessage | any): ToolCall[] {
-    console.log("extractToolCalls called with:", taskOrEvent)
     const toolCalls: ToolCall[] = []
 
     // Handle A2A Task type

@@ -12,6 +12,7 @@ import { TaskStorage } from './task-storage.ts';
 import { TaskService } from './task-service.ts';
 import { VercelService } from './vercel-service.ts';
 import { z } from 'zod';
+import * as log from "https://deno.land/std@0.203.0/log/mod.ts";
 
 
 export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
@@ -20,12 +21,12 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
   private agentConfigService: AgentConfigService;
 
   constructor() {
-    console.log('Initializing CapsuleAgentA2ARequestHandler...');
+    log.info('Initializing CapsuleAgentA2ARequestHandler...');
     try {
       this.agentConfigService = new AgentConfigService();
-      console.log('AgentConfigService initialized successfully');
+      log.info('AgentConfigService initialized successfully');
     } catch (error) {
-      console.error('Failed to initialize AgentConfigService:', error);
+      log.error('Failed to initialize AgentConfigService:', error);
       throw error;
     }
   }
@@ -66,14 +67,13 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
       // TODO: Add support for other tool types like mcp_server
     }
 
-    console.log('Tools loaded from agent config:', Object.keys(tools));
+    log.info('Tools loaded from agent config:', Object.keys(tools));
 
     return tools;
   }
 
   // deno-lint-ignore require-await
   async getAgentCard(): Promise<A2A.AgentCard> {
-    console.log('CapsuleAgentA2ARequestHandler.getAgentCard() called');
     const agentUrl = process.env.AGENT_URL || 'http://localhost:8080';
 
     let agentName = 'Capsule Agent';
@@ -82,7 +82,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
     const agentInfo = this.agentConfigService.getAgentInfo();
     agentName = agentInfo.name;
     agentDescription = agentInfo.description;
-    console.log('Agent config loaded for card:', { name: agentName });
+    log.info('Agent config loaded for card:', { name: agentName });
 
     // Get enabled skills based on available tools
     const availableTools = this.getAvailableTools();
@@ -176,10 +176,13 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
     let task: A2A.Task | null = null;
     let hasToolCalls = false;
 
+    // Queue for status updates that need to be yielded
+    const statusUpdateQueue: A2A.TaskStatusUpdateEvent[] = [];
+
     try {
       this.ensureContextExists(params.message.contextId);
       const chatHistory = loadChat(params.message.contextId);
-      console.log('Chat history loaded:', { messageCount: chatHistory.length });
+      log.info('Chat history loaded:', { messageCount: chatHistory.length });
 
       const newMessage: Vercel.UIMessage = VercelService.createUIMessage(params.message);
 
@@ -196,7 +199,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
         tools,
         stopWhen: Vercel.stepCountIs(10),
         onStepFinish: ({ text, toolCalls, toolResults, finishReason, usage }) => {
-          console.log('Stream finished:', { text, toolCalls, toolResults, finishReason, usage });
+          log.info('Step finished:', { text, toolCalls, toolResults, finishReason, usage });
 
           hasToolCalls = (toolCalls && toolCalls.length > 0) || (toolResults && toolResults.length > 0);
 
@@ -207,7 +210,10 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
 
             responseMessage = this.taskService.addVercelResultToHistory(task, text, toolCalls, toolResults);
 
-            this.taskService.transitionState(task, 'completed', responseMessage, true);
+            // Queue the completion status update to be yielded after the stream
+            const completionStatusUpdate = this.taskService.transitionState(task, 'completed', responseMessage, true);
+            statusUpdateQueue.push(completionStatusUpdate);
+            log.info('Queued completion status update');
           } else {
             // Create simple response message
             responseMessage = {
@@ -223,14 +229,18 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
           const assistantMessage = VercelService.createAssistantUIMessage(text);
           saveChat(params.message.contextId!, [...combinedMessages, assistantMessage]);
         },
+        onFinish: ({ text, toolCalls, toolResults, finishReason, usage }) => {
+          log.info('stream finished:', { text, toolCalls, toolResults, finishReason, usage });
+        },
       });
 
-      console.log('StreamText initialized, consuming stream...');
+      log.info('StreamText initialized, consuming stream...');
 
       for await (const e of result.fullStream) {
+        log.debug('Stream event:', e);
         switch (e.type) {
           case "tool-input-start":
-            console.log('Tool input started:', { toolName: e.toolName });
+            log.info('Tool input started:', { toolName: e.toolName });
             task = this.taskService.createTask(params.message.contextId!, params.message, params.metadata);
             yield task;
             yield this.taskService.transitionState(task, 'working');
@@ -238,18 +248,24 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
         }
       }
 
+      // Yield any queued status updates
+      for (const statusUpdate of statusUpdateQueue) {
+        log.info('Yielding queued status update:', statusUpdate.status.state);
+        yield statusUpdate;
+      }
+
       // After stream processing, yield the response message if it was created
       if (responseMessage) {
-        console.log('Yielding response message after stream completion');
+        log.info('Yielding response message after stream completion');
         yield responseMessage;
       }
     } catch (error) {
-      console.error('🚨 STREAM MESSAGE ERROR:', error);
-      console.error('Error stack:', error instanceof Error ? error.stack : 'No stack available');
-      console.error('Context ID:', params.message.contextId);
+      log.error('🚨 STREAM MESSAGE ERROR:', error);
+      log.error('Error stack:', error instanceof Error ? error.stack : 'No stack available');
+      log.error('Context ID:', params.message.contextId);
 
       if (task) {
-        console.error('Task ID:', task.id);
+        log.error('Task ID:', task.id);
         const errorMessage = `Error processing task: ${error instanceof Error ? error.message : String(error)}`;
         const errorStatusUpdate = this.taskService.transitionState(task as A2A.Task, 'failed', errorMessage, true);
         yield errorStatusUpdate;
@@ -300,14 +316,14 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
             break;
           }
           case 'tool-call': {
-            console.log('Tool call in async processing:', {
+            log.info('Tool call in async processing:', {
               toolName: chunk.toolName,
               input: chunk.input,
             });
             break;
           }
           case 'tool-result': {
-            console.log('Tool result in async processing:', {
+            log.info('Tool result in async processing:', {
               toolName: chunk.toolName,
               output: chunk.output,
             });
@@ -329,16 +345,16 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
         saveChat(task.contextId, [...combinedMessages, assistantMessage]);
       } catch (saveError) {
         // Enhanced logging for save errors
-        console.error('⚠️  CHAT SAVE ERROR (non-critical):', saveError);
-        console.error('Save error stack:', saveError instanceof Error ? saveError.stack : 'No stack available');
-        console.error('Context ID for failed save:', task.contextId);
+        log.error('⚠️  CHAT SAVE ERROR (non-critical):', saveError);
+        log.error('Save error stack:', saveError instanceof Error ? saveError.stack : 'No stack available');
+        log.error('Context ID for failed save:', task.contextId);
       }
     } catch (error) {
       // Enhanced error logging for async processing
-      console.error('🚨 ASYNC MESSAGE PROCESSING ERROR:', error);
-      console.error('Error stack:', error instanceof Error ? error.stack : 'No stack available');
-      console.error('Task ID:', task.id);
-      console.error('Context ID:', task.contextId);
+      log.error('🚨 ASYNC MESSAGE PROCESSING ERROR:', error);
+      log.error('Error stack:', error instanceof Error ? error.stack : 'No stack available');
+      log.error('Task ID:', task.id);
+      log.error('Context ID:', task.contextId);
 
       // Update task to failed state
       const errorMessage = `Error processing task: ${error instanceof Error ? error.message : String(error)
@@ -359,11 +375,11 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
         const model = modelName.replace('openai/', '');
         return openai(model);
       } else {
-        console.warn(`Unsupported model ${modelName}, defaulting to gpt-4o`);
+        log.warn(`Unsupported model ${modelName}, defaulting to gpt-4o`);
         return openai('gpt-4o');
       }
     } catch (error) {
-      console.error('Error loading model configuration, using default:', error);
+      log.error('Error loading model configuration, using default:', error);
       return openai(process.env.OPENAI_API_MODEL || 'gpt-4o');
     }
   }

@@ -1,4 +1,5 @@
 import { getDb } from './db.ts';
+import * as log from "https://deno.land/std@0.203.0/log/mod.ts";
 
 // Types for agent configuration
 interface AgentInfoRow {
@@ -39,7 +40,6 @@ export class AgentConfigService {
   private db = getDb();
 
   getAgentInfo(): AgentInfo {
-    console.log('AgentConfigService.getAgentInfo() called');
     try {
       const stmt = this.db.prepare(`
         SELECT name, description, model_name, model_parameters, tools 
@@ -48,7 +48,7 @@ export class AgentConfigService {
 
       const row = stmt.get() as AgentInfoRow | undefined;
       if (!row) {
-        console.error('No agent info found in database');
+        log.error('No agent info found in database');
         throw new Error('Agent info not found');
       }
 
@@ -63,7 +63,7 @@ export class AgentConfigService {
         tools: tools
       };
 
-      console.debug('AgentConfigService.getAgentInfo() returning:', {
+      log.debug('AgentConfigService.getAgentInfo() returning:', {
         name: result.name,
         model_name: result.model_name,
         toolCount: result.tools.length
@@ -71,43 +71,37 @@ export class AgentConfigService {
 
       return result;
     } catch (error) {
-      console.error('Error in AgentConfigService.getAgentInfo():', error);
+      log.error('Error in AgentConfigService.getAgentInfo():', error);
       throw error;
     }
   }
 
   updateAgentInfo(info: AgentInfo): AgentInfo {
-    console.log('AgentConfigService.updateAgentInfo() called with:', {
-      name: info.name,
-      model_name: info.model_name,
-      toolCount: info.tools.length
-    });
-
     try {
       // Validate a2a_call tools
       for (const tool of info.tools) {
         if (tool.type === 'a2a_call') {
-          console.log('Validating a2a_call tool:', tool.name);
+          log.info('Validating a2a_call tool:', tool.name);
           if (!tool.tool_schema || typeof tool.tool_schema !== 'object') {
             const error = `Tool '${tool.name}' of type 'a2a_call' has an invalid tool_schema (expected a dictionary).`;
-            console.error('Tool validation error:', error);
+            log.error('Tool validation error:', error);
             throw new Error(error);
           }
           if (!tool.tool_schema.agent_url) {
             const error = `Tool '${tool.name}' of type 'a2a_call' is missing 'agent_url' in its tool_schema.`;
-            console.error('Tool validation error:', error);
+            log.error('Tool validation error:', error);
             throw new Error(error);
           }
         }
       }
 
-      console.log('Preparing database update...');
+      log.info('Preparing database update...');
       const stmt = this.db.prepare(`
         INSERT OR REPLACE INTO agent_info(key, name, description, model_name, model_parameters, tools) 
         VALUES(1, ?, ?, ?, ?, ?)
       `);
 
-      console.log('Executing database update...');
+      log.info('Executing database update...');
       stmt.run(
         info.name,
         info.description,
@@ -116,10 +110,10 @@ export class AgentConfigService {
         JSON.stringify(info.tools)
       );
 
-      console.log('Database update completed successfully');
+      log.info('Database update completed successfully');
       return info;
     } catch (error) {
-      console.error('Error in AgentConfigService.updateAgentInfo():', error);
+      log.error('Error in AgentConfigService.updateAgentInfo():', error);
       throw error;
     }
   }

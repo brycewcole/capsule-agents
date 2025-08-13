@@ -1,5 +1,4 @@
 import { Hono } from 'hono';
-// Using Deno's built-in serve - no import needed
 import { serveStatic } from 'hono/deno';
 import { cors } from 'hono/cors';
 import { streamSSE } from 'hono/streaming';
@@ -8,6 +7,24 @@ import { getDb } from './lib/db.ts';
 import { CapsuleAgentA2ARequestHandler } from './lib/a2a-request-handler.ts';
 import { JsonRpcTransportHandler } from '@a2a-js/sdk/server';
 import { AgentConfigService } from './lib/agent-config.ts';
+import * as log from "https://deno.land/std@0.203.0/log/mod.ts";
+import { ConsoleHandler } from "https://deno.land/std@0.203.0/log/handlers.ts";
+import { LogLevels } from "https://deno.land/std@0.203.0/log/mod.ts";
+
+// Setup the Deno logger
+log.setup({
+  handlers: {
+          console: new ConsoleHandler("INFO", {
+      formatter: "{levelName} {msg}",
+    }),
+  },
+  loggers: {
+    default: {
+      level: "INFO",
+      handlers: ["console"],
+    },
+  },
+});
 
 // Type guard to check if result is an AsyncGenerator (streaming response)
 function isAsyncGenerator(value: unknown): value is AsyncGenerator<unknown, void, undefined> {
@@ -17,13 +34,13 @@ function isAsyncGenerator(value: unknown): value is AsyncGenerator<unknown, void
 const app = new Hono();
 
 // Initialize A2A request handler
-console.debug('Creating A2A request handler...');
+log.debug('Creating A2A request handler...');
 const a2aRequestHandler = new CapsuleAgentA2ARequestHandler();
-console.log('A2A request handler created successfully');
+log.info('A2A request handler created successfully');
 
-console.log('Creating JSON-RPC handler...');
+log.info('Creating JSON-RPC handler...');
 const jsonRpcHandler = new JsonRpcTransportHandler(a2aRequestHandler);
-console.log('JSON-RPC handler created successfully');
+log.info('JSON-RPC handler created successfully');
 
 // Initialize agent config service
 const agentConfigService = new AgentConfigService();
@@ -48,21 +65,21 @@ app.use('/', cors({
 console.log('Initializing database...');
 try {
   getDb();
-  console.log('Database initialized successfully');
+  log.info('Database initialized successfully');
 } catch (error) {
-  console.error('Failed to initialize database:', error);
+  log.error('Failed to initialize database:', error);
   throw error;
 }
 
 app.get('/.well-known/agent.json', async (c) => {
-  console.log('GET /.well-known/agent.json - Getting agent card');
+  log.info('GET /.well-known/agent.json - Getting agent card');
   try {
     const agentCard = await a2aRequestHandler.getAgentCard();
-    console.log('Agent card retrieved successfully:', { name: agentCard.name, skillCount: agentCard.skills.length });
+    log.info('Agent card retrieved successfully:', { name: agentCard.name, skillCount: agentCard.skills.length });
     return c.json(agentCard);
   } catch (error) {
-    console.error('🚨 FAILED TO GET AGENT CARD:', error);
-    console.error('Stack trace:', error instanceof Error ? error.stack : 'No stack available');
+    log.error('🚨 FAILED TO GET AGENT CARD:', error);
+    log.error('Stack trace:', error instanceof Error ? error.stack : 'No stack available');
     return c.json({
       error: 'Failed to get agent card',
       details: error instanceof Error ? error.message : String(error)
@@ -72,18 +89,18 @@ app.get('/.well-known/agent.json', async (c) => {
 
 // Main A2A JSON-RPC endpoint
 app.post('/', async (c) => {
-  console.log('POST / - A2A JSON-RPC endpoint called');
+  log.info('POST / - A2A JSON-RPC endpoint called');
 
   let body;
   try {
     body = await c.req.json();
-    console.log('JSON-RPC request parsed:', {
+    log.info('JSON-RPC request parsed:', {
       method: body.method,
       id: body.id,
       hasParams: !!body.params
     });
   } catch (error) {
-    console.error('Failed to parse JSON-RPC request body:', error);
+    log.error('Failed to parse JSON-RPC request body:', error);
     return c.json({
       jsonrpc: '2.0',
       id: null,
@@ -96,30 +113,30 @@ app.post('/', async (c) => {
   }
 
   try {
-    console.log('Calling JSON-RPC handler...');
+    log.info('Calling JSON-RPC handler...');
     const result = await jsonRpcHandler.handle(body);
-    console.log('JSON-RPC handler returned:', {
+    log.info('JSON-RPC handler returned:', {
       type: typeof result,
       isAsyncGenerator: isAsyncGenerator(result)
     });
 
     if (isAsyncGenerator(result)) {
-      console.log('Starting SSE stream for method:', body.method);
+      log.info('Starting SSE stream for method:', body.method);
       return streamSSE(c, async (stream) => {
         try {
           let eventId = 0;
           for await (const event of result) {
-            console.debug('Streaming event:', { eventId, eventType: (event && typeof event === 'object' && 'kind' in event) ? event.kind : typeof event });
+            log.debug('Streaming event:', { eventId, eventType: (event && typeof event === 'object' && 'kind' in event) ? event.kind : typeof event });
             await stream.writeSSE({
               data: JSON.stringify(event),
               id: String(eventId++),
             });
           }
-          console.log('SSE stream completed successfully');
+          log.info('SSE stream completed successfully');
         } catch (streamError) {
-          console.error('🚨 SSE STREAMING ERROR:', streamError);
-          console.error('Stream error stack:', streamError instanceof Error ? streamError.stack : 'No stack available');
-          console.error('Request method during stream error:', body.method);
+          log.error('🚨 SSE STREAMING ERROR:', streamError);
+          log.error('Stream error stack:', streamError instanceof Error ? streamError.stack : 'No stack available');
+          log.error('Request method during stream error:', body.method);
 
           await stream.writeSSE({
             data: JSON.stringify({
@@ -143,10 +160,10 @@ app.post('/', async (c) => {
       return c.json(result);
     }
   } catch (error) {
-    console.error('🚨 JSON-RPC HANDLER ERROR:', error);
-    console.error('Stack trace:', error instanceof Error ? error.stack : 'No stack available');
-    console.error('Request method:', body.method);
-    console.error('Request ID:', body.id);
+    log.error('🚨 JSON-RPC HANDLER ERROR:', error);
+    log.error('Stack trace:', error instanceof Error ? error.stack : 'No stack available');
+    log.error('Request method:', body.method);
+    log.error('Request ID:', body.id);
 
     return c.json({
       jsonrpc: '2.0',
@@ -177,10 +194,10 @@ app.post('/api/chat/create', async (c) => {
 
 // Agent configuration endpoints
 app.get('/api/agent', (c) => {
-  console.log('GET /api/agent - Getting agent configuration');
+  log.info('GET /api/agent - Getting agent configuration');
   try {
     const agentInfo = agentConfigService.getAgentInfo();
-    console.log('Agent info retrieved:', {
+    log.info('Agent info retrieved:', {
       name: agentInfo.name,
       modelName: agentInfo.model_name,
       toolCount: agentInfo.tools.length
@@ -197,16 +214,16 @@ app.get('/api/agent', (c) => {
 
     return c.json(response);
   } catch (error) {
-    console.error('Error getting agent info:', error);
+    log.error('Error getting agent info:', error);
     return c.json({ error: 'Failed to get agent configuration' }, 500);
   }
 });
 
 app.put('/api/agent', async (c) => {
-  console.log('PUT /api/agent - Updating agent configuration');
+  log.info('PUT /api/agent - Updating agent configuration');
   try {
     const body = await c.req.json();
-    console.log('Update request received:', {
+    log.info('Update request received:', {
       name: body.name,
       modelName: body.modelName,
       toolCount: body.tools?.length || 0
@@ -221,9 +238,9 @@ app.put('/api/agent', async (c) => {
       tools: body.tools || []
     };
 
-    console.log('Calling agentConfigService.updateAgentInfo...');
+    log.info('Calling agentConfigService.updateAgentInfo...');
     const updatedInfo = agentConfigService.updateAgentInfo(agentInfo);
-    console.log('Agent info updated successfully');
+    log.info('Agent info updated successfully');
 
     // Transform back to frontend format
     const response = {
@@ -236,7 +253,7 @@ app.put('/api/agent', async (c) => {
 
     return c.json(response);
   } catch (error) {
-    console.error('Error updating agent info:', error);
+    log.error('Error updating agent info:', error);
     return c.json({ error: error instanceof Error ? error.message : 'Failed to update agent configuration' }, 400);
   }
 });
@@ -246,7 +263,7 @@ app.get('/api/models', (c) => {
     const models = agentConfigService.getAvailableModels();
     return c.json(models);
   } catch (error) {
-    console.error('Error getting models:', error);
+    log.error('Error getting models:', error);
     return c.json({ error: 'Failed to get available models' }, 500);
   }
 });
@@ -266,5 +283,5 @@ app.get('/editor', serveStatic({
 // Start the server using Deno's built-in serve
 const port = parseInt(Deno.env.get('PORT') || '80');
 
-console.log(`Starting server on port ${port}...`);
+log.info(`Server running on port ${port}`);
 Deno.serve({ port }, app.fetch);

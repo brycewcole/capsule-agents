@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { ensureDir } from '@std/fs';
 import { join, resolve } from '@std/path';
 import type { AgentSkill } from '@a2a-js/sdk';
+import * as log from "https://deno.land/std@0.203.0/log/mod.ts";
 
 // Use relative path that works both in Docker (/app/agent-workspace) and locally
 const AGENT_WORKSPACE = './agent-workspace';
@@ -43,7 +44,7 @@ export const fileAccessTool = tool({
             return { error: 'Content is required for write operation' };
           }
           
-          console.log('📝 File write operation:', {
+          log.info('📝 File write operation:', {
             requestedPath: relativePath,
             absolutePath,
             workspaceDir: AGENT_WORKSPACE,
@@ -57,7 +58,7 @@ export const fileAccessTool = tool({
           // Write the file
           await Deno.writeTextFile(absolutePath, content);
           
-          console.log('✅ File written successfully:', absolutePath);
+          log.info('✅ File written successfully:', absolutePath);
           return { 
             success: true, 
             path: absolutePath,
@@ -74,7 +75,7 @@ export const fileAccessTool = tool({
       }
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : 'Unknown error';
-      console.error('🚨 File access error:', {
+      log.error('🚨 File access error:', {
         operation,
         requestedPath: relativePath,
         absolutePath: requestedPath,
