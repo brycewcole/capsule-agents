@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 import { serveStatic } from 'hono/deno';
 import { cors } from 'hono/cors';
 import { streamSSE } from 'hono/streaming';
-import { createChat } from './lib/storage.ts';
+import { createChat, getChatsList, getChatWithHistory, deleteChatById, updateChatMetadata } from './lib/storage.ts';
 import { getDb } from './lib/db.ts';
 import { CapsuleAgentA2ARequestHandler } from './lib/a2a-request-handler.ts';
 import { JsonRpcTransportHandler } from '@a2a-js/sdk/server';
@@ -248,6 +248,83 @@ app.get('/api/models', (c) => {
   } catch (error) {
     log.error('Error getting models:', error);
     return c.json({ error: 'Failed to get available models' }, 500);
+  }
+});
+
+// Chat management endpoints
+app.get('/api/chats', (c) => {
+  log.info('GET /api/chats - Getting chat list');
+  try {
+    const userId = 'user'; // TODO: Extract from auth when implemented
+    const chats = getChatsList(userId);
+    log.info('Chat list retrieved successfully:', { count: chats.length, chats: chats.map(c => ({ id: c.id, title: c.title })) });
+    return c.json({ chats });
+  } catch (error) {
+    log.error('Error getting chat list:', error);
+    return c.json({ error: 'Failed to get chat list' }, 500);
+  }
+});
+
+app.get('/api/chats/:contextId', (c) => {
+  const contextId = c.req.param('contextId');
+  log.info('GET /api/chats/:contextId - Getting chat history:', { contextId });
+  
+  try {
+    const chat = getChatWithHistory(contextId);
+    if (!chat) {
+      log.warn('Chat not found:', { contextId });
+      return c.json({ error: 'Chat not found' }, 404);
+    }
+    
+    log.info('Chat history retrieved successfully:', { 
+      contextId, 
+      messageCount: chat.messages.length,
+      taskCount: chat.tasks.length 
+    });
+    return c.json(chat);
+  } catch (error) {
+    log.error('Error getting chat history:', error);
+    return c.json({ error: 'Failed to get chat history' }, 500);
+  }
+});
+
+app.delete('/api/chats/:contextId', (c) => {
+  const contextId = c.req.param('contextId');
+  log.info('DELETE /api/chats/:contextId - Deleting chat:', { contextId });
+  
+  try {
+    const success = deleteChatById(contextId);
+    if (!success) {
+      log.warn('Chat not found for deletion:', { contextId });
+      return c.json({ error: 'Chat not found' }, 404);
+    }
+    
+    log.info('Chat deleted successfully:', { contextId });
+    return c.json({ success: true });
+  } catch (error) {
+    log.error('Error deleting chat:', error);
+    return c.json({ error: 'Failed to delete chat' }, 500);
+  }
+});
+
+app.patch('/api/chats/:contextId', async (c) => {
+  const contextId = c.req.param('contextId');
+  log.info('PATCH /api/chats/:contextId - Updating chat metadata:', { contextId });
+  
+  try {
+    const body = await c.req.json();
+    const success = updateChatMetadata(contextId, body);
+    
+    if (!success) {
+      log.warn('Chat not found for update:', { contextId });
+      return c.json({ error: 'Chat not found' }, 404);
+    }
+    
+    log.info('Chat metadata updated successfully:', { contextId });
+    return c.json({ success: true });
+  } catch (error) {
+    log.error('Error updating chat metadata:', error);
+    return c.json({ error: 'Failed to update chat metadata' }, 500);
   }
 });
 

@@ -530,5 +530,133 @@ export function extractResponseText(taskOrEvent: A2ATask | A2AMessage | Task | A
     return "";
 }
 
+// Types for chat management
+export interface ChatSummary {
+  id: string;
+  title: string;
+  lastActivity: number;
+  messageCount: number;
+  preview: string;
+  createTime: number;
+}
+
+export interface ChatWithHistory {
+  contextId: string;
+  title: string;
+  messages: any[];
+  tasks: any[];
+  metadata: Record<string, any>;
+  createTime: number;
+  updateTime: number;
+}
+
+// Chat management API functions
+export async function getChatsList(): Promise<ChatSummary[]> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/chats`, {
+      headers: {
+        ...authStore.getAuthHeaders()
+      }
+    });
+
+    if (!response.ok) {
+      throw {
+        code: response.status,
+        message: `Failed to fetch chats: ${response.status}`,
+        user_message: response.status === 401 ? "Please log in to view chats" : "Could not load chat list",
+        recovery_action: response.status === 401 ? "Log in and try again" : "Try again later",
+        isAPIError: true
+      };
+    }
+
+    const data = await response.json();
+    return data.chats || [];
+  } catch (error) {
+    console.error("Failed to fetch chats list:", error);
+    throw error;
+  }
+}
+
+export async function getChatById(contextId: string): Promise<ChatWithHistory> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/chats/${contextId}`, {
+      headers: {
+        ...authStore.getAuthHeaders()
+      }
+    });
+
+    if (!response.ok) {
+      throw {
+        code: response.status,
+        message: `Failed to fetch chat: ${response.status}`,
+        user_message: response.status === 404 ? "Chat not found" : response.status === 401 ? "Please log in to view this chat" : "Could not load chat",
+        recovery_action: response.status === 401 ? "Log in and try again" : "Try again later",
+        isAPIError: true
+      };
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error("Failed to fetch chat by ID:", error);
+    throw error;
+  }
+}
+
+export async function deleteChatById(contextId: string): Promise<boolean> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/chats/${contextId}`, {
+      method: 'DELETE',
+      headers: {
+        ...authStore.getAuthHeaders()
+      }
+    });
+
+    if (!response.ok) {
+      throw {
+        code: response.status,
+        message: `Failed to delete chat: ${response.status}`,
+        user_message: response.status === 404 ? "Chat not found" : response.status === 401 ? "Please log in to delete this chat" : "Could not delete chat",
+        recovery_action: response.status === 401 ? "Log in and try again" : "Try again later",
+        isAPIError: true
+      };
+    }
+
+    const result = await response.json();
+    return result.success === true;
+  } catch (error) {
+    console.error("Failed to delete chat:", error);
+    throw error;
+  }
+}
+
+export async function updateChatMetadata(contextId: string, metadata: Record<string, any>): Promise<boolean> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/chats/${contextId}`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        ...authStore.getAuthHeaders()
+      },
+      body: JSON.stringify(metadata)
+    });
+
+    if (!response.ok) {
+      throw {
+        code: response.status,
+        message: `Failed to update chat: ${response.status}`,
+        user_message: response.status === 404 ? "Chat not found" : response.status === 401 ? "Please log in to update this chat" : "Could not update chat",
+        recovery_action: response.status === 401 ? "Log in and try again" : "Try again later",
+        isAPIError: true
+      };
+    }
+
+    const result = await response.json();
+    return result.success === true;
+  } catch (error) {
+    console.error("Failed to update chat metadata:", error);
+    throw error;
+  }
+}
+
 // Export A2A types for use in components
 export type { A2AMessage, A2ATask, A2AStreamEventType, TaskStatusUpdateEvent, TaskArtifactUpdateEvent };

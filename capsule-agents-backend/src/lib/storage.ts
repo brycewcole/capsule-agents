@@ -1,6 +1,7 @@
 import { getDb } from './db.ts';
 import type { UIMessage } from 'ai';
 import { v4 as uuidv4 } from 'uuid';
+import * as log from "@std/log";
 
 const APP_NAME = 'capsule-agents-backend';
 
@@ -18,13 +19,21 @@ export function createChat(userId: string): string {
 }
 
 export function createChatWithId(contextId: string, userId: string): void {
+  log.info(`createChatWithId called with contextId: "${contextId}", userId: "${userId}"`);
+  
+  if (!contextId) {
+    log.error('createChatWithId called with empty contextId!');
+    return;
+  }
+  
   const db = getDb();
   const now = Date.now() / 1000;
 
   const stmt = db.prepare(
     'INSERT OR IGNORE INTO contexts (app_name, user_id, id, state, create_time, update_time) VALUES (?, ?, ?, ?, ?, ?)'
   );
-  stmt.run(APP_NAME, userId, contextId, JSON.stringify({}), now, now);
+  const result = stmt.run(APP_NAME, userId, contextId, JSON.stringify({}), now, now);
+  log.info(`createChatWithId result: ${(result as any).changes} rows affected`);
 }
 
 export function loadChat(contextId: string): UIMessage[] {
@@ -36,6 +45,13 @@ export function loadChat(contextId: string): UIMessage[] {
 }
 
 export function saveChat(contextId: string, messages: UIMessage[]): void {
+  log.info(`saveChat called with contextId: "${contextId}", messages: ${messages.length}`);
+  
+  if (!contextId) {
+    log.error('saveChat called with empty contextId!');
+    return;
+  }
+  
   const db = getDb();
   
   // Get existing message IDs to avoid duplicates
@@ -78,4 +94,252 @@ export function saveChat(contextId: string, messages: UIMessage[]): void {
   // Also update the context's update_time
   const updateStmt = db.prepare('UPDATE contexts SET update_time = ? WHERE id = ?');
   updateStmt.run(Date.now() / 1000, contextId);
+}
+
+// Types for chat management
+export interface ChatSummary {
+  id: string;
+  title: string;
+  lastActivity: number;
+  messageCount: number;
+  preview: string;
+  createTime: number;
+}
+
+export interface ChatWithHistory {
+  contextId: string;
+  title: string;
+  messages: UIMessage[];
+  tasks: any[];
+  metadata: Record<string, any>;
+  createTime: number;
+  updateTime: number;
+}
+
+// Extract or generate a title from the first user message
+function extractChatTitle(messages: UIMessage[]): string {
+  const firstUserMessage = messages.find(msg => msg.role === 'user');
+  if (firstUserMessage && (firstUserMessage as any).content) {
+    // Take first 50 characters and clean up
+    const content = (firstUserMessage as any).content;
+    const title = String(content).slice(0, 50).trim();
+    return title.length < String(content).length ? title + '...' : title;
+  }
+  return 'New Chat';
+}
+
+// Get a preview of the last message
+function getMessagePreview(messages: UIMessage[]): string {
+  if (messages.length === 0) return 'No messages';
+  
+  const lastMessage = messages[messages.length - 1];
+  if ((lastMessage as any).content) {
+    const content = (lastMessage as any).content;
+    const preview = String(content).slice(0, 100).trim();
+    return preview.length < String(content).length ? preview + '...' : preview;
+  }
+  return 'No content';
+}
+
+// Get list of all chats for a user
+export function getChatsList(userId: string = 'user'): ChatSummary[] {
+  try {
+    const db = getDb();
+    
+    log.info(`Getting chats for userId: ${userId}, app_name: ${APP_NAME}`);
+    
+    // First, let's see what's actually in the contexts table
+    const allContextsStmt = db.prepare(`SELECT id, app_name, user_id, create_time FROM contexts LIMIT 10`);
+    const allContexts = allContextsStmt.all();
+    log.info('Sample contexts in database:', allContexts);
+    
+    // Get all contexts for the user
+    const contextsStmt = db.prepare(`
+      SELECT id, state, create_time, update_time 
+      FROM contexts 
+      WHERE app_name = ? AND user_id = ? 
+      ORDER BY update_time DESC
+    `);
+    const contexts = contextsStmt.all(APP_NAME, userId) as Array<{
+      id: string;
+      state: string;
+      create_time: number;
+      update_time: number;
+    }>;
+
+    log.info(`Found ${contexts.length} contexts for user ${userId}:`, contexts.map(c => ({ id: c.id, update_time: c.update_time })));
+    
+    // Also try with 'anonymous' user_id (might be what was used before)
+    const anonymousContextsStmt = db.prepare(`
+      SELECT id, state, create_time, update_time 
+      FROM contexts 
+      WHERE app_name = ? AND user_id = ? 
+      ORDER BY update_time DESC
+    `);
+    const anonymousContexts = anonymousContextsStmt.all(APP_NAME, 'anonymous') as Array<{
+      id: string;
+      state: string;
+      create_time: number;
+      update_time: number;
+    }>;
+    log.info(`Found ${anonymousContexts.length} contexts for user 'anonymous':`, anonymousContexts.map(c => ({ id: c.id, update_time: c.update_time })));
+    
+    // Also try with 'a2a-agent' user_id (used by A2A requests)
+    const a2aContextsStmt = db.prepare(`
+      SELECT id, state, create_time, update_time 
+      FROM contexts 
+      WHERE app_name = ? AND user_id = ? 
+      ORDER BY update_time DESC
+    `);
+    const a2aContexts = a2aContextsStmt.all(APP_NAME, 'a2a-agent') as Array<{
+      id: string;
+      state: string;
+      create_time: number;
+      update_time: number;
+    }>;
+    log.info(`Found ${a2aContexts.length} contexts for user 'a2a-agent':`, a2aContexts.map(c => ({ id: c.id, update_time: c.update_time })));
+    
+    // Use all contexts regardless of user for now
+    const allUserContexts = [...contexts, ...anonymousContexts, ...a2aContexts];
+
+    const chatSummaries: ChatSummary[] = [];
+
+    for (const context of allUserContexts) {
+      // Get message count and all messages for this context
+      const messagesStmt = db.prepare(`
+        SELECT content FROM events 
+        WHERE context_id = ? 
+        ORDER BY timestamp ASC
+      `);
+      const messageRows = messagesStmt.all(context.id) as { content: string }[];
+      const messages = messageRows.map(row => JSON.parse(row.content) as UIMessage);
+
+      if (messages.length > 0) {
+        chatSummaries.push({
+          id: context.id,
+          title: extractChatTitle(messages),
+          lastActivity: context.update_time,
+          messageCount: messages.length,
+          preview: getMessagePreview(messages),
+          createTime: context.create_time
+        });
+      }
+    }
+
+    return chatSummaries;
+  } catch (error) {
+    log.error('Error in getChatsList:', error);
+    throw error;
+  }
+}
+
+// Get full chat with history including messages and tasks
+export function getChatWithHistory(contextId: string): ChatWithHistory | null {
+  const db = getDb();
+  
+  // Get context info
+  const contextStmt = db.prepare(`
+    SELECT state, create_time, update_time 
+    FROM contexts 
+    WHERE id = ? AND app_name = ?
+  `);
+  const context = contextStmt.get(contextId, APP_NAME) as {
+    state: string;
+    create_time: number;
+    update_time: number;
+  } | undefined;
+
+  if (!context) {
+    return null;
+  }
+
+  // Get messages
+  const messages = loadChat(contextId);
+
+  // Get associated A2A tasks
+  const tasksStmt = db.prepare(`
+    SELECT id, status, history, metadata, created_at, updated_at
+    FROM a2a_tasks 
+    WHERE context_id = ?
+    ORDER BY created_at ASC
+  `);
+  const taskRows = tasksStmt.all(contextId) as Array<{
+    id: string;
+    status: string;
+    history: string;
+    metadata: string;
+    created_at: number;
+    updated_at: number;
+  }>;
+
+  const tasks = taskRows.map(row => ({
+    id: row.id,
+    status: JSON.parse(row.status),
+    history: JSON.parse(row.history),
+    metadata: JSON.parse(row.metadata),
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
+  }));
+
+  return {
+    contextId,
+    title: extractChatTitle(messages),
+    messages,
+    tasks,
+    metadata: JSON.parse(context.state),
+    createTime: context.create_time,
+    updateTime: context.update_time
+  };
+}
+
+// Delete a chat and all associated data
+export function deleteChatById(contextId: string): boolean {
+  const db = getDb();
+  
+  const deleteTransaction = db.transaction(() => {
+    // Delete events (messages)
+    const deleteEventsStmt = db.prepare('DELETE FROM events WHERE context_id = ?');
+    deleteEventsStmt.run(contextId);
+    
+    // Delete A2A tasks
+    const deleteTasksStmt = db.prepare('DELETE FROM a2a_tasks WHERE context_id = ?');
+    deleteTasksStmt.run(contextId);
+    
+    // Delete context
+    const deleteContextStmt = db.prepare('DELETE FROM contexts WHERE id = ?');
+    const result = deleteContextStmt.run(contextId);
+    
+    return (result as any).changes > 0;
+  });
+
+  try {
+    return deleteTransaction();
+  } catch (error) {
+    console.error('Error deleting chat:', error);
+    return false;
+  }
+}
+
+// Update chat metadata (for features like renaming)
+export function updateChatMetadata(contextId: string, metadata: Record<string, any>): boolean {
+  const db = getDb();
+  
+  try {
+    const updateStmt = db.prepare(`
+      UPDATE contexts 
+      SET state = ?, update_time = ? 
+      WHERE id = ? AND app_name = ?
+    `);
+    const result = updateStmt.run(
+      JSON.stringify(metadata), 
+      Date.now() / 1000, 
+      contextId, 
+      APP_NAME
+    );
+    
+    return (result as any).changes > 0;
+  } catch (error) {
+    console.error('Error updating chat metadata:', error);
+    return false;
+  }
 }

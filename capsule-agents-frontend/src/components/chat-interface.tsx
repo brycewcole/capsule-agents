@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { ArrowRight, Loader2, MessageSquare, Plus } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card"
-import { checkHealth, streamMessage, extractResponseText, extractToolCalls, type ToolCall as ApiToolCall, type A2ATask } from "@/lib/api"
+import { checkHealth, streamMessage, extractResponseText, extractToolCalls, type ToolCall as ApiToolCall, type A2ATask, type ChatWithHistory } from "@/lib/api"
 import Markdown from "react-markdown"
 import { ToolCallDisplay } from "@/components/tool-call-display"
 import { TaskStatusDisplay } from "@/components/task-status-display"
@@ -23,16 +23,27 @@ type Message = {
   task?: A2ATask
 }
 
+interface ChatInterfaceProps {
+  contextId?: string | null
+  initialChatData?: ChatWithHistory | null
+  isLoadingChat?: boolean
+  onChatCreated?: (chatId: string) => void
+}
 
-export default function ChatInterface() {
+export default function ChatInterface({ 
+  contextId: propContextId, 
+  initialChatData, 
+  isLoadingChat = false,
+  onChatCreated 
+}: ChatInterfaceProps) {
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState("")
   const [isLoading, setIsLoading] = useState(false)
   const [isBackendConnected, setIsBackendConnected] = useState(false)
   const [connectionError, setConnectionError] = useState<JSONRPCError | Error | string | null>(null)
   const [currentTask, setCurrentTask] = useState<A2ATask | null>(null)
-  // Defer contextId assignment to backend on first message
-  const [contextId, setContextId] = useState<string | null>(null)
+  // Use prop contextId if provided, otherwise defer assignment to backend on first message
+  const [contextId, setContextId] = useState<string | null>(propContextId || null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   
   // Initialize state - check backend connection
@@ -53,6 +64,33 @@ export default function ChatInterface() {
 
     initializeState()
   }, [])
+
+  // Update contextId when prop changes
+  useEffect(() => {
+    setContextId(propContextId || null)
+  }, [propContextId])
+
+  // Load initial chat data when provided
+  useEffect(() => {
+    if (initialChatData) {
+      console.log("Loading initial chat data:", initialChatData)
+      
+      // Convert backend messages to frontend Message format
+      const convertedMessages: Message[] = initialChatData.messages.map(msg => ({
+        role: msg.role as "user" | "agent",
+        content: msg.content || "",
+        toolCalls: msg.toolCalls || undefined,
+        // TODO: Map tasks from initialChatData.tasks if needed
+      }))
+      
+      setMessages(convertedMessages)
+      setCurrentTask(null) // Clear any current task since we're loading historical data
+    } else {
+      // Clear messages for new chat
+      setMessages([])
+      setCurrentTask(null)
+    }
+  }, [initialChatData])
   
   // Scroll to bottom of messages
   const scrollToBottom = useCallback(() => {
@@ -99,6 +137,10 @@ export default function ChatInterface() {
           // Capture backend-assigned contextId on first response
           if (!contextId && task.contextId) {
             setContextId(task.contextId)
+            // Notify parent component that a new chat was created
+            if (onChatCreated) {
+              onChatCreated(task.contextId)
+            }
           } else if (contextId && task.contextId !== contextId) {
             console.warn('Task contextId changed from expected contextId:', { expected: contextId, received: task.contextId })
           }
@@ -238,9 +280,13 @@ export default function ChatInterface() {
             Chat with agent
           </CardTitle>
           <CardDescription>
-            {isBackendConnected 
-              ? (contextId ? `Conversation context: ${contextId.slice(-8)}` : "New conversation")
-              : "⚠️ Backend not connected. Check your API connection."}
+            {!isBackendConnected 
+              ? "⚠️ Backend not connected. Check your API connection."
+              : isLoadingChat 
+                ? "Loading conversation..."
+                : contextId 
+                  ? `Active chat: ${contextId.slice(-8)}`
+                  : "Start a new conversation"}
           </CardDescription>
         </div>
         <Button
@@ -280,7 +326,12 @@ export default function ChatInterface() {
           </div>
         )}
         <div className="flex flex-col space-y-4">
-          {messages.length === 0 ? (
+          {isLoadingChat ? (
+            <div className="flex items-center justify-center h-full text-muted-foreground">
+              <Loader2 className="h-6 w-6 animate-spin mr-2" />
+              Loading conversation...
+            </div>
+          ) : messages.length === 0 ? (
             <div className="flex items-center justify-center h-full text-muted-foreground">
               Send a message to start the conversation
             </div>

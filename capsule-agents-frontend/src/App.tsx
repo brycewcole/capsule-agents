@@ -1,16 +1,23 @@
 import { useState, useEffect } from 'react';
 import Header from './components/header';
 import ChatInterface from './components/chat-interface';
+import { ChatSidebar } from './components/chat-sidebar';
 import AgentEditor from './components/agent-editor';
 import { LoginDialog } from './components/login-dialog';
 import { Toaster } from './components/ui/toaster';
-import { testLogin } from './lib/api';
+import { testLogin, getChatById, type ChatWithHistory } from './lib/api';
+import { showErrorToast } from './lib/error-utils';
 import './App.css';
 
 function App() {
   const [showLogin, setShowLogin] = useState(false);
   const [loginError, setLoginError] = useState<string>();
-  const [isAuthenticated, setIsAuthenticated] = useState(true); // Temporarily always authenticated
+  const [, setIsAuthenticated] = useState(true); // Temporarily always authenticated
+  
+  // Chat management state
+  const [currentChatId, setCurrentChatId] = useState<string | null>(null);
+  const [currentChatData, setCurrentChatData] = useState<ChatWithHistory | null>(null);
+  const [isLoadingChat, setIsLoadingChat] = useState(false);
 
   useEffect(() => {
     // Temporarily skip authentication for new backend
@@ -31,6 +38,33 @@ function App() {
     }
   };
 
+  const handleChatSelect = async (chatId: string) => {
+    if (chatId === currentChatId) return; // Already selected
+    
+    try {
+      setIsLoadingChat(true);
+      setCurrentChatId(chatId);
+      
+      const chatData = await getChatById(chatId);
+      setCurrentChatData(chatData);
+    } catch (error) {
+      console.error('Failed to load chat:', error);
+      showErrorToast(error, {
+        title: "Failed to Load Chat"
+      });
+      // Reset to no chat selected on error
+      setCurrentChatId(null);
+      setCurrentChatData(null);
+    } finally {
+      setIsLoadingChat(false);
+    }
+  };
+
+  const handleNewChat = () => {
+    setCurrentChatId(null);
+    setCurrentChatData(null);
+  };
+
   return (
     <>
       <main className="flex h-screen flex-col bg-slate-50 overflow-hidden">
@@ -38,7 +72,7 @@ function App() {
         
         <div className="container mx-auto flex flex-1 gap-6 p-4 md:p-6 lg:p-8 min-h-0">
           {/* Agent Editor - Left Side */}
-          <div className="w-1/2 flex flex-col min-h-0">
+          <div className="w-1/3 flex flex-col min-h-0">
             <div className="mb-4">
               <h2 className="text-lg font-semibold text-foreground">Agent Configuration</h2>
               <p className="text-sm text-muted-foreground">Configure your agent's settings and tools</p>
@@ -48,14 +82,42 @@ function App() {
             </div>
           </div>
           
-          {/* Chat Interface - Right Side */}
-          <div className="w-1/2 flex flex-col min-h-0">
+          {/* Chat Management - Center */}
+          <div className="w-1/4 flex flex-col min-h-0">
             <div className="mb-4">
-              <h2 className="text-lg font-semibold text-foreground">Chat Interface</h2>
-              <p className="text-sm text-muted-foreground">Test your agent by chatting with it</p>
+              <h2 className="text-lg font-semibold text-foreground">Conversations</h2>
+              <p className="text-sm text-muted-foreground">Manage your chat history</p>
             </div>
             <div className="flex-1 min-h-0">
-              <ChatInterface key={isAuthenticated ? 'auth' : 'unauth'} />
+              <ChatSidebar
+                currentChatId={currentChatId}
+                onChatSelect={handleChatSelect}
+                onNewChat={handleNewChat}
+              />
+            </div>
+          </div>
+          
+          {/* Chat Interface - Right Side */}
+          <div className="w-5/12 flex flex-col min-h-0">
+            <div className="mb-4">
+              <h2 className="text-lg font-semibold text-foreground">Chat Interface</h2>
+              <p className="text-sm text-muted-foreground">
+                {currentChatId 
+                  ? `Chatting in: ${currentChatData?.title || 'Loading...'}`
+                  : "Start a new conversation"}
+              </p>
+            </div>
+            <div className="flex-1 min-h-0">
+              <ChatInterface 
+                key={currentChatId || 'new-chat'}
+                contextId={currentChatId}
+                initialChatData={currentChatData}
+                isLoadingChat={isLoadingChat}
+                onChatCreated={(newChatId) => {
+                  setCurrentChatId(newChatId);
+                  // The sidebar will refresh automatically
+                }}
+              />
             </div>
           </div>
         </div>

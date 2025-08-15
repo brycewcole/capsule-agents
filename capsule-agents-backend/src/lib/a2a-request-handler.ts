@@ -414,7 +414,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
         const model = modelName.replace('openai/', '');
         return openai(model);
       } else {
-        log.warning(`Unsupported model ${modelName}, defaulting to gpt-4o`);
+        log.warn(`Unsupported model ${modelName}, defaulting to gpt-4o`);
         return openai('gpt-4o');
       }
     } catch (error) {
