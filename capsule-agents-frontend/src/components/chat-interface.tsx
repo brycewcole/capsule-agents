@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback, useRef } from "react"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
-import { ArrowRight, Loader2, MessageSquare, Plus } from "lucide-react"
+import { ArrowRight, Loader2, MessageSquare, PanelRightOpen } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card"
 import { checkHealth, streamMessage, extractResponseText, extractToolCalls, type ToolCall as ApiToolCall, type A2ATask, type ChatWithHistory } from "@/lib/api"
 import Markdown from "react-markdown"
@@ -11,6 +11,7 @@ import { ToolCallDisplay } from "@/components/tool-call-display"
 import { TaskStatusDisplay } from "@/components/task-status-display"
 import { showErrorToast, getErrorMessage, isRecoverableError, type JSONRPCError } from "@/lib/error-utils"
 import { ErrorDisplay } from "@/components/ui/error-display"
+import { ChatSidebar } from "@/components/chat-sidebar"
 
 
 type ToolCall = ApiToolCall
@@ -28,13 +29,25 @@ interface ChatInterfaceProps {
   initialChatData?: ChatWithHistory | null
   isLoadingChat?: boolean
   onChatCreated?: (chatId: string) => void
+  isConversationsOpen?: boolean
+  onToggleConversations?: () => void
+  onNewChat?: () => void
+  currentChatId?: string | null
+  onChatSelect?: (chatId: string) => void
+  chatsRefreshKey?: number
 }
 
 export default function ChatInterface({ 
   contextId: propContextId, 
   initialChatData, 
   isLoadingChat = false,
-  onChatCreated 
+  onChatCreated,
+  isConversationsOpen,
+  onToggleConversations,
+  onNewChat,
+  currentChatId,
+  onChatSelect,
+  chatsRefreshKey,
 }: ChatInterfaceProps) {
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState("")
@@ -45,7 +58,8 @@ export default function ChatInterface({
   // Use prop contextId if provided, otherwise defer assignment to backend on first message
   const [contextId, setContextId] = useState<string | null>(propContextId || null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
-  
+  const containerRef = useRef<HTMLDivElement>(null)
+
   // Initialize state - check backend connection
   useEffect(() => {
     const initializeState = async () => {
@@ -110,12 +124,7 @@ export default function ChatInterface({
     scrollToBottom()
   }, [messages, scrollToBottom])
 
-  const handleNewChat = () => {
-    setMessages([])
-    setCurrentTask(null)
-    // Clear contextId so backend will assign a fresh one on next message
-    setContextId(null)
-  }
+  // New chat now lives in Conversations panel; no local button here
 
   const handleSendMessage = async () => {
     if (!input.trim() || isLoading) return
@@ -287,6 +296,7 @@ export default function ChatInterface({
   }
 
   return (
+    <div ref={containerRef} className="relative h-full">
     <Card className="flex flex-col h-full overflow-hidden shadow-md">
       <CardHeader className="pb-4 flex flex-row justify-between items-center">
         <div>
@@ -304,19 +314,34 @@ export default function ChatInterface({
                   : "Start a new conversation"}
           </CardDescription>
         </div>
-        <Button
-          variant="outline"
-          size="icon"
-          title="New Chat"
-          onClick={handleNewChat}
-          disabled={isLoading}
-        >
-          <Plus className="h-4 w-4" />
-          <span className="sr-only">New Chat</span>
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            title={isConversationsOpen ? "Hide conversations" : "Show conversations"}
+            onClick={onToggleConversations}
+            className="gap-2"
+          >
+            <MessageSquare className="h-4 w-4" />
+            {isConversationsOpen ? 'Hide' : 'Show'}
+          </Button>
+          {onNewChat && (
+            <Button
+              variant="outline"
+              size="sm"
+              title="New chat"
+              onClick={onNewChat}
+            >
+              New
+            </Button>
+          )}
+        </div>
       </CardHeader>
 
-      <CardContent className="flex-1 overflow-y-auto min-h-0 p-4">
+      <CardContent className="flex-1 min-h-0 p-0">
+        <div className="h-full w-full flex">
+          {/* Messages area */}
+          <div className="flex-1 min-w-0 p-4 overflow-y-auto">
         {connectionError && !isBackendConnected && (
           <div className="mb-4">
             <ErrorDisplay
@@ -391,6 +416,28 @@ export default function ChatInterface({
           )}
           <div ref={messagesEndRef} />
         </div>
+        </div>
+          {/* Conversations inline panel */}
+          <div
+            className={[
+              'relative border-l bg-background/50 transition-all duration-300 ease-out',
+              isConversationsOpen ? 'w-[340px] sm:w-[360px] opacity-100' : 'w-0 opacity-0 pointer-events-none'
+            ].join(' ')}
+          >
+            <div className="h-full flex flex-col">
+              <div className="flex-1 min-h-0">
+                <ChatSidebar
+                  variant="inline"
+                  hideTitleBar
+                  currentChatId={currentChatId}
+                  onChatSelect={(id) => onChatSelect && onChatSelect(id)}
+                  onNewChat={() => onNewChat && onNewChat()}
+                  refreshKey={chatsRefreshKey}
+                />
+              </div>
+            </div>
+          </div>
+        </div>
       </CardContent>
 
       <CardFooter className="border-t p-4">
@@ -419,5 +466,21 @@ export default function ChatInterface({
         </div>
       </CardFooter>
     </Card>
+
+    {/* Rail button aligned to Chat Interface when panel is hidden */}
+    {!isConversationsOpen && (
+      <div className="absolute right-3 top-1/2 -translate-y-1/2 z-10">
+        <Button
+          variant="outline"
+          size="icon"
+          className="shadow-sm"
+          title="Show conversations (Cmd/Ctrl+K)"
+          onClick={onToggleConversations}
+        >
+          <PanelRightOpen className="h-4 w-4" />
+        </Button>
+      </div>
+    )}
+    </div>
   )
 }

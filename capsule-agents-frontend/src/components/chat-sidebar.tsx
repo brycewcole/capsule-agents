@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import { Plus, Search, MessageSquare, Loader2 } from "lucide-react"
 import { getChatsList, deleteChatById, type ChatSummary } from "@/lib/api"
 import { showErrorToast } from "@/lib/error-utils"
@@ -15,6 +15,8 @@ interface ChatSidebarProps {
   onNewChat: () => void
   className?: string
   refreshKey?: number
+  hideTitleBar?: boolean
+  variant?: 'card' | 'inline'
 }
 
 export function ChatSidebar({ 
@@ -23,6 +25,8 @@ export function ChatSidebar({
   onNewChat,
   className = "",
   refreshKey,
+  hideTitleBar = false,
+  variant = 'card',
 }: ChatSidebarProps) {
   const [chats, setChats] = useState<ChatSummary[]>([])
   const [filteredChats, setFilteredChats] = useState<ChatSummary[]>([])
@@ -127,14 +131,14 @@ export function ChatSidebar({
     }
   }
 
-  return (
-    <Card className={`flex flex-col h-full ${className}`}>
-      <CardHeader className="pb-4">
-        <div className="flex items-center justify-between">
-          <CardTitle className="flex items-center gap-2 text-lg">
+  const header = (
+    <div className="p-3 border-b">
+      {!hideTitleBar && (
+        <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center gap-2 text-lg font-medium">
             <MessageSquare className="h-5 w-5 text-primary" />
             Conversations
-          </CardTitle>
+          </div>
           <Button
             variant="outline"
             size="sm"
@@ -145,52 +149,68 @@ export function ChatSidebar({
             New
           </Button>
         </div>
-        
-        {/* Search */}
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Search conversations..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-10"
-          />
-        </div>
-      </CardHeader>
+      )}
+      <div className="relative">
+        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+        <Input
+          placeholder="Search conversations..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          className="pl-10"
+        />
+      </div>
+    </div>
+  )
 
-      <CardContent className="flex-1 overflow-y-auto p-0">
-        {isLoading ? (
-          <div className="flex items-center justify-center p-8">
-            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-          </div>
-        ) : filteredChats.length === 0 ? (
-          <div className="flex flex-col items-center justify-center p-8 text-center">
-            <MessageSquare className="h-12 w-12 text-muted-foreground mb-4" />
-            <p className="text-muted-foreground">
-              {searchQuery ? "No conversations found" : "No conversations yet"}
+  const body = (
+    <div className="flex-1 overflow-y-auto">
+      {isLoading ? (
+        <div className="flex items-center justify-center p-8">
+          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+        </div>
+      ) : filteredChats.length === 0 ? (
+        <div className="flex flex-col items-center justify-center p-8 text-center">
+          <MessageSquare className="h-12 w-12 text-muted-foreground mb-4" />
+          <p className="text-muted-foreground">
+            {searchQuery ? "No conversations found" : "No conversations yet"}
+          </p>
+          {!searchQuery && (
+            <p className="text-sm text-muted-foreground mt-2">
+              Start a new conversation to get going
             </p>
-            {!searchQuery && (
-              <p className="text-sm text-muted-foreground mt-2">
-                Start a new conversation to get going
-              </p>
-            )}
-          </div>
-        ) : (
-          <div className="space-y-1 p-2">
-            {filteredChats.map((chat) => (
-              <ChatListItem
-                key={chat.id}
-                chat={chat}
-                isActive={currentChatId === chat.id}
-                onClick={() => onChatSelect(chat.id)}
-                onDelete={(e) => handleDeleteChat(chat.id, e)}
-                isDeleting={isDeleting === chat.id}
-                formatTimestamp={formatLastActivity}
-              />
-            ))}
-          </div>
-        )}
-      </CardContent>
+          )}
+        </div>
+      ) : (
+        <div className="space-y-1 p-2">
+          {filteredChats.map((chat) => (
+            <ChatListItem
+              key={chat.id}
+              chat={chat}
+              isActive={currentChatId === chat.id}
+              onClick={() => onChatSelect(chat.id)}
+              onDelete={(e) => handleDeleteChat(chat.id, e)}
+              isDeleting={isDeleting === chat.id}
+              formatTimestamp={formatLastActivity}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  )
+
+  if (variant === 'inline') {
+    return (
+      <div className={`flex flex-col h-full ${className}`}>
+        {header}
+        {body}
+      </div>
+    )
+  }
+
+  return (
+    <Card className={`flex flex-col h-full ${className}`}>
+      <CardHeader className="pb-4">{header}</CardHeader>
+      <CardContent className="flex-1 overflow-y-auto p-0">{body}</CardContent>
     </Card>
   )
 }

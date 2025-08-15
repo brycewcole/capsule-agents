@@ -1,7 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import Header from './components/header';
 import ChatInterface from './components/chat-interface';
-import { ChatSidebar } from './components/chat-sidebar';
+// Sidebar is now rendered inside ChatInterface's sheet
 import AgentEditor from './components/agent-editor';
 import { LoginDialog } from './components/login-dialog';
 import { Toaster } from './components/ui/toaster';
@@ -15,15 +15,92 @@ function App() {
   const [, setIsAuthenticated] = useState(true); // Temporarily always authenticated
   
   // Chat management state
-  const [currentChatId, setCurrentChatId] = useState<string | null>(null);
+  const [currentChatId, setCurrentChatId] = useState<string | null>(() => {
+    try {
+      return localStorage.getItem('chat:lastContextId');
+    } catch {
+      return null;
+    }
+  });
   const [currentChatData, setCurrentChatData] = useState<ChatWithHistory | null>(null);
   const [isLoadingChat, setIsLoadingChat] = useState(false);
   const [chatsRefreshKey, setChatsRefreshKey] = useState(0);
+  const [isConversationsOpen, setIsConversationsOpen] = useState<boolean>(true);
+  const convPrefLockedRef = useRef(false);
+
+  // Initialize conversations panel preference: use saved if present, otherwise responsive default
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('chat:conversationsOpen');
+      if (saved !== null) {
+        setIsConversationsOpen(saved === 'true');
+        convPrefLockedRef.current = true;
+      } else {
+        const isWide = window.innerWidth >= 1024; // lg breakpoint
+        setIsConversationsOpen(isWide);
+      }
+    } catch {}
+  }, []);
+
+  // Persist conversations panel state across reloads
+  useEffect(() => {
+    try {
+      localStorage.setItem('chat:conversationsOpen', String(isConversationsOpen));
+    } catch {}
+  }, [isConversationsOpen]);
+
+  // Auto-toggle on resize only if user hasn't set a preference
+  useEffect(() => {
+    const onResize = () => {
+      if (convPrefLockedRef.current) return;
+      const isWide = window.innerWidth >= 1024;
+      setIsConversationsOpen(isWide);
+    };
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
 
   useEffect(() => {
     // Temporarily skip authentication for new backend
     setIsAuthenticated(true);
     setShowLogin(false);
+  }, []);
+
+  // Restore last selected chat on first load
+  useEffect(() => {
+    try {
+      const savedId = localStorage.getItem('chat:lastContextId');
+      if (savedId) {
+        // Load chat data for saved id
+        handleChatSelect(savedId);
+      }
+    } catch {}
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Persist currently selected chat id
+  useEffect(() => {
+    try {
+      if (currentChatId) {
+        localStorage.setItem('chat:lastContextId', currentChatId);
+      } else {
+        localStorage.removeItem('chat:lastContextId');
+      }
+    } catch {}
+  }, [currentChatId]);
+
+  // Keyboard shortcut: Cmd/Ctrl+K to toggle conversations panel
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      const isToggle = (e.key === 'k' || e.key === 'K') && (e.metaKey || e.ctrlKey);
+      if (isToggle) {
+        e.preventDefault();
+        convPrefLockedRef.current = true;
+        setIsConversationsOpen(v => !v);
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
   }, []);
 
   const handleLogin = async (password: string) => {
@@ -40,7 +117,7 @@ function App() {
   };
 
   const handleChatSelect = async (chatId: string) => {
-    if (chatId === currentChatId) return; // Already selected
+    if (chatId === currentChatId && currentChatData) return; // Already loaded
     
     try {
       setIsLoadingChat(true);
@@ -73,7 +150,7 @@ function App() {
         
         <div className="container mx-auto flex flex-1 gap-6 p-4 md:p-6 lg:p-8 min-h-0">
           {/* Agent Editor - Left Side */}
-          <div className="w-1/3 flex flex-col min-h-0">
+          <div className="basis-1/3 flex flex-col min-h-0">
             <div className="mb-4">
               <h2 className="text-lg font-semibold text-foreground">Agent Configuration</h2>
               <p className="text-sm text-muted-foreground">Configure your agent's settings and tools</p>
@@ -83,24 +160,8 @@ function App() {
             </div>
           </div>
           
-          {/* Chat Management - Center */}
-          <div className="w-1/4 flex flex-col min-h-0">
-            <div className="mb-4">
-              <h2 className="text-lg font-semibold text-foreground">Conversations</h2>
-              <p className="text-sm text-muted-foreground">Manage your chat history</p>
-            </div>
-          <div className="flex-1 min-h-0">
-            <ChatSidebar
-              currentChatId={currentChatId}
-              onChatSelect={handleChatSelect}
-              onNewChat={handleNewChat}
-              refreshKey={chatsRefreshKey}
-            />
-          </div>
-          </div>
-          
-          {/* Chat Interface - Right Side */}
-          <div className="w-5/12 flex flex-col min-h-0">
+          {/* Chat Interface - Middle */}
+          <div className="flex-1 flex flex-col min-h-0">
             <div className="mb-4">
               <h2 className="text-lg font-semibold text-foreground">Chat Interface</h2>
               <p className="text-sm text-muted-foreground">
@@ -114,14 +175,20 @@ function App() {
                 contextId={currentChatId}
                 initialChatData={currentChatData}
                 isLoadingChat={isLoadingChat}
+                isConversationsOpen={isConversationsOpen}
+                onToggleConversations={() => { convPrefLockedRef.current = true; setIsConversationsOpen(v => !v); }}
                 onChatCreated={(newChatId) => {
                   setCurrentChatId(newChatId);
-                  // Trigger sidebar to refresh chat list
                   setChatsRefreshKey((k) => k + 1);
                 }}
+                onNewChat={handleNewChat}
+                currentChatId={currentChatId}
+                onChatSelect={handleChatSelect}
+                chatsRefreshKey={chatsRefreshKey}
               />
             </div>
           </div>
+          {/* Sheet moved inside ChatInterface to keep it visually connected */}
         </div>
       </main>
       
