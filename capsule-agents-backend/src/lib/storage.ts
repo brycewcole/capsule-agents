@@ -38,10 +38,19 @@ export function createChatWithId(contextId: string, userId: string): void {
 
 export function loadChat(contextId: string): UIMessage[] {
   const db = getDb();
-  const stmt = db.prepare('SELECT content FROM events WHERE context_id = ? ORDER BY timestamp ASC');
-  const rows = stmt.all(contextId) as { content: string }[];
+  const stmt = db.prepare('SELECT id, author, content, timestamp FROM events WHERE context_id = ? ORDER BY timestamp ASC');
+  const rows = stmt.all(contextId) as { id: string; author: string; content: string; timestamp: number }[];
 
-  return rows.map(row => JSON.parse(row.content));
+  return rows.map(row => {
+    const msg = JSON.parse(row.content) as any;
+    // Attach DB metadata for frontend timeline features
+    if (msg && typeof msg === 'object') {
+      if (!msg.id) msg.id = row.id;
+      (msg as any).timestamp = row.timestamp;
+      if (!msg.role && row.author) (msg as any).role = row.author === 'assistant' ? 'assistant' : row.author;
+    }
+    return msg as UIMessage;
+  });
 }
 
 export function saveChat(contextId: string, messages: UIMessage[]): void {

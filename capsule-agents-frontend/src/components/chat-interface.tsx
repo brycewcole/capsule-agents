@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState, useCallback, useRef } from "react"
+import { useEffect, useState, useCallback, useRef, useMemo } from "react"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { ArrowRight, Loader2, MessageSquare, PanelRightOpen } from "lucide-react"
@@ -22,6 +22,7 @@ type Message = {
   isLoading?: boolean
   toolCalls?: ToolCall[]
   task?: A2ATask
+  timestamp?: number
 }
 
 interface ChatInterfaceProps {
@@ -55,10 +56,78 @@ export default function ChatInterface({
   const [isBackendConnected, setIsBackendConnected] = useState(false)
   const [connectionError, setConnectionError] = useState<JSONRPCError | Error | string | null>(null)
   const [currentTask, setCurrentTask] = useState<A2ATask | null>(null)
+  const [tasks, setTasks] = useState<A2ATask[]>([])
   // Use prop contextId if provided, otherwise defer assignment to backend on first message
   const [contextId, setContextId] = useState<string | null>(propContextId || null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
+
+  // Build merged timeline of tasks + messages
+  const timeline = useMemo(() => {
+    type TimelineItem =
+      | { kind: 'message'; time: number; message: Message }
+      | { kind: 'task'; time: number; task: A2ATask };
+
+    const msgTime = (m: Message) => (typeof m.timestamp === 'number' ? m.timestamp : Date.now() / 1000);
+    const taskTime = (t: A2ATask) => (t as any).updatedAt || (t.status?.timestamp ? Date.parse(t.status.timestamp) / 1000 : 0);
+
+    // Prepare task list including currentTask if not present; adjust its time to appear near the latest message
+    const allTasks: A2ATask[] = [...tasks];
+    const lastMsgTime = messages.length > 0 ? Math.max(...messages.map(msgTime)) : Date.now() / 1000;
+    if (currentTask && !allTasks.some(t => t.id === currentTask.id)) {
+      // Clone to avoid mutating original and mark timestamp hint via status.timestamp if missing
+      const ct: A2ATask = { ...currentTask, status: { ...currentTask.status, timestamp: new Date((lastMsgTime + 1) * 1000).toISOString() } } as A2ATask;
+      allTasks.push(ct);
+    }
+
+    // Sort tasks by time asc for deterministic selection
+    const sortedTasks = allTasks.slice().sort((a, b) => taskTime(a) - taskTime(b));
+    const usedTaskIds = new Set<string>();
+
+    const items: TimelineItem[] = [];
+
+    // For each message in chronological order, attach the nearest appropriate task (if any) just before it
+    const sortedMessages = messages.slice().sort((a, b) => msgTime(a) - msgTime(b));
+
+    for (const m of sortedMessages) {
+      const tMsg = msgTime(m);
+
+      if (m.role === 'agent') {
+        // Find best matching task: prefer tasks whose time <= message time, otherwise nearest by absolute diff, within a reasonable window
+        let best: A2ATask | undefined;
+        let bestScore = Number.POSITIVE_INFINITY;
+        for (const t of sortedTasks) {
+          if (usedTaskIds.has(t.id)) continue;
+          const tt = taskTime(t);
+          const diff = tMsg - tt;
+          // Prefer tasks that occur before or at the message time
+          const score = diff >= 0 ? diff : Math.abs(diff) + 5; // penalize tasks after message slightly
+          if (score < bestScore) {
+            best = t;
+            bestScore = score;
+          }
+        }
+        // Only attach if within window (e.g., 5 minutes)
+        if (best && Math.abs(tMsg - taskTime(best)) <= 5 * 60) {
+          usedTaskIds.add(best.id);
+          items.push({ kind: 'task', time: taskTime(best), task: best });
+        }
+      }
+
+      items.push({ kind: 'message', time: tMsg, message: m });
+    }
+
+    // Add any remaining tasks (no matched message) in chronological order at their own time
+    for (const t of sortedTasks) {
+      if (!usedTaskIds.has(t.id)) {
+        items.push({ kind: 'task', time: taskTime(t), task: t });
+      }
+    }
+
+    // Final sort to keep global chronological order with attached tasks already inserted before their messages
+    items.sort((a, b) => a.time - b.time);
+    return items;
+  }, [messages, tasks, currentTask]);
 
   // Initialize state - check backend connection
   useEffect(() => {
@@ -103,15 +172,26 @@ export default function ChatInterface({
           role,
           content,
           toolCalls: (msg.toolCalls as any) || undefined,
+          timestamp: typeof msg.timestamp === 'number' ? msg.timestamp : undefined,
         } as Message;
-      })
+      }).filter(m => m.content && m.content.trim().length > 0)
       
       setMessages(convertedMessages)
-      setCurrentTask(null) // Clear any current task since we're loading historical data
+      // Attach most recent task as current task so status is visible on load
+      const loadedTasks = (initialChatData.tasks || []) as any[]
+      setTasks(loadedTasks as unknown as A2ATask[])
+      if (loadedTasks.length > 0) {
+        // Pick latest by updatedAt if present, else by createdAt
+        const latest = [...loadedTasks].sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))[0]
+        setCurrentTask(latest as unknown as A2ATask)
+      } else {
+        setCurrentTask(null)
+      }
     } else {
       // Clear messages for new chat
       setMessages([])
       setCurrentTask(null)
+      setTasks([])
     }
   }, [initialChatData])
   
@@ -122,7 +202,7 @@ export default function ChatInterface({
   
   useEffect(() => {
     scrollToBottom()
-  }, [messages, scrollToBottom])
+  }, [timeline.length, scrollToBottom])
 
   // New chat now lives in Conversations panel; no local button here
 
@@ -152,6 +232,10 @@ export default function ChatInterface({
           // Initial task created
           const task = event as A2ATask
           setCurrentTask(task)
+          setTasks(prev => {
+            const exists = prev.some(t => t.id === task.id)
+            return exists ? prev.map(t => (t.id === task.id ? task : t)) : [...prev, task]
+          })
           // Capture backend-assigned contextId on first response
           if (!contextId && task.contextId) {
             setContextId(task.contextId)
@@ -201,19 +285,27 @@ export default function ChatInterface({
           setCurrentTask(prev => {
             if (prev && prev.id === event.taskId) {
               // Update existing task
-              return {
+              const updated = {
                 ...prev,
                 status: event.status
               }
+              // Also update in tasks list
+              setTasks(list => list.map(t => (t.id === updated.id ? updated : t)))
+              return updated
             } else {
               // Create task from status update event if not exists (race condition case)
-              return {
+              const created = {
                 id: event.taskId,
                 kind: "task" as const,
                 contextId: event.contextId,
                 status: event.status,
                 history: []
               }
+              setTasks(list => {
+                const exists = list.some(t => t.id === created.id)
+                return exists ? list.map(t => (t.id === created.id ? created : t)) : [...list, created]
+              })
+              return created
             }
           })
           
@@ -249,11 +341,14 @@ export default function ChatInterface({
             })
             
             // Clear current task since it's completed
+            // Update tasks with final status
+            setTasks(list => list.map(t => (t.id === event.taskId ? { ...t, status: event.status } : t)))
             setCurrentTask(null)
             setIsLoading(false)
             break
           } else if (event.final && event.status.state === "failed") {
             // Clear task and handle failure
+            setTasks(list => list.map(t => (t.id === event.taskId ? { ...t, status: event.status } : t)))
             setCurrentTask(null)
             throw new Error(extractResponseText(event) || "Task failed")
           }
@@ -365,6 +460,7 @@ export default function ChatInterface({
             />
           </div>
         )}
+        {/* Build merged timeline of tasks + messages */}
         <div className="flex flex-col space-y-4">
           {isLoadingChat ? (
             <div className="flex items-center justify-center h-full text-muted-foreground">
@@ -376,43 +472,43 @@ export default function ChatInterface({
               Send a message to start the conversation
             </div>
           ) : (
-            messages.map((message, index) => (
-              <div key={index} className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}>
-                <div className={`max-w-[80%] ${message.role === "agent" ? "w-full" : ""}`}>
-                  {/* Show task status for agent messages */}
-                  {message.role === "agent" && (
-                    (currentTask && index === messages.length - 1) || message.task
-                  ) && (
-                    <TaskStatusDisplay 
-                      task={message.task || currentTask!} 
-                      className="mb-2" 
-                    />
-                  )}
-                  
-                  <div
-                    className={`rounded-2xl px-4 py-2 ${
-                      message.role === "user" ? "bg-primary text-primary-foreground" : "bg-muted text-left"
-                    }`}
-                  >
-                    {message.role === "agent" ? (
-                      <div className="space-y-2">
-                        {message.toolCalls && (
-                          <ToolCallDisplay toolCalls={message.toolCalls} />
-                        )}
-                        <div className="markdown">
-                          <Markdown>{message.content}</Markdown>
+            timeline.map((item, index) => {
+              if (item.kind === 'task') {
+                return (
+                  <div key={`task-${item.task.id}-${index}`} className="w-full">
+                    <TaskStatusDisplay task={item.task} />
+                  </div>
+                )
+              }
+              const message = item.message
+              return (
+                <div key={`msg-${index}`} className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}>
+                  <div className={`max-w-[80%]`}>
+                    <div
+                      className={`inline-block w-fit align-top rounded-2xl px-4 py-2 break-words max-w-full ${
+                        message.role === "user" ? "bg-primary text-primary-foreground" : "bg-muted text-left"
+                      }`}
+                    >
+                      {message.role === "agent" ? (
+                        <div className="space-y-2">
+                          {message.toolCalls && (
+                            <ToolCallDisplay toolCalls={message.toolCalls} />
+                          )}
+                          <div className="markdown">
+                            <Markdown>{message.content}</Markdown>
+                          </div>
                         </div>
-                      </div>
-                    ) : (
-                      message.content
-                    )}
-                    {message.isLoading && (
-                      <Loader2 className="h-4 w-4 ml-1 inline animate-spin" />
-                    )}
+                      ) : (
+                        message.content
+                      )}
+                      {message.isLoading && (
+                        <Loader2 className="h-4 w-4 ml-1 inline animate-spin" />
+                      )}
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))
+              )
+            })
           )}
           <div ref={messagesEndRef} />
         </div>

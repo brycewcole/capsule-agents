@@ -224,18 +224,25 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
             log.info('Tool calls completed, will queue final status in onFinish');
           } else {
             // Create simple response message
-            responseMessage = {
-              kind: 'message',
-              messageId: `msg_${crypto.randomUUID()}`,
-              role: 'agent',
-              parts: [{ kind: 'text', text }],
-              contextId: params.message.contextId!,
-            };
+            if (text && text.trim().length > 0) {
+              responseMessage = {
+                kind: 'message',
+                messageId: `msg_${crypto.randomUUID()}`,
+                role: 'agent',
+                parts: [{ kind: 'text', text }],
+                contextId: params.message.contextId!,
+              };
+            } else {
+              responseMessage = null;
+            }
           }
 
-          this.ensureContextExists(params.message.contextId!);
-          const assistantMessage = VercelService.createAssistantUIMessage(text);
-          saveChat(params.message.contextId!, [...combinedMessages, assistantMessage]);
+          // Only persist assistant message if it contains non-empty text
+          if (text && text.trim().length > 0) {
+            this.ensureContextExists(params.message.contextId!);
+            const assistantMessage = VercelService.createAssistantUIMessage(text);
+            saveChat(params.message.contextId!, [...combinedMessages, assistantMessage]);
+          }
         },
         onFinish: ({ text, toolCalls, toolResults, finishReason, usage }) => {
           log.info(
