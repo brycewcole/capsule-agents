@@ -18,6 +18,7 @@ function App() {
   const [currentChatId, setCurrentChatId] = useState<string | null>(null);
   const [currentChatData, setCurrentChatData] = useState<ChatWithHistory | null>(null);
   const [isLoadingChat, setIsLoadingChat] = useState(false);
+  const [chatsRefreshKey, setChatsRefreshKey] = useState(0);
 
   useEffect(() => {
     // Temporarily skip authentication for new backend
@@ -88,13 +89,14 @@ function App() {
               <h2 className="text-lg font-semibold text-foreground">Conversations</h2>
               <p className="text-sm text-muted-foreground">Manage your chat history</p>
             </div>
-            <div className="flex-1 min-h-0">
-              <ChatSidebar
-                currentChatId={currentChatId}
-                onChatSelect={handleChatSelect}
-                onNewChat={handleNewChat}
-              />
-            </div>
+          <div className="flex-1 min-h-0">
+            <ChatSidebar
+              currentChatId={currentChatId}
+              onChatSelect={handleChatSelect}
+              onNewChat={handleNewChat}
+              refreshKey={chatsRefreshKey}
+            />
+          </div>
           </div>
           
           {/* Chat Interface - Right Side */}
@@ -109,13 +111,13 @@ function App() {
             </div>
             <div className="flex-1 min-h-0">
               <ChatInterface 
-                key={currentChatId || 'new-chat'}
                 contextId={currentChatId}
                 initialChatData={currentChatData}
                 isLoadingChat={isLoadingChat}
                 onChatCreated={(newChatId) => {
                   setCurrentChatId(newChatId);
-                  // The sidebar will refresh automatically
+                  // Trigger sidebar to refresh chat list
+                  setChatsRefreshKey((k) => k + 1);
                 }}
               />
             </div>

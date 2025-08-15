@@ -116,14 +116,27 @@ export interface ChatWithHistory {
   updateTime: number;
 }
 
+// Extract text from a Vercel UIMessage, handling both legacy {content} and current {parts}
+function extractTextFromUIMessage(msg: any): string {
+  if (msg == null) return '';
+  if (typeof msg.content === 'string' && msg.content.length > 0) return msg.content;
+  // Vercel UIMessage: parts: [{ type: 'text', text: string }, ...]
+  if (Array.isArray(msg.parts)) {
+    return msg.parts
+      .map((p: any) => (typeof p?.text === 'string' ? p.text : ''))
+      .join('')
+      .trim();
+  }
+  return '';
+}
+
 // Extract or generate a title from the first user message
 function extractChatTitle(messages: UIMessage[]): string {
-  const firstUserMessage = messages.find(msg => msg.role === 'user');
-  if (firstUserMessage && (firstUserMessage as any).content) {
-    // Take first 50 characters and clean up
-    const content = (firstUserMessage as any).content;
-    const title = String(content).slice(0, 50).trim();
-    return title.length < String(content).length ? title + '...' : title;
+  const firstUserMessage = messages.find((m: any) => m.role === 'user');
+  const text = extractTextFromUIMessage(firstUserMessage);
+  if (text) {
+    const title = text.slice(0, 50).trim();
+    return title.length < text.length ? title + '...' : title;
   }
   return 'New Chat';
 }
@@ -131,14 +144,11 @@ function extractChatTitle(messages: UIMessage[]): string {
 // Get a preview of the last message
 function getMessagePreview(messages: UIMessage[]): string {
   if (messages.length === 0) return 'No messages';
-  
-  const lastMessage = messages[messages.length - 1];
-  if ((lastMessage as any).content) {
-    const content = (lastMessage as any).content;
-    const preview = String(content).slice(0, 100).trim();
-    return preview.length < String(content).length ? preview + '...' : preview;
-  }
-  return 'No content';
+  const lastMessage: any = messages[messages.length - 1];
+  const text = extractTextFromUIMessage(lastMessage);
+  if (!text) return 'No content';
+  const preview = text.slice(0, 100).trim();
+  return preview.length < text.length ? preview + '...' : preview;
 }
 
 // Get list of all chats for a user
@@ -199,8 +209,13 @@ export function getChatsList(userId: string = 'user'): ChatSummary[] {
     }>;
     log.info(`Found ${a2aContexts.length} contexts for user 'a2a-agent':`, a2aContexts.map(c => ({ id: c.id, update_time: c.update_time })));
     
-    // Use all contexts regardless of user for now
-    const allUserContexts = [...contexts, ...anonymousContexts, ...a2aContexts];
+    // Merge and de-duplicate by context id, prefer latest update_time
+    const dedupMap = new Map<string, { id: string; state: string; create_time: number; update_time: number }>();
+    for (const c of [...contexts, ...anonymousContexts, ...a2aContexts]) {
+      const prev = dedupMap.get(c.id);
+      if (!prev || c.update_time > prev.update_time) dedupMap.set(c.id, c);
+    }
+    const allUserContexts = Array.from(dedupMap.values());
 
     const chatSummaries: ChatSummary[] = [];
 

@@ -14,13 +14,15 @@ interface ChatSidebarProps {
   onChatSelect: (chatId: string) => void
   onNewChat: () => void
   className?: string
+  refreshKey?: number
 }
 
 export function ChatSidebar({ 
   currentChatId, 
   onChatSelect, 
   onNewChat,
-  className = "" 
+  className = "",
+  refreshKey,
 }: ChatSidebarProps) {
   const [chats, setChats] = useState<ChatSummary[]>([])
   const [filteredChats, setFilteredChats] = useState<ChatSummary[]>([])
@@ -32,6 +34,20 @@ export function ChatSidebar({
   useEffect(() => {
     loadChats()
   }, [])
+
+  // Reload chats when parent signals refresh (e.g., after creating first message)
+  useEffect(() => {
+    if (refreshKey !== undefined) {
+      loadChats()
+    }
+  }, [refreshKey])
+
+  // Optionally reload when switching conversations to keep last-activity fresh
+  useEffect(() => {
+    if (currentChatId) {
+      loadChats()
+    }
+  }, [currentChatId])
 
   // Filter chats based on search query
   useEffect(() => {

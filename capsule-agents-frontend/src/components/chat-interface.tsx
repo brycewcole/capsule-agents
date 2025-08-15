@@ -76,12 +76,21 @@ export default function ChatInterface({
       console.log("Loading initial chat data:", initialChatData)
       
       // Convert backend messages to frontend Message format
-      const convertedMessages: Message[] = initialChatData.messages.map(msg => ({
-        role: msg.role as "user" | "agent",
-        content: msg.content || "",
-        toolCalls: msg.toolCalls || undefined,
-        // TODO: Map tasks from initialChatData.tasks if needed
-      }))
+      const convertedMessages: Message[] = initialChatData.messages.map((msg: any) => {
+        // Normalize role: backend stores 'assistant', UI expects 'agent' for assistant messages
+        const role: "user" | "agent" = msg.role === 'assistant' ? 'agent' : (msg.role as any);
+        // Normalize content: either legacy msg.content or Vercel UIMessage parts array
+        const content: string = typeof msg.content === 'string'
+          ? msg.content
+          : Array.isArray(msg.parts)
+            ? msg.parts.map((p: any) => (typeof p?.text === 'string' ? p.text : '')).join('')
+            : '';
+        return {
+          role,
+          content,
+          toolCalls: (msg.toolCalls as any) || undefined,
+        } as Message;
+      })
       
       setMessages(convertedMessages)
       setCurrentTask(null) // Clear any current task since we're loading historical data
@@ -163,6 +172,12 @@ export default function ChatInterface({
               return updated
             })
             
+            // If no task was created, ensure we capture the contextId from the message
+            if (!contextId && (event as any).contextId) {
+              setContextId((event as any).contextId)
+              if (onChatCreated) onChatCreated((event as any).contextId)
+            }
+
             // If no task was created, this is a simple message and we're done
             if (currentTask === null) {
               setIsLoading(false)

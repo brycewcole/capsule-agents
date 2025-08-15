@@ -2,7 +2,10 @@ import { v4 as uuidv4 } from 'uuid';
 import { A2AClient } from '@a2a-js/sdk/client';
 import type { Task as A2ATask, Message as A2AMessage, TaskStatusUpdateEvent, TaskArtifactUpdateEvent } from '@a2a-js/sdk';
 
-const API_BASE_URL = '';
+// Prefer explicit env override; otherwise, when running from Vite dev on 5173, default to backend on 8080
+const API_BASE_URL = (typeof window !== 'undefined' && window.location.port === '5173')
+  ? 'http://localhost:8080'
+  : '';
 
 const a2aClient = new A2AClient(API_BASE_URL || 'http://localhost:8080');
 
