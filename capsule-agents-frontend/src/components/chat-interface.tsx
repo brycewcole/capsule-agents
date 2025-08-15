@@ -57,6 +57,7 @@ export default function ChatInterface({
   const [connectionError, setConnectionError] = useState<JSONRPCError | Error | string | null>(null)
   const [currentTask, setCurrentTask] = useState<A2ATask | null>(null)
   const [tasks, setTasks] = useState<A2ATask[]>([])
+  const [taskStartTimes, setTaskStartTimes] = useState<Record<string, number>>({})
   // Use prop contextId if provided, otherwise defer assignment to backend on first message
   const [contextId, setContextId] = useState<string | null>(propContextId || null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
@@ -69,65 +70,25 @@ export default function ChatInterface({
       | { kind: 'task'; time: number; task: A2ATask };
 
     const msgTime = (m: Message) => (typeof m.timestamp === 'number' ? m.timestamp : Date.now() / 1000);
-    const taskTime = (t: A2ATask) => (t as any).updatedAt || (t.status?.timestamp ? Date.parse(t.status.timestamp) / 1000 : 0);
-
-    // Prepare task list including currentTask if not present; adjust its time to appear near the latest message
-    const allTasks: A2ATask[] = [...tasks];
-    const lastMsgTime = messages.length > 0 ? Math.max(...messages.map(msgTime)) : Date.now() / 1000;
-    if (currentTask && !allTasks.some(t => t.id === currentTask.id)) {
-      // Clone to avoid mutating original and mark timestamp hint via status.timestamp if missing
-      const ct: A2ATask = { ...currentTask, status: { ...currentTask.status, timestamp: new Date((lastMsgTime + 1) * 1000).toISOString() } } as A2ATask;
-      allTasks.push(ct);
-    }
-
-    // Sort tasks by time asc for deterministic selection
-    const sortedTasks = allTasks.slice().sort((a, b) => taskTime(a) - taskTime(b));
-    const usedTaskIds = new Set<string>();
+    const taskTime = (t: A2ATask) => {
+      const id = t.id;
+      if (id && taskStartTimes[id] != null) return taskStartTimes[id];
+      const created = (t as any).createdAt;
+      if (typeof created === 'number') return created;
+      if (t.status?.timestamp) return Date.parse(t.status.timestamp) / 1000;
+      return Date.now() / 1000;
+    };
 
     const items: TimelineItem[] = [];
+    for (const m of messages) items.push({ kind: 'message', time: msgTime(m), message: m });
 
-    // For each message in chronological order, attach the nearest appropriate task (if any) just before it
-    const sortedMessages = messages.slice().sort((a, b) => msgTime(a) - msgTime(b));
+    const allTasks: A2ATask[] = [...tasks];
+    if (currentTask && !allTasks.some(t => t.id === currentTask.id)) allTasks.push(currentTask);
+    for (const t of allTasks) items.push({ kind: 'task', time: taskTime(t), task: t });
 
-    for (const m of sortedMessages) {
-      const tMsg = msgTime(m);
-
-      if (m.role === 'agent') {
-        // Find best matching task: prefer tasks whose time <= message time, otherwise nearest by absolute diff, within a reasonable window
-        let best: A2ATask | undefined;
-        let bestScore = Number.POSITIVE_INFINITY;
-        for (const t of sortedTasks) {
-          if (usedTaskIds.has(t.id)) continue;
-          const tt = taskTime(t);
-          const diff = tMsg - tt;
-          // Prefer tasks that occur before or at the message time
-          const score = diff >= 0 ? diff : Math.abs(diff) + 5; // penalize tasks after message slightly
-          if (score < bestScore) {
-            best = t;
-            bestScore = score;
-          }
-        }
-        // Only attach if within window (e.g., 5 minutes)
-        if (best && Math.abs(tMsg - taskTime(best)) <= 5 * 60) {
-          usedTaskIds.add(best.id);
-          items.push({ kind: 'task', time: taskTime(best), task: best });
-        }
-      }
-
-      items.push({ kind: 'message', time: tMsg, message: m });
-    }
-
-    // Add any remaining tasks (no matched message) in chronological order at their own time
-    for (const t of sortedTasks) {
-      if (!usedTaskIds.has(t.id)) {
-        items.push({ kind: 'task', time: taskTime(t), task: t });
-      }
-    }
-
-    // Final sort to keep global chronological order with attached tasks already inserted before their messages
     items.sort((a, b) => a.time - b.time);
     return items;
-  }, [messages, tasks, currentTask]);
+  }, [messages, tasks, currentTask, taskStartTimes]);
 
   // Initialize state - check backend connection
   useEffect(() => {
@@ -180,6 +141,16 @@ export default function ChatInterface({
       // Attach most recent task as current task so status is visible on load
       const loadedTasks = (initialChatData.tasks || []) as any[]
       setTasks(loadedTasks as unknown as A2ATask[])
+      // Seed task start times from createdAt
+      setTaskStartTimes(prev => {
+        const next = { ...prev }
+        for (const t of loadedTasks) {
+          const id = (t as any).id
+          const createdAt = (t as any).createdAt
+          if (id && typeof createdAt === 'number' && next[id] == null) next[id] = createdAt
+        }
+        return next
+      })
       if (loadedTasks.length > 0) {
         // Pick latest by updatedAt if present, else by createdAt
         const latest = [...loadedTasks].sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))[0]
@@ -236,6 +207,11 @@ export default function ChatInterface({
             const exists = prev.some(t => t.id === task.id)
             return exists ? prev.map(t => (t.id === task.id ? task : t)) : [...prev, task]
           })
+          // Record task start time on creation
+          setTaskStartTimes(prev => ({
+            ...prev,
+            [task.id]: prev[task.id] ?? (task.status?.timestamp ? Date.parse(task.status.timestamp) / 1000 : Date.now() / 1000)
+          }))
           // Capture backend-assigned contextId on first response
           if (!contextId && task.contextId) {
             setContextId(task.contextId)
@@ -305,6 +281,10 @@ export default function ChatInterface({
                 const exists = list.some(t => t.id === created.id)
                 return exists ? list.map(t => (t.id === created.id ? created : t)) : [...list, created]
               })
+              setTaskStartTimes(prev => ({
+                ...prev,
+                [created.id]: prev[created.id] ?? (created.status?.timestamp ? Date.parse(created.status.timestamp) / 1000 : Date.now() / 1000)
+              }))
               return created
             }
           })
