@@ -12,5 +12,12 @@
     "python.testing.cwd": "${workspaceFolder}/backend",
     "python.testing.pytestArgs": [
         "backend/tests"
+    ],
+    "deno.enable": true,
+    "deno.enablePaths": [
+        "capsule-agents-backend"
+    ],
+    "cSpell.words": [
+        "uuidv"
     ]
 }

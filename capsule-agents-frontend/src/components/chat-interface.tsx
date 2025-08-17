@@ -1,16 +1,18 @@
 "use client"
 
-import { useEffect, useState, useCallback, useRef } from "react"
+import { useEffect, useState, useCallback, useRef, useMemo } from "react"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
-import { ArrowRight, Loader2, MessageSquare, Plus } from "lucide-react"
+import { ArrowRight, Loader2, MessageSquare, PanelRightOpen } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card"
-import { checkHealth, sendMessage, extractResponseText, extractToolCalls, getSessionHistory, type ToolCall as ApiToolCall } from "@/lib/api"
-import { v4 as uuidv4 } from "uuid"
+import { checkHealth, streamMessage, extractResponseText, extractToolCalls, type ToolCall as ApiToolCall, type A2ATask, type ChatWithHistory } from "@/lib/api"
 import Markdown from "react-markdown"
 import { ToolCallDisplay } from "@/components/tool-call-display"
-import { showErrorToast, getErrorMessage, isRecoverableError, isMCPError, isA2AError, type JSONRPCError } from "@/lib/error-utils"
+import { TaskStatusDisplay } from "@/components/task-status-display"
+import { showErrorToast, getErrorMessage, isRecoverableError, type JSONRPCError } from "@/lib/error-utils"
 import { ErrorDisplay } from "@/components/ui/error-display"
+import { ChatSidebar } from "@/components/chat-sidebar"
+
 
 type ToolCall = ApiToolCall
 
@@ -19,176 +21,150 @@ type Message = {
   content: string
   isLoading?: boolean
   toolCalls?: ToolCall[]
+  task?: A2ATask
+  timestamp?: number
 }
 
-// Constants for localStorage keys
-const STORAGE_KEYS = {
-  SESSION_ID: "capsule-agent-session-id"
+interface ChatInterfaceProps {
+  contextId?: string | null
+  initialChatData?: ChatWithHistory | null
+  isLoadingChat?: boolean
+  onChatCreated?: (chatId: string) => void
+  isConversationsOpen?: boolean
+  onToggleConversations?: () => void
+  onNewChat?: () => void
+  currentChatId?: string | null
+  onChatSelect?: (chatId: string) => void
+  chatsRefreshKey?: number
 }
 
-export default function ChatInterface() {
+export default function ChatInterface({ 
+  contextId: propContextId, 
+  initialChatData, 
+  isLoadingChat = false,
+  onChatCreated,
+  isConversationsOpen,
+  onToggleConversations,
+  onNewChat,
+  currentChatId,
+  onChatSelect,
+  chatsRefreshKey,
+}: ChatInterfaceProps) {
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState("")
   const [isLoading, setIsLoading] = useState(false)
   const [isBackendConnected, setIsBackendConnected] = useState(false)
-  const [sessionId, setSessionId] = useState<string>("")
   const [connectionError, setConnectionError] = useState<JSONRPCError | Error | string | null>(null)
+  const [currentTask, setCurrentTask] = useState<A2ATask | null>(null)
+  const [tasks, setTasks] = useState<A2ATask[]>([])
+  const [taskStartTimes, setTaskStartTimes] = useState<Record<string, number>>({})
+  // Use prop contextId if provided, otherwise defer assignment to backend on first message
+  const [contextId, setContextId] = useState<string | null>(propContextId || null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
-  
-  // Initialize state from localStorage on component mount
+  const containerRef = useRef<HTMLDivElement>(null)
+
+  // Build merged timeline of tasks + messages
+  const timeline = useMemo(() => {
+    type TimelineItem =
+      | { kind: 'message'; time: number; message: Message }
+      | { kind: 'task'; time: number; task: A2ATask };
+
+    const msgTime = (m: Message) => (typeof m.timestamp === 'number' ? m.timestamp : Date.now() / 1000);
+    const taskTime = (t: A2ATask) => {
+      const id = t.id;
+      if (id && taskStartTimes[id] != null) return taskStartTimes[id];
+      const created = (t as any).createdAt;
+      if (typeof created === 'number') return created;
+      if (t.status?.timestamp) return Date.parse(t.status.timestamp) / 1000;
+      return Date.now() / 1000;
+    };
+
+    const items: TimelineItem[] = [];
+    for (const m of messages) items.push({ kind: 'message', time: msgTime(m), message: m });
+
+    const allTasks: A2ATask[] = [...tasks];
+    if (currentTask && !allTasks.some(t => t.id === currentTask.id)) allTasks.push(currentTask);
+    for (const t of allTasks) items.push({ kind: 'task', time: taskTime(t), task: t });
+
+    items.sort((a, b) => a.time - b.time);
+    return items;
+  }, [messages, tasks, currentTask, taskStartTimes]);
+
+  // Initialize state - check backend connection
   useEffect(() => {
     const initializeState = async () => {
       try {
-        // Load saved sessionId or create a new one
-        const savedSessionId = localStorage.getItem(STORAGE_KEYS.SESSION_ID)
-        let currentSessionId: string
-        
-        if (savedSessionId) {
-          currentSessionId = savedSessionId
-          setSessionId(currentSessionId)
-          
-          // Load chat history from backend for existing session
-          try {
-            console.log("Loading session history for:", currentSessionId)
-            const history = await getSessionHistory(currentSessionId)
-            console.log("Received history:", history)
-            console.log("Number of events in history:", history.events.length)
-            const loadedMessages: Message[] = []
-            
-            // First pass: collect all function calls and responses across all events
-            const functionCalls = new Map<string, { name: string; args: Record<string, unknown> }>()
-            const functionResponses = new Map<string, unknown>()
-            
-            for (const event of history.events) {
-              if (event.content && event.content !== null) {
-                try {
-                  const contentObj = JSON.parse(event.content)
-                  if (contentObj && contentObj.parts) {
-                    for (const part of contentObj.parts) {
-                      // Collect function calls
-                      if (part.function_call) {
-                        functionCalls.set(part.function_call.id, {
-                          name: part.function_call.name,
-                          args: part.function_call.args || {}
-                        })
-                      }
-                      
-                      // Collect function responses
-                      if (part.function_response) {
-                        functionResponses.set(part.function_response.id, part.function_response.response)
-                      }
-                    }
-                  }
-                } catch (e) {
-                  console.error("Error parsing event content for tool calls:", e)
-                }
-              }
-            }
-            
-            // Build tool calls by matching calls with responses
-            const allToolCalls: ToolCall[] = []
-            console.log("Function calls found:", functionCalls.size)
-            console.log("Function responses found:", functionResponses.size)
-            for (const [callId, call] of functionCalls.entries()) {
-              const response = functionResponses.get(callId)
-              console.log(`Matching call ${callId}:`, call, "with response:", response)
-              if (response) {
-                allToolCalls.push({
-                  name: call.name,
-                  args: call.args,
-                  result: response
-                })
-              }
-            }
-            console.log("Total tool calls created:", allToolCalls.length, allToolCalls)
-            
-            // Second pass: create messages
-            for (const event of history.events) {
-              console.log("Processing event:", event)
-              
-              // Extract text content from the JSON string
-              let textContent = ""
-              
-              if (event.content && event.content !== null) {
-                try {
-                  const contentObj = JSON.parse(event.content)
-                  if (contentObj && contentObj.parts && contentObj.parts.length > 0) {
-                    textContent = contentObj.parts.map((part: unknown) => (part as { text?: string }).text || "").join("")
-                  }
-                } catch (e) {
-                  console.error("Error parsing event content:", e)
-                  textContent = event.content // fallback to raw content
-                }
-              }
-              
-              if (event.author === 'user') {
-                loadedMessages.push({
-                  role: 'user',
-                  content: textContent
-                })
-              } else if (event.author === 'capsule_agent') {
-                // For the final agent response, attach all tool calls
-                if (textContent && allToolCalls.length > 0) {
-                  loadedMessages.push({
-                    role: 'agent',
-                    content: textContent,
-                    toolCalls: [...allToolCalls]  // Create a copy of the array
-                  })
-                  // Clear tool calls so they don't appear in subsequent messages
-                  allToolCalls.length = 0
-                } else if (textContent) {
-                  loadedMessages.push({
-                    role: 'agent',
-                    content: textContent
-                  })
-                }
-                // Skip empty agent messages (function call/response events with no text)
-              }
-            }
-            
-            console.log("Loaded messages:", loadedMessages)
-            console.log("Number of loaded messages:", loadedMessages.length)
-            setMessages(loadedMessages)
-          } catch (error) {
-            console.error("Failed to load session history:", error)
-            showErrorToast(error, { title: "Could not load session history" })
-            // If we can't load history, start fresh but keep the session ID
-          }
-        } else {
-          currentSessionId = uuidv4()
-          setSessionId(currentSessionId)
-          localStorage.setItem(STORAGE_KEYS.SESSION_ID, currentSessionId)
-        }
+        console.log("Checking backend health...")
+        await checkHealth()
+        setIsBackendConnected(true)
+        setConnectionError(null)
+        console.log("Backend connection successful")
       } catch (error) {
-        console.error("Error initializing state:", error)
-        // If backend is down, create new session anyway
-        const newSessionId = uuidv4()
-        setSessionId(newSessionId)
-        localStorage.setItem(STORAGE_KEYS.SESSION_ID, newSessionId)
+        console.error("Backend connection failed:", error)
+        setIsBackendConnected(false)
+        setConnectionError(error as JSONRPCError | Error)
       }
     }
-    
+
     initializeState()
   }, [])
-  
-  
 
-  // Check backend health on component mount
+  // Update contextId when prop changes
   useEffect(() => {
-    const checkBackendHealth = async () => {
-      try {
-        const health = await checkHealth()
-        setIsBackendConnected(health.status === "ok")
-        setConnectionError(null)
-      } catch (error) {
-        console.error("Backend health check failed:", error)
-        setIsBackendConnected(false)
-        setConnectionError(error as JSONRPCError | Error | string)
+    setContextId(propContextId || null)
+  }, [propContextId])
+
+  // Load initial chat data when provided
+  useEffect(() => {
+    if (initialChatData) {
+      console.log("Loading initial chat data:", initialChatData)
+      
+      // Convert backend messages to frontend Message format
+      const convertedMessages: Message[] = initialChatData.messages.map((msg: any) => {
+        // Normalize role: backend stores 'assistant', UI expects 'agent' for assistant messages
+        const role: "user" | "agent" = msg.role === 'assistant' ? 'agent' : (msg.role as any);
+        // Normalize content: either legacy msg.content or Vercel UIMessage parts array
+        const content: string = typeof msg.content === 'string'
+          ? msg.content
+          : Array.isArray(msg.parts)
+            ? msg.parts.map((p: any) => (typeof p?.text === 'string' ? p.text : '')).join('')
+            : '';
+        return {
+          role,
+          content,
+          toolCalls: (msg.toolCalls as any) || undefined,
+          timestamp: typeof msg.timestamp === 'number' ? msg.timestamp : undefined,
+        } as Message;
+      }).filter(m => m.content && m.content.trim().length > 0)
+      
+      setMessages(convertedMessages)
+      // Attach most recent task as current task so status is visible on load
+      const loadedTasks = (initialChatData.tasks || []) as any[]
+      setTasks(loadedTasks as unknown as A2ATask[])
+      // Seed task start times from createdAt
+      setTaskStartTimes(prev => {
+        const next = { ...prev }
+        for (const t of loadedTasks) {
+          const id = (t as any).id
+          const createdAt = (t as any).createdAt
+          if (id && typeof createdAt === 'number' && next[id] == null) next[id] = createdAt
+        }
+        return next
+      })
+      if (loadedTasks.length > 0) {
+        // Pick latest by updatedAt if present, else by createdAt
+        const latest = [...loadedTasks].sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))[0]
+        setCurrentTask(latest as unknown as A2ATask)
+      } else {
+        setCurrentTask(null)
       }
+    } else {
+      // Clear messages for new chat
+      setMessages([])
+      setCurrentTask(null)
+      setTasks([])
     }
-    
-    checkBackendHealth()
-  }, [])
+  }, [initialChatData])
   
   // Scroll to bottom of messages
   const scrollToBottom = useCallback(() => {
@@ -197,16 +173,9 @@ export default function ChatInterface() {
   
   useEffect(() => {
     scrollToBottom()
-  }, [messages, scrollToBottom])
+  }, [timeline.length, scrollToBottom])
 
-  const handleNewChat = () => {
-    setMessages([])
-    const newSessionId = uuidv4()
-    setSessionId(newSessionId)
-    
-    // Update localStorage
-    localStorage.setItem(STORAGE_KEYS.SESSION_ID, newSessionId)
-  }
+  // New chat now lives in Conversations panel; no local button here
 
   const handleSendMessage = async () => {
     if (!input.trim() || isLoading) return
@@ -222,37 +191,156 @@ export default function ChatInterface() {
     setMessages(prev => [...prev, { role: "agent", content: "", isLoading: true }])
     
     try {
-      // Send the message with the current sessionId
-      const taskResponse = await sendMessage(userMessage, sessionId)
+      // Use A2A streaming
+      let currentResponseText = ""
+      let finalToolCalls: ToolCall[] = []
       
-      // Debug: Log the full task response
-      console.log("Full task response:", taskResponse)
-      console.log("Task history:", taskResponse.history)
-      
-      // Extract the response text and tool calls from the task
-      const responseText = extractResponseText(taskResponse)
-      const toolCalls = extractToolCalls(taskResponse)
-      
-      // Debug: Log extracted tool calls
-      console.log("Extracted tool calls:", toolCalls)
-      
-      // Update the agent's message with the response
-      setMessages(prev => {
-        const updated = [...prev]
-        const lastMessage = updated[updated.length - 1]
-        if (lastMessage.role === "agent") {
-          lastMessage.content = responseText || "I couldn't generate a response. Please try again."
-          lastMessage.toolCalls = toolCalls.length > 0 ? toolCalls : undefined
-          lastMessage.isLoading = false
+      for await (const event of streamMessage(userMessage, contextId)) {
+        console.log("Received A2A event:", event)
+        
+        // Handle different event types
+        if (event.kind === "task") {
+          // Initial task created
+          const task = event as A2ATask
+          setCurrentTask(task)
+          setTasks(prev => {
+            const exists = prev.some(t => t.id === task.id)
+            return exists ? prev.map(t => (t.id === task.id ? task : t)) : [...prev, task]
+          })
+          // Record task start time on creation
+          setTaskStartTimes(prev => ({
+            ...prev,
+            [task.id]: prev[task.id] ?? (task.status?.timestamp ? Date.parse(task.status.timestamp) / 1000 : Date.now() / 1000)
+          }))
+          // Capture backend-assigned contextId on first response
+          if (!contextId && task.contextId) {
+            setContextId(task.contextId)
+            // Notify parent component that a new chat was created
+            if (onChatCreated) {
+              onChatCreated(task.contextId)
+            }
+          } else if (contextId && task.contextId !== contextId) {
+            console.warn('Task contextId changed from expected contextId:', { expected: contextId, received: task.contextId })
+          }
+          console.log("Task created:", task.id, "contextId:", task.contextId)
+        } else if (event.kind === "message" && event.role === "agent") {
+          // Agent message response (could be streaming or final)
+          const newText = extractResponseText(event)
+          if (newText) {
+            currentResponseText = newText
+            
+            // Update the agent's message
+            setMessages(prev => {
+              const updated = [...prev]
+              const lastMessage = updated[updated.length - 1]
+              if (lastMessage.role === "agent") {
+                lastMessage.content = currentResponseText
+                // For simple messages (no task), this is the final response
+                lastMessage.isLoading = currentTask !== null
+              }
+              return updated
+            })
+            
+            // If no task was created, ensure we capture the contextId from the message
+            if (!contextId && (event as any).contextId) {
+              setContextId((event as any).contextId)
+              if (onChatCreated) onChatCreated((event as any).contextId)
+            }
+
+            // If no task was created, this is a simple message and we're done
+            if (currentTask === null) {
+              setIsLoading(false)
+              break
+            }
+          }
+        } else if (event.kind === "status-update") {
+          // Handle status updates
+          console.log("Status update:", event.status.state)
+          
+          // Create or update the task using the event data directly (fixes race condition)
+          setCurrentTask(prev => {
+            if (prev && prev.id === event.taskId) {
+              // Update existing task
+              const updated = {
+                ...prev,
+                status: event.status
+              }
+              // Also update in tasks list
+              setTasks(list => list.map(t => (t.id === updated.id ? updated : t)))
+              return updated
+            } else {
+              // Create task from status update event if not exists (race condition case)
+              const created = {
+                id: event.taskId,
+                kind: "task" as const,
+                contextId: event.contextId,
+                status: event.status,
+                history: []
+              }
+              setTasks(list => {
+                const exists = list.some(t => t.id === created.id)
+                return exists ? list.map(t => (t.id === created.id ? created : t)) : [...list, created]
+              })
+              setTaskStartTimes(prev => ({
+                ...prev,
+                [created.id]: prev[created.id] ?? (created.status?.timestamp ? Date.parse(created.status.timestamp) / 1000 : Date.now() / 1000)
+              }))
+              return created
+            }
+          })
+          
+          if (event.final && event.status.state === "completed") {
+            // Extract final response text from the completion status event
+            const finalResponseText = extractResponseText(event) || currentResponseText
+            
+            // Final completion - extract tool calls from current task and store final task state
+            let completedTask: A2ATask | undefined
+            setCurrentTask(prev => {
+              if (prev && prev.id === event.taskId) {
+                finalToolCalls = extractToolCalls(prev)
+                // Create final task state with completed status
+                completedTask = {
+                  ...prev,
+                  status: event.status
+                }
+              }
+              return prev
+            })
+            
+            // Mark as complete and store the completed task
+            setMessages(prev => {
+              const updated = [...prev]
+              const lastMessage = updated[updated.length - 1]
+              if (lastMessage.role === "agent") {
+                lastMessage.content = finalResponseText
+                lastMessage.toolCalls = finalToolCalls.length > 0 ? finalToolCalls : undefined
+                lastMessage.isLoading = false
+                lastMessage.task = completedTask
+              }
+              return updated
+            })
+            
+            // Clear current task since it's completed
+            // Update tasks with final status
+            setTasks(list => list.map(t => (t.id === event.taskId ? { ...t, status: event.status } : t)))
+            setCurrentTask(null)
+            setIsLoading(false)
+            break
+          } else if (event.final && event.status.state === "failed") {
+            // Clear task and handle failure
+            setTasks(list => list.map(t => (t.id === event.taskId ? { ...t, status: event.status } : t)))
+            setCurrentTask(null)
+            throw new Error(extractResponseText(event) || "Task failed")
+          }
         }
-        return updated
-      })
+      }
+      
     } catch (error) {
       console.error("Error getting response from agent:", error)
       
       // Show error toast with development details and specific guidance
       showErrorToast(error, { 
-        title: isMCPError(error) ? "MCP Server Error" : isA2AError(error) ? "A2A Agent Error" : "Message Send Failed",
+        title: "A2A Streaming Error",
         action: isRecoverableError(error) ? (
           <Button variant="outline" size="sm" onClick={() => handleSendMessage()}>
             Retry
@@ -283,7 +371,8 @@ export default function ChatInterface() {
   }
 
   return (
-    <Card className="flex flex-col flex-1 overflow-hidden shadow-md">
+    <div ref={containerRef} className="relative h-full">
+    <Card className="flex flex-col h-full overflow-hidden shadow-md">
       <CardHeader className="pb-4 flex flex-row justify-between items-center">
         <div>
           <CardTitle className="flex items-center gap-2 text-xl">
@@ -291,24 +380,43 @@ export default function ChatInterface() {
             Chat with agent
           </CardTitle>
           <CardDescription>
-            {isBackendConnected 
-              ? "Test your agent with real-time conversation" 
-              : "⚠️ Backend not connected. Check your API connection."}
+            {!isBackendConnected 
+              ? "⚠️ Backend not connected. Check your API connection."
+              : isLoadingChat 
+                ? "Loading conversation..."
+                : contextId 
+                  ? `Active chat: ${contextId.slice(-8)}`
+                  : "Start a new conversation"}
           </CardDescription>
         </div>
-        <Button
-          variant="outline"
-          size="icon"
-          title="New Chat"
-          onClick={handleNewChat}
-          disabled={isLoading}
-        >
-          <Plus className="h-4 w-4" />
-          <span className="sr-only">New Chat</span>
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            title={isConversationsOpen ? "Hide conversations" : "Show conversations"}
+            onClick={onToggleConversations}
+            className="gap-2"
+          >
+            <MessageSquare className="h-4 w-4" />
+            {isConversationsOpen ? 'Hide' : 'Show'}
+          </Button>
+          {onNewChat && (
+            <Button
+              variant="outline"
+              size="sm"
+              title="New chat"
+              onClick={onNewChat}
+            >
+              New
+            </Button>
+          )}
+        </div>
       </CardHeader>
 
-      <CardContent className="flex-1 overflow-y-auto min-h-0 p-4">
+      <CardContent className="flex-1 min-h-0 p-0">
+        <div className="h-full w-full flex">
+          {/* Messages area */}
+          <div className="flex-1 min-w-0 p-4 overflow-y-auto">
         {connectionError && !isBackendConnected && (
           <div className="mb-4">
             <ErrorDisplay
@@ -332,39 +440,79 @@ export default function ChatInterface() {
             />
           </div>
         )}
+        {/* Build merged timeline of tasks + messages */}
         <div className="flex flex-col space-y-4">
-          {messages.length === 0 ? (
+          {isLoadingChat ? (
+            <div className="flex items-center justify-center h-full text-muted-foreground">
+              <Loader2 className="h-6 w-6 animate-spin mr-2" />
+              Loading conversation...
+            </div>
+          ) : messages.length === 0 ? (
             <div className="flex items-center justify-center h-full text-muted-foreground">
               Send a message to start the conversation
             </div>
           ) : (
-            messages.map((message, index) => (
-              <div key={index} className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}>
-                <div
-                  className={`max-w-[80%] rounded-2xl px-4 py-2 ${
-                    message.role === "user" ? "bg-primary text-primary-foreground" : "bg-muted text-left"
-                  }`}
-                >
-                  {message.role === "agent" ? (
-                    <div className="space-y-2">
-                      {message.toolCalls && (
-                        <ToolCallDisplay toolCalls={message.toolCalls} />
+            timeline.map((item, index) => {
+              if (item.kind === 'task') {
+                return (
+                  <div key={`task-${item.task.id}-${index}`} className="w-full">
+                    <TaskStatusDisplay task={item.task} />
+                  </div>
+                )
+              }
+              const message = item.message
+              return (
+                <div key={`msg-${index}`} className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}>
+                  <div className={`max-w-[80%]`}>
+                    <div
+                      className={`inline-block w-fit align-top rounded-2xl px-4 py-2 break-words max-w-full ${
+                        message.role === "user" ? "bg-primary text-primary-foreground" : "bg-muted text-left"
+                      }`}
+                    >
+                      {message.role === "agent" ? (
+                        <div className="space-y-2">
+                          {message.toolCalls && (
+                            <ToolCallDisplay toolCalls={message.toolCalls} />
+                          )}
+                          <div className="markdown">
+                            <Markdown>{message.content}</Markdown>
+                          </div>
+                        </div>
+                      ) : (
+                        message.content
                       )}
-                      <div className="markdown">
-                        <Markdown>{message.content}</Markdown>
-                      </div>
+                      {message.isLoading && (
+                        <Loader2 className="h-4 w-4 ml-1 inline animate-spin" />
+                      )}
                     </div>
-                  ) : (
-                    message.content
-                  )}
-                  {message.isLoading && (
-                    <Loader2 className="h-4 w-4 ml-1 inline animate-spin" />
-                  )}
+                  </div>
                 </div>
-              </div>
-            ))
+              )
+            })
           )}
           <div ref={messagesEndRef} />
+        </div>
+        </div>
+          {/* Conversations inline panel */}
+          <div
+            className={[
+              'relative border-l bg-background/50 transition-all duration-300 ease-out',
+              isConversationsOpen ? 'w-[340px] sm:w-[360px] opacity-100' : 'w-0 opacity-0 pointer-events-none'
+            ].join(' ')}
+          >
+            <div className="h-full flex flex-col">
+              <div className="flex-1 min-h-0">
+                <ChatSidebar
+                  variant="inline"
+                  hideTitleBar
+                  currentChatId={currentChatId}
+                  onChatSelect={(id) => onChatSelect && onChatSelect(id)}
+                  onNewChat={() => onNewChat && onNewChat()}
+                  refreshKey={chatsRefreshKey}
+                />
+              </div>
+            </div>
+          </div>
         </div>
       </CardContent>
 
@@ -394,5 +542,21 @@ export default function ChatInterface() {
         </div>
       </CardFooter>
     </Card>
+
+    {/* Rail button aligned to Chat Interface when panel is hidden */}
+    {!isConversationsOpen && (
+      <div className="absolute right-3 top-1/2 -translate-y-1/2 z-10">
+        <Button
+          variant="outline"
+          size="icon"
+          className="shadow-sm"
+          title="Show conversations (Cmd/Ctrl+K)"
+          onClick={onToggleConversations}
+        >
+          <PanelRightOpen className="h-4 w-4" />
+        </Button>
+      </div>
+    )}
+    </div>
   )
 }

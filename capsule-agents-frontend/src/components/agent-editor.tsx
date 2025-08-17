@@ -376,7 +376,7 @@ export default function AgentEditor() {
   }
 
   return (
-    <Card className="shadow-md">
+    <Card className="shadow-md h-fit">
       <CardHeader>
         <CardTitle className="text-xl">Edit Agent</CardTitle>
         <CardDescription>Configure your containerized A2A protocol agent</CardDescription>

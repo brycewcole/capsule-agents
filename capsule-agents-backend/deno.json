@@ -1,0 +1,36 @@
+{
+  "name": "@capsule-agents/backend",
+  "version": "1.0.0",
+  "exports": "./src/index.ts",
+  "tasks": {
+    "start": "deno run --allow-all src/index.ts",
+    "dev": "deno run --allow-all --watch src/index.ts"
+  },
+  "imports": {
+    "hono": "jsr:@hono/hono@^4.8.10",
+    "hono/cors": "jsr:@hono/hono/cors",
+    "hono/streaming": "jsr:@hono/hono/streaming",
+    "hono/deno": "jsr:@hono/hono/deno",
+    "@a2a-js/sdk": "npm:@a2a-js/sdk@^0.2.5",
+    "@a2a-js/sdk/server": "npm:@a2a-js/sdk/server",
+    "@ai-sdk/anthropic": "npm:@ai-sdk/anthropic@^2.0.0",
+    "@ai-sdk/google": "npm:@ai-sdk/google@^2.0.0",
+    "@ai-sdk/openai": "npm:@ai-sdk/openai@^2.0.0",
+    "ai": "npm:ai@^5.0.0",
+    "better-sqlite3": "jsr:@db/sqlite@0.12.0",
+    "uuid": "npm:uuid@^11.1.0",
+    "@std/fs": "jsr:@std/fs@^1.0.0",
+    "@std/path": "jsr:@std/path@^1.0.0",
+    "@std/log": "jsr:@std/log",
+    "zod": "npm:zod@^3.25.0"
+  },
+  "compilerOptions": {
+    "lib": [
+      "deno.window",
+      "deno.ns"
+    ],
+    "strict": true
+  },
+  "nodeModulesDir": "auto",
+  "lock": false
+}

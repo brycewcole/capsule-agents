@@ -28,7 +28,7 @@ cd ..
 # Start backend (serves both API and frontend)
 cd backend
 uv sync
-STATIC_DIR=capsule-agents-frontend/dist uv run -m uvicorn backend.app.main:app --reload --host 0.0.0.0 --port 8000
+STATIC_DIR=capsule-agents-frontend/dist uv run -m uvicorn backend.app.main:app --reload --host 0.0.0.0 --port 8000 --log-config ../log_conf.yaml
 ```
 
 ### Separate Frontend Development (Optional)

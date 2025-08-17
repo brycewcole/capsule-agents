@@ -3,8 +3,8 @@ disable_existing_loggers: False               # keep your loggers active
 
 formatters:
   default:
-    "()": "uvicorn.logging.DefaultFormatter"  # use Uvicorn’s color-aware default formatter  [oai_citation:0‡Stack Overflow](https://stackoverflow.com/questions/62955750/what-does-do-in-python-log-config?utm_source=chatgpt.com)
-    fmt: "%(levelprefix)s %(message)s"        # no timestamp, only colored level + message  
+    "()": "uvicorn.logging.DefaultFormatter"  # use Uvicorn's color-aware default formatter  [oai_citation:0‡Stack Overflow](https://stackoverflow.com/questions/62955750/what-does-do-in-python-log-config?utm_source=chatgpt.com)
+    fmt: "%(levelprefix)s %(asctime)s - %(name)s - %(message)s"  # include timestamp and module for better debugging
     use_colors: True                          # force colored output  [oai_citation:1‡Uvicorn](https://www.uvicorn.org/settings/?utm_source=chatgpt.com)
 
   access:
