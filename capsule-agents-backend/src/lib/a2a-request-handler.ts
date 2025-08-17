@@ -6,6 +6,7 @@ import { openai } from '@ai-sdk/openai';
 import { fileAccessTool, fileAccessSkill } from '../tools/file-access.ts';
 import { braveSearchTool, braveSearchSkill } from '../tools/brave-search.ts';
 import { memoryTool, memorySkill } from '../tools/memory.ts';
+import { executeA2ACall } from '../tools/a2a.ts';
 import { saveChat, loadChat, createChatWithId } from './storage.ts';
 import { AgentConfigService } from './agent-config.ts';
 import { TaskStorage } from './task-storage.ts';
@@ -31,7 +32,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
     }
   }
 
-  private getAvailableTools(): Record<string, Vercel.Tool> {
+  private async getAvailableTools(): Promise<Record<string, Vercel.Tool>> {
     const tools: Record<string, Vercel.Tool> = {};
 
     const agentInfo = this.agentConfigService.getAgentInfo();
@@ -51,17 +52,90 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
         }
       } else if (tool.type === 'a2a_call') {
         const agentUrl = tool.tool_schema?.agent_url;
-        if (agentUrl) {
-          tools[tool.name] = {
-            description: `Call agent at ${agentUrl}`,
-            inputSchema: z.object({
-              message: z.string().describe('Message to send to the agent'),
-            }),
-            execute: ({ message }: { message: string }) => {
-              // TODO: Implement A2A call to the configured agent URL
-              return `Would call agent at ${agentUrl} with message: ${message}`;
-            },
-          };
+        if (agentUrl && typeof agentUrl === 'string') {
+          try {
+            // Fetch agent card to get agent name and description
+            log.info(`Fetching agent card from: ${agentUrl}/.well-known/agent.json`);
+            const agentCardResponse = await fetch(`${agentUrl}/.well-known/agent.json`, {
+              signal: AbortSignal.timeout(5000), // 5 second timeout
+            });
+            let agentName = tool.name;
+            let description = `Communicate with agent at ${agentUrl}`;
+            
+            log.info(`Agent card response status: ${agentCardResponse.status} for ${agentUrl}`);
+            if (agentCardResponse.ok) {
+              const agentCard: A2A.AgentCard = await agentCardResponse.json();
+              agentName = agentCard.name;
+              description = `Communicate with ${agentCard.name}: ${agentCard.description}`;
+              log.info(`Retrieved agent card for ${agentUrl}:`, { name: agentCard.name });
+            } else {
+              log.warn(`Failed to fetch agent card from ${agentUrl} with status ${agentCardResponse.status}, using fallback`);
+            }
+
+            tools[tool.name] = {
+              description,
+              inputSchema: z.object({
+                message: z.string().describe(`Message to send to ${agentName}`),
+                contextId: z.string().optional().describe('Optional context ID for conversation continuity'),
+              }),
+              execute: async (params: { message: string; contextId?: string }) => {
+                const result = await executeA2ACall({ 
+                  agentUrl, 
+                  message: params.message, 
+                  contextId: params.contextId 
+                });
+                // Convert result to string for tool return
+                if (result.error) {
+                  return `Error: ${result.error}`;
+                } else if (result.response) {
+                  return result.response;
+                } else if (result.taskId) {
+                  return `Task created with ID: ${result.taskId}. Status: ${result.status || 'unknown'}`;
+                } else {
+                  return JSON.stringify(result);
+                }
+              },
+            };
+          } catch (error) {
+            log.error(`Error setting up A2A tool for ${agentUrl}:`, error);
+            if (error instanceof Error) {
+              log.error(`Error message: ${error.message}`);
+              log.error(`Error type: ${error.constructor.name}`);
+              if (error.stack) {
+                log.error(`Error stack: ${error.stack}`);
+              }
+            } else {
+              log.error(`Non-Error thrown: ${String(error)}`);
+              log.error(`Type of error: ${typeof error}`);
+            }
+            
+            // Check if it's a network error specifically
+            if (error instanceof TypeError && error.message.includes('fetch')) {
+              log.error(`This appears to be a network/fetch error - agent at ${agentUrl} may not be running`);
+            }
+            // Create fallback tool
+            tools[tool.name] = {
+              description: `Communicate with agent at ${agentUrl} (agent unavailable)`,
+              inputSchema: z.object({
+                message: z.string().describe('Message to send to the agent'),
+                contextId: z.string().optional().describe('Optional context ID for conversation continuity'),
+              }),
+              execute: async (params: { message: string; contextId?: string }) => {
+                const result = await executeA2ACall({ 
+                  agentUrl, 
+                  message: params.message, 
+                  contextId: params.contextId 
+                });
+                if (result.error) {
+                  return `Error: ${result.error}`;
+                } else if (result.response) {
+                  return result.response;
+                } else {
+                  return JSON.stringify(result);
+                }
+              },
+            };
+          }
         }
       }
       // TODO: Add support for other tool types like mcp_server
@@ -72,7 +146,6 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
     return tools;
   }
 
-  // deno-lint-ignore require-await
   async getAgentCard(): Promise<A2A.AgentCard> {
     const agentUrl = process.env.AGENT_URL || 'http://localhost:8080';
 
@@ -85,7 +158,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
     log.info('Agent config loaded for card:', { name: agentName });
 
     // Get enabled skills based on available tools
-    const availableTools = this.getAvailableTools();
+    const availableTools = await this.getAvailableTools();
     const skills: A2A.AgentSkill[] = [];
 
     // TODO add A2A and MCP server skills
@@ -167,7 +240,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
   }
 
   // Utility to truncate long JSON strings for logging
-  private truncateForLog(obj: any, maxLen = 100): string {
+  private truncateForLog(obj: unknown, maxLen = 100): string {
     const str = typeof obj === 'string' ? obj : JSON.stringify(obj);
     return str.length > maxLen ? str.slice(0, maxLen) + '...' : str;
   }
@@ -193,7 +266,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
       const newMessage: Vercel.UIMessage = VercelService.createUIMessage(params.message);
 
       const combinedMessages = [...chatHistory, newMessage];
-      const tools = this.getAvailableTools();
+      const tools = await this.getAvailableTools();
       const model = this.getConfiguredModel();
 
       let responseMessage: A2A.Message | null = null;
@@ -339,7 +412,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
       const combinedMessages = [...chatHistory, vercelMessage];
 
       // Set up tools
-      const tools = this.getAvailableTools();
+      const tools = await this.getAvailableTools();
 
       const messages = Vercel.convertToModelMessages(combinedMessages);
 

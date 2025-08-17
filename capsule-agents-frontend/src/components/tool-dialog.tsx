@@ -111,7 +111,7 @@ export function ToolDialog({
                   <SelectValue placeholder="Select tool type" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="a2a_call">Agent (A2A)</SelectItem>
+                  <SelectItem value="a2a_call">A2A Agent Communication</SelectItem>
                   <SelectItem value="mcp_server">MCP Server</SelectItem>
                 </SelectContent>
               </Select>
@@ -124,7 +124,7 @@ export function ToolDialog({
                 id="agent-url"
                 value={agentUrl}
                 onChange={e => setAgentUrl(e.target.value)}
-                placeholder="http://remote-agent/api/tasks/send"
+                placeholder="http://localhost:8080"
                 className={agentUrl && !isAgentUrlValid ? "border-red-500" : ""}
               />
               {agentUrl && !isAgentUrlValid && (

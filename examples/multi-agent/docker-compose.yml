@@ -1,0 +1,32 @@
+version: '3.8'
+
+services:
+  agent1:
+    build: .
+    container_name: agent1
+    ports:
+      - "8080:80"
+    env_file:
+      - .env
+    environment:
+      - PORT=80
+    networks:
+      - agent-network
+    restart: unless-stopped
+
+  agent2:
+    build: .
+    container_name: agent2
+    ports:
+      - "8081:80"
+    env_file:
+      - .env
+    environment:
+      - PORT=80
+    networks:
+      - agent-network
+    restart: unless-stopped
+
+networks:
+  agent-network:
+    driver: bridge
