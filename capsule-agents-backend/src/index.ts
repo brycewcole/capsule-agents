@@ -17,15 +17,6 @@ function isAsyncGenerator(value: unknown): value is AsyncGenerator<unknown, void
 
 const app = new Hono();
 
-// Initialize A2A request handler
-log.debug('Creating A2A request handler...');
-const a2aRequestHandler = new CapsuleAgentA2ARequestHandler();
-log.info('A2A request handler created successfully');
-
-log.info('Creating JSON-RPC handler...');
-const jsonRpcHandler = new JsonRpcTransportHandler(a2aRequestHandler);
-log.info('JSON-RPC handler created successfully');
-
 // Add CORS middleware
 app.use('/api/*', cors({
   origin: ['http://localhost:5173', 'http://localhost:3000', 'http://localhost:8080'],
@@ -68,6 +59,15 @@ try {
 }
 
 const agentConfigService = new AgentConfigService(configFileAgentInfo);
+
+// Initialize A2A request handler after config is loaded
+log.debug('Creating A2A request handler...');
+const a2aRequestHandler = new CapsuleAgentA2ARequestHandler(agentConfigService);
+log.info('A2A request handler created successfully');
+
+log.info('Creating JSON-RPC handler...');
+const jsonRpcHandler = new JsonRpcTransportHandler(a2aRequestHandler);
+log.info('JSON-RPC handler created successfully');
 
 app.get('/.well-known/agent.json', async (c) => {
   log.info('GET /.well-known/agent.json - Getting agent card');

@@ -26,7 +26,7 @@ RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store \
   pnpm run build
 
 # ─── Stage 2: Build/Cache Deno backend ───────────────────────────
-FROM denoland/deno:2.1.0 AS backend-builder
+FROM denoland/deno:latest AS backend-builder
 
 ENV DENO_NO_UPDATE_CHECK=1 \
   DENO_NO_PROMPT=1 \
@@ -45,7 +45,7 @@ RUN --mount=type=cache,target=/deno-dir \
 # RUN --mount=type=cache,target=/deno-dir deno cache --lock=deno.lock --lock-write src/index.ts
 
 # ─── Stage 3: Final runtime image (merge UI + API) ───────────────
-FROM denoland/deno:2.1.0 AS runtime
+FROM denoland/deno:latest AS runtime
 
 ENV DENO_NO_UPDATE_CHECK=1 \
   DENO_NO_PROMPT=1 \

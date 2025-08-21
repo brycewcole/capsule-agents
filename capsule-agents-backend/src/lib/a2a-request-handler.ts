@@ -21,10 +21,10 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
   private taskService = new TaskService(this.taskStorage);
   private agentConfigService: AgentConfigService;
 
-  constructor() {
+  constructor(agentConfigService?: AgentConfigService) {
     log.info('Initializing CapsuleAgentA2ARequestHandler...');
     try {
-      this.agentConfigService = new AgentConfigService();
+      this.agentConfigService = agentConfigService || new AgentConfigService();
       log.info('AgentConfigService initialized successfully');
     } catch (error) {
       log.error('Failed to initialize AgentConfigService:', error);
@@ -61,7 +61,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
             });
             let agentName = tool.name;
             let description = `Communicate with agent at ${agentUrl}`;
-            
+
             log.info(`Agent card response status: ${agentCardResponse.status} for ${agentUrl}`);
             if (agentCardResponse.ok) {
               const agentCard: A2A.AgentCard = await agentCardResponse.json();
@@ -79,10 +79,10 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
                 contextId: z.string().optional().describe('Optional context ID for conversation continuity'),
               }),
               execute: async (params: { message: string; contextId?: string }) => {
-                const result = await executeA2ACall({ 
-                  agentUrl, 
-                  message: params.message, 
-                  contextId: params.contextId 
+                const result = await executeA2ACall({
+                  agentUrl,
+                  message: params.message,
+                  contextId: params.contextId
                 });
                 // Convert result to string for tool return
                 if (result.error) {
@@ -108,7 +108,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
               log.error(`Non-Error thrown: ${String(error)}`);
               log.error(`Type of error: ${typeof error}`);
             }
-            
+
             // Check if it's a network error specifically
             if (error instanceof TypeError && error.message.includes('fetch')) {
               log.error(`This appears to be a network/fetch error - agent at ${agentUrl} may not be running`);
@@ -121,10 +121,10 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
                 contextId: z.string().optional().describe('Optional context ID for conversation continuity'),
               }),
               execute: async (params: { message: string; contextId?: string }) => {
-                const result = await executeA2ACall({ 
-                  agentUrl, 
-                  message: params.message, 
-                  contextId: params.contextId 
+                const result = await executeA2ACall({
+                  agentUrl,
+                  message: params.message,
+                  contextId: params.contextId
                 });
                 if (result.error) {
                   return `Error: ${result.error}`;
@@ -147,7 +147,8 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
   }
 
   async getAgentCard(): Promise<A2A.AgentCard> {
-    const agentUrl = process.env.AGENT_URL || 'http://localhost:8080';
+    const port = Deno.env.get('PORT') || '80';
+    const agentUrl = Deno.env.get('AGENT_URL') || `http://localhost:${port}`;
 
     let agentName = 'Capsule Agent';
     let agentDescription = 'A versatile AI agent with configurable tools and capabilities';
@@ -272,6 +273,10 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
       let responseMessage: A2A.Message | null = null;
 
       const result = Vercel.streamText({
+        experimental_telemetry: {
+          isEnabled: true,
+          functionId: "chat-complete",
+        },
         system: this.getSystemPrompt(),
         model,
         messages: Vercel.convertToModelMessages(combinedMessages),
@@ -419,6 +424,10 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
       // Stream the response
       this.getConfiguredModel();
       const result = Vercel.streamText({
+        experimental_telemetry: {
+          isEnabled: true,
+          functionId: "chat-complete-2",
+        },
         model: 'gpt-4o',
         system: this.getSystemPrompt(),
         messages,

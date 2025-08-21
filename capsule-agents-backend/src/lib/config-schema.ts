@@ -8,12 +8,12 @@ export const ModelConfigSchema = z.object({
 
 export const BuiltInToolConfigSchema = z.object({
   enabled: z.boolean().default(false)
-});
+}).default({ enabled: false });
 
 export const ToolsConfigSchema = z.object({
-  web_search: BuiltInToolConfigSchema.optional(),
-  memory: BuiltInToolConfigSchema.optional(),
-  file_access: BuiltInToolConfigSchema.optional()
+  web_search: BuiltInToolConfigSchema.optional().default({ enabled: false }),
+  memory: BuiltInToolConfigSchema.optional().default({ enabled: false }),
+  file_access: BuiltInToolConfigSchema.optional().default({ enabled: false })
 });
 
 export const McpServerConfigSchema = z.object({
@@ -31,16 +31,27 @@ export const A2AAgentConfigSchema = z.object({
 });
 
 export const AgentConfigSchema = z.object({
-  name: z.string().min(1, "Agent name is required"),
+  name: z.string().min(1, "Agent name is required").default("Capsule Agent"),
   description: z.string().default(""),
-  model: ModelConfigSchema,
+  model: ModelConfigSchema.optional().default({ name: "openai/gpt-4o-mini", parameters: {} }),
   tools: ToolsConfigSchema.optional().default({}),
   mcp: McpConfigSchema.optional().default({ servers: [] }),
   a2a: z.array(A2AAgentConfigSchema).optional().default([])
 });
 
 export const ConfigFileSchema = z.object({
-  agent: AgentConfigSchema
+  agent: AgentConfigSchema.optional().default({
+    name: "Capsule Agent",
+    description: "",
+    model: { name: "openai/gpt-4o-mini", parameters: {} },
+    tools: {
+      web_search: { enabled: false },
+      memory: { enabled: false },
+      file_access: { enabled: false }
+    },
+    mcp: { servers: [] },
+    a2a: []
+  })
 });
 
 // TypeScript types derived from schemas
@@ -66,8 +77,8 @@ export function transformConfigToAgentInfo(config: AgentConfig): AgentInfo {
       if (toolConfig?.enabled) {
         tools.push({
           name: toolName,
-          type: 'builtin',
-          tool_schema: {}
+          type: 'prebuilt',
+          tool_schema: { type: toolName }
         });
       }
     }
@@ -104,12 +115,16 @@ export function transformConfigToAgentInfo(config: AgentConfig): AgentInfo {
 
 // Utility function to transform internal AgentInfo format back to config file format
 export function transformAgentInfoToConfig(agentInfo: AgentInfo): AgentConfig {
-  const tools: ToolsConfig = {};
+  const tools: ToolsConfig = {
+    web_search: { enabled: false },
+    memory: { enabled: false },
+    file_access: { enabled: false }
+  };
   const mcpServers: McpServerConfig[] = [];
   const a2aAgents: A2AAgentConfig[] = [];
 
   for (const tool of agentInfo.tools) {
-    if (tool.type === 'builtin' && BUILTIN_TOOLS.includes(tool.name as BuiltInToolName)) {
+    if (tool.type === 'prebuilt' && BUILTIN_TOOLS.includes(tool.name as BuiltInToolName)) {
       tools[tool.name as BuiltInToolName] = { enabled: true };
     } else if (tool.type === 'mcp_server') {
       mcpServers.push({
