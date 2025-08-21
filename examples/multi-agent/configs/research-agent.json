@@ -1,0 +1,17 @@
+{
+  "agent": {
+    "name": "Research Agent",
+    "description": "Specialized agent for web search and information gathering",
+    "model": {
+      "name": "openai/gpt-4o"
+    },
+    "tools": {
+      "web_search": {
+        "enabled": true
+      },
+      "memory": {
+        "enabled": true
+      }
+    }
+  }
+}

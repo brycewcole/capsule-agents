@@ -26,7 +26,7 @@ RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store \
   pnpm run build
 
 # ─── Stage 2: Build/Cache Deno backend ───────────────────────────
-FROM denoland/deno:2.1.0 AS backend-builder
+FROM denoland/deno:latest AS backend-builder
 
 ENV DENO_NO_UPDATE_CHECK=1 \
   DENO_NO_PROMPT=1 \
@@ -45,7 +45,7 @@ RUN --mount=type=cache,target=/deno-dir \
 # RUN --mount=type=cache,target=/deno-dir deno cache --lock=deno.lock --lock-write src/index.ts
 
 # ─── Stage 3: Final runtime image (merge UI + API) ───────────────
-FROM denoland/deno:2.1.0 AS runtime
+FROM denoland/deno:latest AS runtime
 
 ENV DENO_NO_UPDATE_CHECK=1 \
   DENO_NO_PROMPT=1 \
@@ -59,8 +59,10 @@ COPY --from=frontend-builder --chown=deno:deno /home/app/capsule-agents-frontend
 
 # ensure writable runtime dirs
 USER root
-RUN install -d -o deno -g deno /app/data /app/agent-workspace /app/static
+RUN install -d -o deno -g deno /app/data /app/agent-workspace /app/static /app/config
 USER deno
 
+# Create default config directory and ensure it's writable
+# Note: Mount your config file to /app/agent.config.json or set AGENT_CONFIG_FILE env var
 EXPOSE 80
 CMD ["deno", "run", "--allow-all", "--node-modules-dir", "src/index.ts"]

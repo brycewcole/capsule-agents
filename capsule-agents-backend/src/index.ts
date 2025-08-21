@@ -7,6 +7,7 @@ import { getDb } from './lib/db.ts';
 import { CapsuleAgentA2ARequestHandler } from './lib/a2a-request-handler.ts';
 import { JsonRpcTransportHandler } from '@a2a-js/sdk/server';
 import { AgentConfigService } from './lib/agent-config.ts';
+import { ConfigFileService } from './lib/config-file.ts';
 import * as log from "@std/log";
 
 // Type guard to check if result is an AsyncGenerator (streaming response)
@@ -15,18 +16,6 @@ function isAsyncGenerator(value: unknown): value is AsyncGenerator<unknown, void
 }
 
 const app = new Hono();
-
-// Initialize A2A request handler
-log.debug('Creating A2A request handler...');
-const a2aRequestHandler = new CapsuleAgentA2ARequestHandler();
-log.info('A2A request handler created successfully');
-
-log.info('Creating JSON-RPC handler...');
-const jsonRpcHandler = new JsonRpcTransportHandler(a2aRequestHandler);
-log.info('JSON-RPC handler created successfully');
-
-// Initialize agent config service
-const agentConfigService = new AgentConfigService();
 
 // Add CORS middleware
 app.use('/api/*', cors({
@@ -53,6 +42,32 @@ try {
   log.error('Failed to initialize database:', error);
   throw error;
 }
+
+log.info('Checking for configuration file...');
+let configFileAgentInfo = null;
+try {
+  configFileAgentInfo = await ConfigFileService.loadConfigFile();
+  if (configFileAgentInfo) {
+    log.info(`Loaded configuration from file: ${configFileAgentInfo.name}`);
+  } else {
+    log.info('No configuration file found, using database defaults');
+  }
+} catch (error) {
+  log.error('Failed to load configuration file:', error);
+  log.error('Agent cannot start with invalid configuration file');
+  throw error;
+}
+
+const agentConfigService = new AgentConfigService(configFileAgentInfo);
+
+// Initialize A2A request handler after config is loaded
+log.debug('Creating A2A request handler...');
+const a2aRequestHandler = new CapsuleAgentA2ARequestHandler(agentConfigService);
+log.info('A2A request handler created successfully');
+
+log.info('Creating JSON-RPC handler...');
+const jsonRpcHandler = new JsonRpcTransportHandler(a2aRequestHandler);
+log.info('JSON-RPC handler created successfully');
 
 app.get('/.well-known/agent.json', async (c) => {
   log.info('GET /.well-known/agent.json - Getting agent card');
@@ -268,18 +283,18 @@ app.get('/api/chats', (c) => {
 app.get('/api/chats/:contextId', (c) => {
   const contextId = c.req.param('contextId');
   log.info('GET /api/chats/:contextId - Getting chat history:', { contextId });
-  
+
   try {
     const chat = getChatWithHistory(contextId);
     if (!chat) {
       log.warn('Chat not found:', { contextId });
       return c.json({ error: 'Chat not found' }, 404);
     }
-    
-    log.info('Chat history retrieved successfully:', { 
-      contextId, 
+
+    log.info('Chat history retrieved successfully:', {
+      contextId,
       messageCount: chat.messages.length,
-      taskCount: chat.tasks.length 
+      taskCount: chat.tasks.length
     });
     return c.json(chat);
   } catch (error) {
@@ -291,14 +306,14 @@ app.get('/api/chats/:contextId', (c) => {
 app.delete('/api/chats/:contextId', (c) => {
   const contextId = c.req.param('contextId');
   log.info('DELETE /api/chats/:contextId - Deleting chat:', { contextId });
-  
+
   try {
     const success = deleteChatById(contextId);
     if (!success) {
       log.warn('Chat not found for deletion:', { contextId });
       return c.json({ error: 'Chat not found' }, 404);
     }
-    
+
     log.info('Chat deleted successfully:', { contextId });
     return c.json({ success: true });
   } catch (error) {
@@ -310,16 +325,16 @@ app.delete('/api/chats/:contextId', (c) => {
 app.patch('/api/chats/:contextId', async (c) => {
   const contextId = c.req.param('contextId');
   log.info('PATCH /api/chats/:contextId - Updating chat metadata:', { contextId });
-  
+
   try {
     const body = await c.req.json();
     const success = updateChatMetadata(contextId, body);
-    
+
     if (!success) {
       log.warn('Chat not found for update:', { contextId });
       return c.json({ error: 'Chat not found' }, 404);
     }
-    
+
     log.info('Chat metadata updated successfully:', { contextId });
     return c.json({ success: true });
   } catch (error) {

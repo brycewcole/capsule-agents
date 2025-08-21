@@ -1,32 +1,67 @@
-version: '3.8'
-
 services:
-  agent1:
-    build: .
-    container_name: agent1
-    ports:
-      - "8080:80"
+  # --- Agents ----------------------------------------------------
+  agent-research:
+    image: capsule-agents
+    ports: ["8001:80"]
+    volumes:
+      - ./configs/research-agent.json:/app/agent.config.json
     env_file:
-      - .env
+      - ../../.env
     environment:
-      - PORT=80
-    networks:
-      - agent-network
+      - AGENT_URL=http://localhost:8001
+    restart: unless-stopped
+    depends_on:
+      - tempo
+
+  agent-writer:
+    image: capsule-agents
+    ports: ["8002:80"]
+    volumes:
+      - ./configs/writer-agent.json:/app/agent.config.json
+      - ./shared-workspace:/app/agent-workspace
+    env_file:
+      - ../../.env
+    environment:
+      - AGENT_URL=http://localhost:8002
+    restart: unless-stopped
+    depends_on:
+      - tempo
+
+  agent-coordinator:
+    image: capsule-agents
+    ports: ["8003:80"]
+    volumes:
+      - ./configs/coordinator-agent.json:/app/agent.config.json
+    env_file:
+      - ../../.env
+    environment:
+      - AGENT_URL=http://localhost:8003
+    restart: unless-stopped
+    depends_on:
+      - agent-research
+      - agent-writer
+      - tempo
+
+  # --- Observability ---------------------------------------------
+  grafana:
+    image: grafana/grafana:latest
+    ports:
+      - "3000:3000"
+    depends_on:
+      - tempo
     restart: unless-stopped
 
-  agent2:
-    build: .
-    container_name: agent2
+  tempo:
+    image: grafana/tempo:latest
+    command: ["-config.file=/etc/tempo.yaml"]
+    volumes:
+      - ./tempo/tempo.yaml:/etc/tempo.yaml:ro
     ports:
-      - "8081:80"
-    env_file:
-      - .env
-    environment:
-      - PORT=80
-    networks:
-      - agent-network
+      - "3200:3200"   # Tempo query API (Grafana uses this)
+      - "4318:4318"   # OTLP HTTP ingest (agents send traces here)
+      # - "4317:4317" # (optional) OTLP gRPC ingest
     restart: unless-stopped
 
 networks:
-  agent-network:
+  default:
     driver: bridge

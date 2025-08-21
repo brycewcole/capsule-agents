@@ -39,6 +39,17 @@ const AVAILABLE_MODELS: Model[] = [
 export class AgentConfigService {
   private db = getDb();
 
+  constructor(configFileData?: AgentInfo | null) {
+    if (configFileData) {
+      try {
+        this.updateAgentInfo(configFileData);
+      } catch (error) {
+        log.error('Failed to initialize database from config file:', error);
+        throw new Error(`Failed to initialize from config file: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
+  }
+
   getAgentInfo(): AgentInfo {
     try {
       const stmt = this.db.prepare(`
