@@ -1,32 +1,49 @@
 version: '3.8'
 
 services:
-  agent1:
-    build: .
-    container_name: agent1
+  # Research Agent - Specializes in web search and information gathering
+  agent-research:
+    image: capsule-agents
     ports:
-      - "8080:80"
+      - "8001:80"
+    volumes:
+      - ./configs/research-agent.json:/app/agent.config.json
     env_file:
-      - .env
+      - ../../.env
     environment:
-      - PORT=80
-    networks:
-      - agent-network
+      - AGENT_URL=http://localhost:8001
     restart: unless-stopped
 
-  agent2:
-    build: .
-    container_name: agent2
+  # Writer Agent - Specializes in content creation with file access
+  agent-writer:
+    image: capsule-agents  
     ports:
-      - "8081:80"
+      - "8002:80"
+    volumes:
+      - ./configs/writer-agent.json:/app/agent.config.json
+      - ./shared-workspace:/app/agent-workspace
     env_file:
-      - .env
+      - ../../.env
     environment:
-      - PORT=80
-    networks:
-      - agent-network
+      - AGENT_URL=http://localhost:8002
     restart: unless-stopped
+
+  # Coordinator Agent - Orchestrates other agents via A2A protocol
+  agent-coordinator:
+    image: capsule-agents
+    ports:
+      - "8003:80"
+    volumes:
+      - ./configs/coordinator-agent.json:/app/agent.config.json
+    env_file:
+      - ../../.env
+    environment:
+      - AGENT_URL=http://localhost:8003
+    restart: unless-stopped
+    depends_on:
+      - agent-research
+      - agent-writer
 
 networks:
-  agent-network:
+  default:
     driver: bridge

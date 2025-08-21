@@ -1,0 +1,22 @@
+{
+  "agent": {
+    "name": "Basic Agent",
+    "description": "A simple agent with essential tools for basic conversations",
+    "model": {
+      "name": "openai/gpt-4o-mini",
+      "parameters": {
+        "temperature": 0.7,
+        "max_tokens": 1500
+      }
+    },
+    "tools": {
+      "memory": {
+        "enabled": true
+      }
+    },
+    "mcp": {
+      "servers": []
+    },
+    "a2a": []
+  }
+}

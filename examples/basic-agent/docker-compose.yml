@@ -1,0 +1,12 @@
+version: '3.8'
+
+services:
+  basic-agent:
+    image: capsule-agents
+    ports:
+      - "8000:80"
+    volumes:
+      - ./agent.config.json:/app/agent.config.json
+    environment:
+      - AGENT_URL=http://localhost:8003
+    restart: unless-stopped
