@@ -63,7 +63,7 @@ export default function ChatInterface({
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
 
-  // Build merged timeline of tasks + messages
+  // Build merged timeline of tasks + messages, de-duplicating tasks by id
   const timeline = useMemo(() => {
     type TimelineItem =
       | { kind: 'message'; time: number; message: Message }
@@ -82,9 +82,22 @@ export default function ChatInterface({
     const items: TimelineItem[] = [];
     for (const m of messages) items.push({ kind: 'message', time: msgTime(m), message: m });
 
-    const allTasks: A2ATask[] = [...tasks];
-    if (currentTask && !allTasks.some(t => t.id === currentTask.id)) allTasks.push(currentTask);
-    for (const t of allTasks) items.push({ kind: 'task', time: taskTime(t), task: t });
+    // Deduplicate tasks by id, prefer the most recent by status timestamp
+    const byId = new Map<string, A2ATask>();
+    const consider = (t: A2ATask | null | undefined) => {
+      if (!t || !t.id) return;
+      const prev = byId.get(t.id);
+      if (!prev) {
+        byId.set(t.id, t);
+        return;
+      }
+      const prevTime = prev.status?.timestamp ? Date.parse(prev.status.timestamp) : 0;
+      const nextTime = t.status?.timestamp ? Date.parse(t.status.timestamp) : 0;
+      if (nextTime >= prevTime) byId.set(t.id, t);
+    };
+    for (const t of tasks) consider(t);
+    consider(currentTask);
+    for (const t of byId.values()) items.push({ kind: 'task', time: taskTime(t), task: t });
 
     items.sort((a, b) => a.time - b.time);
     return items;
@@ -455,7 +468,7 @@ export default function ChatInterface({
             timeline.map((item, index) => {
               if (item.kind === 'task') {
                 return (
-                  <div key={`task-${item.task.id}-${index}`} className="w-full">
+                  <div key={`task-${item.task.id}`} className="w-full">
                     <TaskStatusDisplay task={item.task} />
                   </div>
                 )
