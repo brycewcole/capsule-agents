@@ -6,7 +6,8 @@ import type { Task as A2ATask, Message as A2AMessage, TaskStatusUpdateEvent, Tas
 // When running in production (Docker), use relative URLs (same server)
 const API_BASE_URL = '';
 
-const a2aClient = new A2AClient(API_BASE_URL);
+const boundFetch = (...args: Parameters<typeof fetch>) => globalThis.fetch(...args);
+const a2aClient = new A2AClient(API_BASE_URL, { fetchImpl: boundFetch });
 
 // Auth store for credentials
 class AuthStore {
