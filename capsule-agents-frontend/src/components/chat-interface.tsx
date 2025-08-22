@@ -63,6 +63,18 @@ export default function ChatInterface({
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
 
+  // Start a fresh chat locally and notify parent
+  const startNewChat = useCallback(() => {
+    // Clear all local UI state immediately so old messages/tasks disappear
+    setMessages([])
+    setCurrentTask(null)
+    setTasks([])
+    setTaskStartTimes({})
+    setContextId(null)
+    // Inform parent to clear its selected chat
+    if (onNewChat) onNewChat()
+  }, [onNewChat])
+
   // Build merged timeline of tasks + messages, de-duplicating tasks by id
   const timeline = useMemo(() => {
     type TimelineItem =
@@ -418,7 +430,7 @@ export default function ChatInterface({
               variant="outline"
               size="sm"
               title="New chat"
-              onClick={onNewChat}
+              onClick={startNewChat}
             >
               New
             </Button>
@@ -520,7 +532,7 @@ export default function ChatInterface({
                   hideTitleBar
                   currentChatId={currentChatId}
                   onChatSelect={(id) => onChatSelect && onChatSelect(id)}
-                  onNewChat={() => onNewChat && onNewChat()}
+                  onNewChat={startNewChat}
                   refreshKey={chatsRefreshKey}
                 />
               </div>
