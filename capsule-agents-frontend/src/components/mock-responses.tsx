@@ -1,15 +1,15 @@
 "use client"
 
 import { useState } from "react"
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Textarea } from "@/components/ui/textarea"
-import { Label } from "@/components/ui/label"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "./ui/card.tsx"
+import { Button } from "./ui/button.tsx"
+import { Input } from "./ui/input.tsx"
+import { Textarea } from "./ui/textarea.tsx"
+import { Label } from "./ui/label.tsx"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select.tsx"
 import { Plus, Save, Trash2, MessageSquareQuote } from "lucide-react"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Badge } from "@/components/ui/badge"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./ui/table.tsx"
+import { Badge } from "./ui/badge.tsx"
 
 type MatchType = "exact" | "startsWith" | "contains" | "regex"
 

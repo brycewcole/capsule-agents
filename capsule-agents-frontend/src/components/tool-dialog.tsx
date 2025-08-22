@@ -1,6 +1,6 @@
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Button } from "@/components/ui/button"
+import { Input } from "./ui/input.tsx"
+import { Label } from "./ui/label.tsx"
+import { Button } from "./ui/button.tsx"
 import {
   Dialog,
   DialogContent,
@@ -8,14 +8,14 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog"
+} from "./ui/dialog.tsx"
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select"
+} from "./ui/select.tsx"
 
 interface ToolDialogProps {
   open: boolean

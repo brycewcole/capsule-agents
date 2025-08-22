@@ -1,8 +1,8 @@
 import { useState } from "react"
-import { Card, CardContent, CardHeader } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
-import { Separator } from "@/components/ui/separator"
+import { Card, CardContent, CardHeader } from "./ui/card.tsx"
+import { Badge } from "./ui/badge.tsx"
+import { Button } from "./ui/button.tsx"
+import { Separator } from "./ui/separator.tsx"
 import { ChevronDown, ChevronRight, Settings, ArrowRight } from "lucide-react"
 
 type ToolCall = {

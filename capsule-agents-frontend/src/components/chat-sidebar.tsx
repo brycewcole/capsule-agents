@@ -1,13 +1,13 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Card, CardContent, CardHeader } from "@/components/ui/card"
+import { Button } from "./ui/button.tsx"
+import { Input } from "./ui/input.tsx"
+import { Card, CardContent, CardHeader } from "./ui/card.tsx"
 import { Plus, Search, MessageSquare, Loader2 } from "lucide-react"
-import { getChatsList, deleteChatById, type ChatSummary } from "@/lib/api"
-import { showErrorToast } from "@/lib/error-utils"
-import { ChatListItem } from "@/components/chat-list-item"
+import { getChatsList, deleteChatById, type ChatSummary } from "../lib/api.ts"
+import { showErrorToast } from "../lib/error-utils.ts"
+import { ChatListItem } from "./chat-list-item.tsx"
 
 interface ChatSidebarProps {
   currentChatId?: string | null

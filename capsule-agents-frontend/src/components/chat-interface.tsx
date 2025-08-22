@@ -1,17 +1,17 @@
 "use client"
 
 import { useEffect, useState, useCallback, useRef, useMemo } from "react"
-import { Input } from "@/components/ui/input"
-import { Button } from "@/components/ui/button"
+import { Input } from "./ui/input.tsx"
+import { Button } from "@/components/ui/button.tsx"
 import { ArrowRight, Loader2, MessageSquare, PanelRightOpen } from "lucide-react"
-import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card"
-import { checkHealth, streamMessage, extractResponseText, extractToolCalls, type ToolCall as ApiToolCall, type A2ATask, type ChatWithHistory } from "@/lib/api"
+import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "./ui/card.tsx"
+import { checkHealth, streamMessage, extractResponseText, extractToolCalls, type ToolCall as ApiToolCall, type A2ATask, type ChatWithHistory } from "../lib/api.ts"
 import Markdown from "react-markdown"
-import { ToolCallDisplay } from "@/components/tool-call-display"
-import { TaskStatusDisplay } from "@/components/task-status-display"
-import { showErrorToast, getErrorMessage, isRecoverableError, type JSONRPCError } from "@/lib/error-utils"
-import { ErrorDisplay } from "@/components/ui/error-display"
-import { ChatSidebar } from "@/components/chat-sidebar"
+import { ToolCallDisplay } from "./tool-call-display.tsx"
+import { TaskStatusDisplay } from "./task-status-display.tsx"
+import { showErrorToast, getErrorMessage, isRecoverableError, type JSONRPCError } from "../lib/error-utils.ts"
+import { ErrorDisplay } from "./ui/error-display.tsx"
+import { ChatSidebar } from "./chat-sidebar.tsx"
 
 
 type ToolCall = ApiToolCall
@@ -283,7 +283,7 @@ export default function ChatInterface({
           console.log("Status update:", event.status.state)
           
           // Create or update the task using the event data directly (fixes race condition)
-          setCurrentTask(prev => {
+          setCurrentTask((prev: A2ATask | null) => {
             if (prev && prev.id === event.taskId) {
               // Update existing task
               const updated = {
@@ -295,7 +295,7 @@ export default function ChatInterface({
               return updated
             } else {
               // Create task from status update event if not exists (race condition case)
-              const created = {
+              const created: A2ATask = {
                 id: event.taskId,
                 kind: "task" as const,
                 contextId: event.contextId,
@@ -306,9 +306,9 @@ export default function ChatInterface({
                 const exists = list.some(t => t.id === created.id)
                 return exists ? list.map(t => (t.id === created.id ? created : t)) : [...list, created]
               })
-              setTaskStartTimes(prev => ({
-                ...prev,
-                [created.id]: prev[created.id] ?? (created.status?.timestamp ? Date.parse(created.status.timestamp) / 1000 : Date.now() / 1000)
+              setTaskStartTimes(prevTimes => ({
+                ...prevTimes,
+                [created.id]: prevTimes[created.id] ?? (created.status?.timestamp ? Date.parse(created.status.timestamp) / 1000 : Date.now() / 1000)
               }))
               return created
             }
@@ -320,7 +320,7 @@ export default function ChatInterface({
             
             // Final completion - extract tool calls from current task and store final task state
             let completedTask: A2ATask | undefined
-            setCurrentTask(prev => {
+            setCurrentTask((prev: A2ATask | null) => {
               if (prev && prev.id === event.taskId) {
                 finalToolCalls = extractToolCalls(prev)
                 // Create final task state with completed status

@@ -1,11 +1,11 @@
 "use client"
 
 import { useState } from "react"
-import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
+import { Button } from "./ui/button.tsx"
+import { Badge } from "./ui/badge.tsx"
 import { Trash2, Loader2, MessageSquare } from "lucide-react"
-import { cn } from "@/lib/utils"
-import type { ChatSummary } from "@/lib/api"
+import { cn } from "../lib/utils.ts"
+import type { ChatSummary } from "../lib/api.ts"
 
 interface ChatListItemProps {
   chat: ChatSummary

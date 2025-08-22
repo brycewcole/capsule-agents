@@ -1,9 +1,9 @@
 "use client"
 
 import { useState } from "react"
-import { Badge } from "@/components/ui/badge"
-import { Card, CardContent, CardHeader } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
+import { Badge } from "./ui/badge.tsx"
+import { Card, CardContent, CardHeader } from "./ui/card.tsx"
+import { Button } from "./ui/button.tsx"
 import { 
   ChevronDown, 
   ChevronUp, 
@@ -15,8 +15,8 @@ import {
   PlayCircle,
   PauseCircle
 } from "lucide-react"
-import { cn } from "@/lib/utils"
-import { type A2ATask } from "@/lib/api"
+import { cn } from "../lib/utils.ts"
+import { type A2ATask } from "../lib/api.ts"
 
 interface TaskStatusDisplayProps {
   task: A2ATask

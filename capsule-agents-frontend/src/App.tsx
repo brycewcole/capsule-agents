@@ -1,12 +1,12 @@
 import { useState, useEffect, useRef } from 'react';
-import Header from './components/header';
-import ChatInterface from './components/chat-interface';
+import Header from "./components/header.tsx";
+import ChatInterface from "./components/chat-interface.tsx";
 // Sidebar is now rendered inside ChatInterface's sheet
-import AgentEditor from './components/agent-editor';
-import { LoginDialog } from './components/login-dialog';
-import { Toaster } from './components/ui/toaster';
-import { testLogin, getChatById, type ChatWithHistory } from './lib/api';
-import { showErrorToast } from './lib/error-utils';
+import AgentEditor from "./components/agent-editor.tsx";
+import { LoginDialog } from "./components/login-dialog.tsx";
+import { Toaster } from "./components/ui/toaster.tsx";
+import { testLogin, getChatById, type ChatWithHistory } from "./lib/api.ts";
+import { showErrorToast } from "./lib/error-utils.ts";
 import './App.css';
 
 function App() {
