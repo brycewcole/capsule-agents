@@ -2,96 +2,99 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## Development Commands
+## Project Overview
 
-### Local Development (Single Server - Recommended)
-The project is configured to run both backend API and frontend from a single FastAPI server (matching Docker behavior).
+Capsule Agents is a framework for creating Agent-to-Agent (A2A) protocol compatible agents wrapped in Docker containers. The project consists of a Deno-based backend API and a React frontend built with Vite and Deno.
 
-#### Option 1: VS Code (Recommended)
-1. **Build frontend**: Run VS Code task "Build Frontend" or manually:
-   ```bash
-   cd capsule-agents-frontend
-   deno install && deno task build
-   ```
+## Architecture
 
-2. **Start with debugger**: Launch "Python Debugger: FastAPI" or "Run Full-Stack Locally (Single Server)" compound configuration
-   - Frontend available at: `http://localhost:8000/editor`
-   - API available at: `http://localhost:8000/api/*`
+### Backend (`capsule-agents-backend/`)
+- **Framework**: Hono web server running on Deno
+- **Language**: TypeScript
+- **Database**: SQLite with better-sqlite3 (`jsr:@db/sqlite`)
+- **Key Dependencies**: 
+  - A2A SDK (`@a2a-js/sdk`) for agent protocol compatibility
+  - AI SDK (`ai`, `@ai-sdk/*`) for LLM integrations (OpenAI, Anthropic, Google)
+  - Zod for schema validation
 
-#### Option 2: Command Line
+### Frontend (`capsule-agents-frontend/`)
+- **Framework**: React with TypeScript
+- **Build Tool**: Vite running on Deno
+- **UI**: Radix UI components with Tailwind CSS
+- **State**: React hooks with local storage persistence
+- **Key Features**: Agent editor, chat interface, conversation management
+
+### Core Components
+
+1. **A2A Protocol Handler** (`src/lib/a2a-request-handler.ts`): Implements A2A protocol for agent communication
+2. **Agent Configuration** (`src/lib/agent-config.ts`): Manages agent settings, models, and tools
+3. **Storage Layer** (`src/lib/storage.ts`): SQLite-based persistence for chats and agent data
+4. **Task Service** (`src/lib/task-service.ts`): Handles A2A task execution and streaming
+5. **Tool System** (`src/tools/`): Built-in tools for file access, web search, and memory
+
+## Docker Development
+
+The project uses a multi-stage Docker build:
+
 ```bash
-# Build frontend with Deno
-cd capsule-agents-frontend
-deno install && deno task build
-cd ..
+# Build image
+docker build -t capsule-agents .
 
-# Start backend (serves both API and frontend)
-cd backend
-uv sync
-STATIC_DIR=capsule-agents-frontend/dist uv run -m uvicorn backend.app.main:app --reload --host 0.0.0.0 --port 8000 --log-config ../log_conf.yaml
+# Run with environment file
+docker run --env-file .env -p 8080:80 capsule-agents
 ```
 
-### Separate Frontend Development (Optional)
-For frontend-only development with hot reload using Deno:
-```bash
-cd capsule-agents-frontend
-deno install             # Install dependencies
-deno task dev            # Start development server
-deno task build          # Build for production
-deno task lint           # Run ESLint
+## Environment Configuration
+
+Required environment variables (create `.env` file):
+```
+OPENAI_API_KEY=sk-your-openai-key
+BRAVE_API_KEY=your-brave-search-key  
+ADMIN_PASSWORD=admin
 ```
 
-### Docker
-```bash
-docker build -t capsule-agents .    # Build container
-docker run -p 80:80 capsule-agents  # Run on port 80
-```
+## API Endpoints
 
-## Architecture Overview
+### A2A Protocol
+- `GET /.well-known/agent.json` - Agent card/capabilities
+- `POST /` - JSON-RPC A2A endpoint with SSE streaming support
 
-This is a full-stack Agent-to-Agent (A2A) protocol implementation with two main components:
+### Agent Management  
+- `GET /api/agent` - Get agent configuration
+- `PUT /api/agent` - Update agent configuration
+- `GET /api/models` - Get available AI models
 
-### Backend Structure
-- **FastAPI application** implementing A2A JSON-RPC 2.0 protocol
-- **Core endpoints**: Task management (`/`), configuration API (`/api/*`), agent metadata (`/.well-known/agent.json`)
-- **Services layer**: Agent processing, configuration persistence, SQLite session management
-- **A2A protocol methods**: `tasks/send`, `tasks/sendSubscribe`, `tasks/get`, `tasks/cancel`, push notifications
-- **Streaming support**: Server-Sent Events for real-time task updates
+### Chat Management
+- `GET /api/chats` - List user chats
+- `GET /api/chats/:contextId` - Get specific chat with history
+- `DELETE /api/chats/:contextId` - Delete chat
+- `PATCH /api/chats/:contextId` - Update chat metadata
 
-### Frontend Structure  
-- **React 19 + TypeScript** SPA with Vite + Deno build system
-- **Tailwind CSS 4.x + Radix UI** component library
-- **Type-safe API client** with full schema validation in `src/lib/api.ts`
-- **Real-time chat interface** with streaming responses via SSE
-- **Agent configuration UI** for models, tools, and settings
+### UI
+- `/editor` - Agent configuration interface
 
-### Key Communication Patterns
-1. **Configuration**: REST API calls between frontend and backend
-2. **Agent tasks**: JSON-RPC 2.0 over HTTP with streaming responses
-3. **Real-time updates**: Server-Sent Events for task progress
-4. **Agent-to-agent**: A2A protocol for inter-agent communication
+## Code Conventions
 
-### Important Files
-- `backend/app/main.py` - FastAPI app with A2A protocol endpoints
-- `backend/app/schemas.py` - Comprehensive A2A protocol and JSON-RPC schemas
-- `backend/app/services/agent_service.py` - Core agent task processing logic
-- `capsule-agents-frontend/src/lib/api.ts` - Type-safe API client
-- `capsule-agents-frontend/src/components/chat-interface.tsx` - Real-time agent communication
+- **Formatting**: Deno fmt (2 spaces, no semicolons, double quotes)
+- **Linting**: Deno lint with recommended rules  
+- **Imports**: Use JSR imports for Deno packages, npm: for Node packages
+- **File Structure**: Organized by feature in `src/lib/` and `src/tools/`
+- **Error Handling**: Comprehensive logging with `@std/log`, structured error responses
+- **Type Safety**: Zod schemas for runtime validation, strict TypeScript
 
-### Dependencies
-- **Backend**: Google ADK, Google GenAI, LiteLLM for multi-model support
-- **Frontend**: React 19, Vite + Deno runtime, Tailwind CSS 4.x, Radix UI components
-- **Storage**: SQLite for configuration and session persistence
+## Database Schema
 
-## Important Implementation Notes
+SQLite database stored in `/app/data/` (containerized) with tables:
+- `chats` - Chat metadata and conversation history
+- `tasks` - A2A task execution records  
+- `agent_config` - Agent configuration persistence
 
-### Tool Call Data Flow
-- **ADK Runner** automatically persists events to SQLite session service - do NOT manually append events
-- **Tool calls are stored** in separate events: `function_call` in one event, `function_response` in another
-- **Session history loading** requires collecting function calls across ALL events, then matching by ID
-- **Event serialization** requires `.model_dump()` on Pydantic objects before `json.dumps()` 
+## Tool System
 
-### Chat Interface State Management  
-- **Live messages**: Extract tool calls from task.history using `extractToolCalls()`
-- **Session reload**: Process all events to build complete tool call objects before creating UI messages
-- **Tool call display**: Uses shadcn components in `ToolCallDisplay` with expandable cards
+Built-in MCP-compatible tools:
+- **File Access**: Read/write files in agent workspace
+- **Brave Search**: Web search capabilities  
+- **Memory**: Persistent conversation memory
+- **A2A**: Communication with other agents
+
+Tools are dynamically loaded and configured via the agent editor interface.
