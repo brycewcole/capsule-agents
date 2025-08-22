@@ -31,6 +31,15 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
       throw error;
     }
   }
+  getAuthenticatedExtendedAgentCard(): Promise<A2A.AgentCard> {
+    throw new Error("Method not implemented.")
+  }
+  listTaskPushNotificationConfigs(_params: A2A.ListTaskPushNotificationConfigParams): Promise<A2A.TaskPushNotificationConfig[]> {
+    throw new Error("Method not implemented.")
+  }
+  deleteTaskPushNotificationConfig(_params: A2A.DeleteTaskPushNotificationConfigParams): Promise<void> {
+    throw new Error("Method not implemented.")
+  }
 
   private async getAvailableTools(): Promise<Record<string, Vercel.Tool>> {
     const tools: Record<string, Vercel.Tool> = {};
@@ -177,8 +186,9 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
       name: agentName,
       description: agentDescription,
       url: agentUrl,
-      // preferredTransport: 'json-rpc',
+      preferredTransport: 'json-rpc',
       version: '1.0.0',
+      protocolVersion: '1.0',
       capabilities: {
         streaming: true,
         pushNotifications: false,
