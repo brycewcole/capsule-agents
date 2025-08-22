@@ -1,8 +1,8 @@
 import { AlertCircle, RefreshCw, X, AlertTriangle, Info } from "lucide-react"
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
-import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { cn } from "@/lib/utils"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert.tsx"
+import { Button } from "@/components/ui/button.tsx"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card.tsx"
+import { cn } from "@/lib/utils.ts"
 
 // Error types matching backend JSON-RPC errors
 export interface JSONRPCError {

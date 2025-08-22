@@ -388,7 +388,7 @@ export default function AgentEditor() {
             id="agent-name" 
             value={name} 
             onChange={e => {
-              const value = e.target.value
+              const value = (e.target as HTMLInputElement | HTMLTextAreaElement).value
               if (value.includes(' ')) {
                 setNameError("Agent name cannot contain spaces")
               } else {
@@ -404,7 +404,7 @@ export default function AgentEditor() {
         </div>
         <div className="space-y-2">
           <Label htmlFor="agent-description">Description</Label>
-          <Textarea id="agent-description" value={description} onChange={e => setDescription(e.target.value)} />
+          <Textarea id="agent-description" value={description} onChange={e => setDescription((e.target as HTMLInputElement | HTMLTextAreaElement).value)} />
         </div>
         <div className="space-y-2">
           <Label htmlFor="model-select">Model</Label>

@@ -1,6 +1,4 @@
 {
-  "name": "@capsule-agents/backend",
-  "version": "1.0.0",
   "exports": "./src/index.ts",
   "tasks": {
     "start": "deno run --allow-all src/index.ts",
@@ -25,12 +23,6 @@
     "zod": "npm:zod@^3.25.0"
   },
   "compilerOptions": {
-    "lib": [
-      "deno.window",
-      "deno.ns"
-    ],
     "strict": true
-  },
-  "nodeModulesDir": "auto",
-  "lock": false
+  }
 }

@@ -155,7 +155,7 @@ export function ChatSidebar({
         <Input
           placeholder="Search conversations..."
           value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
+          onChange={(e) => setSearchQuery((e.target as HTMLInputElement | HTMLTextAreaElement).value)}
           className="pl-10"
         />
       </div>

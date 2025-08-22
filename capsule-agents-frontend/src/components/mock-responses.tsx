@@ -115,7 +115,7 @@ export default function MockResponses() {
                 id="pattern"
                 placeholder="Enter text pattern to match"
                 value={newMock.pattern}
-                onChange={(e) => setNewMock({ ...newMock, pattern: e.target.value })}
+                onChange={(e) => setNewMock({ ...newMock, pattern: (e.target as HTMLInputElement | HTMLTextAreaElement).value })}
               />
               <Button onClick={addMockResponse} disabled={!newMock.pattern || !newMock.response}>
                 <Plus className="h-4 w-4" />
@@ -130,7 +130,7 @@ export default function MockResponses() {
             id="response"
             placeholder="Enter the response to send when pattern matches"
             value={newMock.response}
-            onChange={(e) => setNewMock({ ...newMock, response: e.target.value })}
+            onChange={(e) => setNewMock({ ...newMock, response: (e.target as HTMLInputElement | HTMLTextAreaElement).value })}
             className="min-h-[100px]"
           />
         </div>

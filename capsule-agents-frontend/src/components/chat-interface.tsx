@@ -545,7 +545,7 @@ export default function ChatInterface({
         <div className="flex w-full items-center gap-2">
           <Input
             value={input}
-            onChange={(e) => setInput(e.target.value)}
+            onChange={(e) => setInput((e.target as HTMLInputElement | HTMLTextAreaElement).value)}
             onKeyDown={handleKeyDown}
             placeholder="Type your message..."
             className="flex-1 rounded-full"

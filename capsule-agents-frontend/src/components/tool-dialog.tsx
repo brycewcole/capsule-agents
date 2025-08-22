@@ -100,7 +100,7 @@ export function ToolDialog({
               <Input
                 id="tool-name"
                 value={toolName}
-                onChange={e => setToolName(e.target.value)}
+                onChange={e => setToolName((e.target as HTMLInputElement | HTMLTextAreaElement).value)}
                 placeholder="weather_forecast"
               />
             </div>
@@ -123,7 +123,7 @@ export function ToolDialog({
               <Input
                 id="agent-url"
                 value={agentUrl}
-                onChange={e => setAgentUrl(e.target.value)}
+                onChange={e => setAgentUrl((e.target as HTMLInputElement | HTMLTextAreaElement).value)}
                 placeholder="http://localhost:8080"
                 className={agentUrl && !isAgentUrlValid ? "border-red-500" : ""}
               />
@@ -138,7 +138,7 @@ export function ToolDialog({
               <Input
                 id="mcp-server-url"
                 value={mcpServerUrl}
-                onChange={e => setMcpServerUrl(e.target.value)}
+                onChange={e => setMcpServerUrl((e.target as HTMLInputElement | HTMLTextAreaElement).value)}
                 placeholder="https://api.example.com/mcp"
                 className={mcpServerUrl && !isMcpUrlValid ? "border-red-500" : ""}
               />

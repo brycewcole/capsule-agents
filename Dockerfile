@@ -14,13 +14,12 @@ WORKDIR /home/app/capsule-agents-frontend
 # 1) Copy deno.json first to maximize caching
 COPY capsule-agents-frontend/deno.json ./
 
-# 2) Cache dependencies
-RUN --mount=type=cache,target=/deno-dir \
-  deno install
-
-# 3) Copy source and build
+# 2) Copy source files (needed for deno install to work properly)
 COPY capsule-agents-frontend/ ./
+
+# 3) Install dependencies and build
 RUN --mount=type=cache,target=/deno-dir \
+  deno install && \
   deno task build
 
 # ─── Stage 2: Build/Cache Deno backend ───────────────────────────

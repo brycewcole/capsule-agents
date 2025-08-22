@@ -57,7 +57,7 @@ export function LoginDialog({ open, onLogin, error }: LoginDialogProps) {
               id="password"
               type="password"
               value={password}
-              onChange={(e) => setPassword(e.target.value)}
+              onChange={(e) => setPassword((e.target as HTMLInputElement | HTMLTextAreaElement).value)}
               placeholder="Enter admin password"
               autoFocus
               disabled={isLoading}

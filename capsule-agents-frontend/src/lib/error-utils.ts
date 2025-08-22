@@ -1,5 +1,5 @@
 import * as React from "react"
-import { toast } from "@/hooks/use-toast"
+import { toast } from "@/hooks/use-toast.ts"
 
 // Error types matching backend JSON-RPC errors
 export interface JSONRPCError {
