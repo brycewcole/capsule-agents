@@ -2,12 +2,10 @@ import { v4 as uuidv4 } from 'uuid';
 import { A2AClient } from '@a2a-js/sdk/client';
 import type { Task as A2ATask, Message as A2AMessage, TaskStatusUpdateEvent, TaskArtifactUpdateEvent } from '@a2a-js/sdk';
 
-// When running from Vite dev on 5173, connect to backend on 8080
-// When running in production (Docker), use relative URLs (same server)
-const API_BASE_URL = '';
-
-const boundFetch = (...args: Parameters<typeof fetch>) => globalThis.fetch(...args);
-const a2aClient = new A2AClient(API_BASE_URL, { fetchImpl: boundFetch });
+const API_BASE_URL = globalThis.location.origin;
+const a2aClient = new A2AClient(API_BASE_URL, {
+    fetchImpl: (...a) => globalThis.fetch(...a),
+});
 
 // Auth store for credentials
 class AuthStore {
