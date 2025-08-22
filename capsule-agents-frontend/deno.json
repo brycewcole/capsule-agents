@@ -1,0 +1,56 @@
+{
+  "name": "@capsule-agents/frontend",
+  "tasks": {
+    "dev": "deno run -A npm:vite",
+    "build": "deno run -A npm:vite build",
+    "lint": "deno run -A npm:eslint .",
+    "preview": "deno run -A npm:vite preview"
+  },
+  "imports": {
+    "@/": "./src/",
+    "@deno/vite-plugin": "npm:@deno/vite-plugin@latest",
+    "@types/node": "npm:@types/node@^22.15.17",
+    "@types/react": "npm:@types/react@^19.1.2",
+    "@types/react-dom": "npm:@types/react-dom@^19.1.2",
+    "@types/uuid": "npm:@types/uuid@^10.0.0",
+    "@a2a-js/sdk": "npm:@a2a-js/sdk@^0.2.5",
+    "@ai-sdk/react": "npm:@ai-sdk/react@^1.2.0",
+    "@radix-ui/react-dialog": "npm:@radix-ui/react-dialog@^1.1.13",
+    "@radix-ui/react-label": "npm:@radix-ui/react-label@^2.1.6",
+    "@radix-ui/react-select": "npm:@radix-ui/react-select@^2.2.4",
+    "@radix-ui/react-separator": "npm:@radix-ui/react-separator@^1.1.6",
+    "@radix-ui/react-slot": "npm:@radix-ui/react-slot@^1.2.2",
+    "@radix-ui/react-switch": "npm:@radix-ui/react-switch@^1.2.5",
+    "@radix-ui/react-toast": "npm:@radix-ui/react-toast@^1.2.14",
+    "@tailwindcss/typography": "npm:@tailwindcss/typography@^0.5.16",
+    "@tailwindcss/vite": "npm:@tailwindcss/vite@^4.1.6",
+    "ai": "npm:ai@^5.0.0",
+    "class-variance-authority": "npm:class-variance-authority@^0.7.1",
+    "clsx": "npm:clsx@^2.1.1",
+    "lucide-react": "npm:lucide-react@^0.509.0",
+    "next-themes": "npm:next-themes@^0.4.6",
+    "react": "npm:react@^19.1.0",
+    "react-dom": "npm:react-dom@^19.1.0",
+    "react-markdown": "npm:react-markdown@^10.1.0",
+    "sonner": "npm:sonner@^2.0.3",
+    "tailwind-merge": "npm:tailwind-merge@^3.2.0",
+    "tailwindcss": "npm:tailwindcss@^4.1.6",
+    "uuid": "npm:uuid@^11.1.0",
+    "zod": "npm:zod@^3.25.76",
+    "vite": "npm:vite@^6.3.5",
+    "@vitejs/plugin-react": "npm:@vitejs/plugin-react@^4.4.1"
+  },
+  "compilerOptions": {
+    "lib": [
+      "DOM",
+      "DOM.Iterable",
+      "ES6"
+    ],
+    "allowJs": true,
+    "skipLibCheck": true,
+    "strict": true,
+    "noFallthroughCasesInSwitch": true,
+    "jsx": "react-jsx"
+  },
+  "nodeModulesDir": "auto"
+}

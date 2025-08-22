@@ -11,7 +11,7 @@ The project is configured to run both backend API and frontend from a single Fas
 1. **Build frontend**: Run VS Code task "Build Frontend" or manually:
    ```bash
    cd capsule-agents-frontend
-   npm install && npm run build
+   deno install && deno task build
    ```
 
 2. **Start with debugger**: Launch "Python Debugger: FastAPI" or "Run Full-Stack Locally (Single Server)" compound configuration
@@ -20,9 +20,9 @@ The project is configured to run both backend API and frontend from a single Fas
 
 #### Option 2: Command Line
 ```bash
-# Build frontend
+# Build frontend with Deno
 cd capsule-agents-frontend
-npm install && npm run build
+deno install && deno task build
 cd ..
 
 # Start backend (serves both API and frontend)
@@ -32,13 +32,13 @@ STATIC_DIR=capsule-agents-frontend/dist uv run -m uvicorn backend.app.main:app -
 ```
 
 ### Separate Frontend Development (Optional)
-For frontend-only development with hot reload:
+For frontend-only development with hot reload using Deno:
 ```bash
 cd capsule-agents-frontend
-npm install               # Install dependencies
-npm run dev              # Start development server
-npm run build            # Build for production
-npm run lint             # Run ESLint
+deno install             # Install dependencies
+deno task dev            # Start development server
+deno task build          # Build for production
+deno task lint           # Run ESLint
 ```
 
 ### Docker
@@ -59,7 +59,7 @@ This is a full-stack Agent-to-Agent (A2A) protocol implementation with two main 
 - **Streaming support**: Server-Sent Events for real-time task updates
 
 ### Frontend Structure  
-- **React 19 + TypeScript** SPA with Vite build system
+- **React 19 + TypeScript** SPA with Vite + Deno build system
 - **Tailwind CSS 4.x + Radix UI** component library
 - **Type-safe API client** with full schema validation in `src/lib/api.ts`
 - **Real-time chat interface** with streaming responses via SSE
@@ -80,7 +80,7 @@ This is a full-stack Agent-to-Agent (A2A) protocol implementation with two main 
 
 ### Dependencies
 - **Backend**: Google ADK, Google GenAI, LiteLLM for multi-model support
-- **Frontend**: React 19, Vite, Tailwind CSS 4.x, Radix UI components
+- **Frontend**: React 19, Vite + Deno runtime, Tailwind CSS 4.x, Radix UI components
 - **Storage**: SQLite for configuration and session persistence
 
 ## Important Implementation Notes
