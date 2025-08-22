@@ -6,7 +6,7 @@ import { createChat, getChatsList, getChatWithHistory, deleteChatById, updateCha
 import { getDb } from './lib/db.ts';
 import { CapsuleAgentA2ARequestHandler } from './lib/a2a-request-handler.ts';
 import { JsonRpcTransportHandler } from '@a2a-js/sdk/server';
-import { AgentConfigService } from './lib/agent-config.ts';
+import { AgentConfigService, AgentInfo } from './lib/agent-config.ts';
 import { ConfigFileService } from './lib/config-file.ts';
 import * as log from "@std/log";
 
@@ -44,7 +44,7 @@ try {
 }
 
 log.info('Checking for configuration file...');
-let configFileAgentInfo = null;
+let configFileAgentInfo: AgentInfo | null = null;
 try {
   configFileAgentInfo = await ConfigFileService.loadConfigFile();
   if (configFileAgentInfo) {
@@ -69,8 +69,10 @@ log.info('Creating JSON-RPC handler...');
 const jsonRpcHandler = new JsonRpcTransportHandler(a2aRequestHandler);
 log.info('JSON-RPC handler created successfully');
 
-app.get('/.well-known/agent.json', async (c) => {
-  log.info('GET /.well-known/agent.json - Getting agent card');
+// Shared handler for agent card endpoints
+const getAgentCardHandler = async (c) => {
+  const path = c.req.path;
+  log.info(`GET ${path} - Getting agent card`);
   try {
     const agentCard = await a2aRequestHandler.getAgentCard();
     log.info('Agent card retrieved successfully:', { name: agentCard.name, skillCount: agentCard.skills.length });
@@ -83,7 +85,10 @@ app.get('/.well-known/agent.json', async (c) => {
       details: error instanceof Error ? error.message : String(error)
     }, 500);
   }
-});
+};
+
+app.get('/.well-known/agent.json', getAgentCardHandler);
+app.get('/.well-known/agent-card.json', getAgentCardHandler);
 
 // Main A2A JSON-RPC endpoint
 app.post('/', async (c) => {
