@@ -16,12 +16,8 @@ jobs:
 
       - name: Run format check
         if: matrix.check == 'format'
-        run: deno fmt --check
+        run: deno task fmt --check
 
       - name: Run lint check
         if: matrix.check == 'lint'
-        run: deno lint
-
-    #   - name: Run tests
-    #     if: matrix.check == 'test'
-    #     run: deno test --allow-all
+        run: deno task lint
