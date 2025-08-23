@@ -1,98 +1,109 @@
-import type * as A2A from '@a2a-js/sdk';
-import type * as Vercel from 'ai';
-import type { TaskStorage } from './task-storage.ts';
+import type * as A2A from "@a2a-js/sdk"
+import type * as Vercel from "ai"
+import type { TaskStorage } from "./task-storage.ts"
 
 interface ToolCallData {
-  type: 'tool_call';
-  id: string;
-  name: string;
-  args: unknown;
-  [k: string]: unknown;
+  type: "tool_call"
+  id: string
+  name: string
+  args: unknown
+  [k: string]: unknown
 }
 
 interface ToolResultData {
-  type: 'tool_result';
-  id: string;
-  name: string;
-  result: unknown;
-  [k: string]: unknown;
+  type: "tool_result"
+  id: string
+  name: string
+  result: unknown
+  [k: string]: unknown
 }
 
-type TaskState = A2A.Task['status']['state'];
+type TaskState = A2A.Task["status"]["state"]
 
 export class TaskService {
-  private taskStorage: TaskStorage;
+  private taskStorage: TaskStorage
 
   constructor(taskStorage: TaskStorage) {
-    this.taskStorage = taskStorage;
+    this.taskStorage = taskStorage
   }
 
   /**
    * Creates a new task with initial state
    */
-  createTask(contextId: string, initialMessage: A2A.Message, metadata?: Record<string, unknown>): A2A.Task {
-    const taskId = this.taskStorage.createTaskId();
+  createTask(
+    contextId: string,
+    initialMessage: A2A.Message,
+    metadata?: Record<string, unknown>,
+  ): A2A.Task {
+    const taskId = this.taskStorage.createTaskId()
 
     const task: A2A.Task = {
       id: taskId,
-      kind: 'task',
+      kind: "task",
       contextId,
       status: {
-        state: 'submitted',
+        state: "submitted",
         timestamp: new Date().toISOString(),
       },
       history: [initialMessage],
       metadata: metadata || {},
-    };
+    }
 
-    this.taskStorage.setTask(taskId, task);
-    return task;
+    this.taskStorage.setTask(taskId, task)
+    return task
   }
 
   /**
    * Transitions task to a new state and generates update event
    */
-  transitionState(task: A2A.Task, newState: TaskState, message?: string | A2A.Message, isFinal: boolean = false): A2A.TaskStatusUpdateEvent {
-    task.status.state = newState;
-    task.status.timestamp = new Date().toISOString();
+  transitionState(
+    task: A2A.Task,
+    newState: TaskState,
+    message?: string | A2A.Message,
+    isFinal: boolean = false,
+  ): A2A.TaskStatusUpdateEvent {
+    task.status.state = newState
+    task.status.timestamp = new Date().toISOString()
 
     if (message) {
-      if (typeof message === 'string') {
+      if (typeof message === "string") {
         task.status.message = {
-          kind: 'message',
+          kind: "message",
           messageId: this.createMessageId(),
-          role: 'agent',
-          parts: [{ kind: 'text', text: message } as A2A.TextPart],
+          role: "agent",
+          parts: [{ kind: "text", text: message } as A2A.TextPart],
           taskId: task.id,
           contextId: task.contextId,
-        };
+        }
       } else {
-        task.status.message = message;
+        task.status.message = message
       }
     }
 
-    this.taskStorage.setTask(task.id, task);
+    this.taskStorage.setTask(task.id, task)
 
     return {
-      kind: 'status-update',
+      kind: "status-update",
       taskId: task.id,
       contextId: task.contextId,
       status: task.status,
       final: isFinal,
-    };
+    }
   }
 
   /**
    * Cancels a task if it's in a cancelable state
    */
   cancelTask(task: A2A.Task): void {
-    if (task.status.state === 'completed' ||
-      task.status.state === 'canceled' ||
-      task.status.state === 'failed') {
-      throw new Error('Task cannot be canceled');
+    if (
+      task.status.state === "completed" ||
+      task.status.state === "canceled" ||
+      task.status.state === "failed"
+    ) {
+      throw new Error("Task cannot be canceled")
     }
 
-    this.transitionState(task, 'canceled', undefined, true);
+    this.transitionState(task, "canceled", undefined, true)
   }
 
   /**
@@ -100,10 +111,10 @@ export class TaskService {
    */
   addMessageToHistory(task: A2A.Task, message: A2A.Message): void {
     if (!task.history) {
-      task.history = [];
+      task.history = []
     }
-    task.history.push(message);
-    this.taskStorage.setTask(task.id, task);
+    task.history.push(message)
+    this.taskStorage.setTask(task.id, task)
   }
 
   /**
@@ -113,30 +124,30 @@ export class TaskService {
     task: A2A.Task,
     text: string,
     toolCalls?: Vercel.TypedToolCall<Record<string, Vercel.Tool>>[],
-    toolResults?: Vercel.TypedToolResult<Record<string, Vercel.Tool>>[]
+    toolResults?: Vercel.TypedToolResult<Record<string, Vercel.Tool>>[],
   ): A2A.Message {
-    if (!task.history) task.history = [];
+    if (!task.history) task.history = []
 
     // Add tool calls to history if present
     if (toolCalls && toolCalls.length > 0) {
       for (const toolCall of toolCalls) {
         const toolCallData: ToolCallData = {
-          type: 'tool_call',
+          type: "tool_call",
           id: toolCall.toolCallId,
           name: toolCall.toolName,
           args: toolCall.input,
-        };
+        }
 
         const toolCallMessage: A2A.Message = {
-          kind: 'message',
+          kind: "message",
           messageId: this.createMessageId(),
-          role: 'agent',
-          parts: [{ kind: 'data', data: toolCallData }],
+          role: "agent",
+          parts: [{ kind: "data", data: toolCallData }],
           taskId: task.id,
           contextId: task.contextId,
-        };
+        }
 
-        task.history.push(toolCallMessage);
+        task.history.push(toolCallMessage)
       }
     }
 
@@ -144,45 +155,45 @@ export class TaskService {
     if (toolResults && toolResults.length > 0) {
       for (const toolResult of toolResults) {
         const toolResultData: ToolResultData = {
-          type: 'tool_result',
+          type: "tool_result",
           id: toolResult.toolCallId,
           name: toolResult.toolName,
+          // deno-lint-ignore no-explicit-any
           result: (toolResult as any).result,
-        };
+        }
 
         const toolResultMessage: A2A.Message = {
-          kind: 'message',
+          kind: "message",
           messageId: this.createMessageId(),
-          role: 'agent',
-          parts: [{ kind: 'data', data: toolResultData }],
+          role: "agent",
+          parts: [{ kind: "data", data: toolResultData }],
           taskId: task.id,
           contextId: task.contextId,
-        };
+        }
 
-        task.history.push(toolResultMessage);
+        task.history.push(toolResultMessage)
       }
     }
 
     // Create and add response message
-    const responseMessage = this.createResponseMessage(task, text);
-    this.addMessageToHistory(task, responseMessage);
+    const responseMessage = this.createResponseMessage(task, text)
+    this.addMessageToHistory(task, responseMessage)
 
-    return responseMessage;
+    return responseMessage
   }
-
 
   /**
    * Creates a response message
    */
   createResponseMessage(task: A2A.Task, text: string): A2A.Message {
     return {
-      kind: 'message',
+      kind: "message",
       messageId: this.createMessageId(),
-      role: 'agent',
-      parts: [{ kind: 'text', text } as A2A.TextPart],
+      role: "agent",
+      parts: [{ kind: "text", text } as A2A.TextPart],
       taskId: task.id,
       contextId: task.contextId,
-    };
+    }
   }
 
   /**
@@ -190,13 +201,13 @@ export class TaskService {
    */
   extractTextFromMessage(message: A2A.Message): string {
     return message.parts
-      .filter((part): part is A2A.TextPart => part.kind === 'text')
-      .map(part => part.text)
+      .filter((part): part is A2A.TextPart => part.kind === "text")
+      .map((part) => part.text)
       .filter(Boolean)
-      .join(' ');
+      .join(" ")
   }
 
   private createMessageId(): string {
-    return `msg_${crypto.randomUUID()}`;
+    return `msg_${crypto.randomUUID()}`
   }
 }

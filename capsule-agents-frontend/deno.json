@@ -1,0 +1,52 @@
+{
+  "tasks": {
+    "dev": "deno run -A npm:vite",
+    "build": "deno run -A npm:vite build",
+    "lint": "deno run -A npm:eslint .",
+    "preview": "deno run -A npm:vite preview"
+  },
+  "imports": {
+    "@/": "./src/",
+    "@deno/vite-plugin": "npm:@deno/vite-plugin@^1.0.5",
+    "@types/node": "npm:@types/node@^24.3.0",
+    "@types/react": "npm:@types/react@^19.1.11",
+    "@types/react-dom": "npm:@types/react-dom@^19.1.7",
+    "@types/uuid": "npm:@types/uuid@^10.0.0",
+    "@a2a-js/sdk": "npm:@a2a-js/sdk@^0.3.2",
+    "@ai-sdk/react": "npm:@ai-sdk/react@^2.0.22",
+    "@radix-ui/react-dialog": "npm:@radix-ui/react-dialog@^1.1.15",
+    "@radix-ui/react-label": "npm:@radix-ui/react-label@^2.1.7",
+    "@radix-ui/react-select": "npm:@radix-ui/react-select@^2.2.6",
+    "@radix-ui/react-separator": "npm:@radix-ui/react-separator@^1.1.7",
+    "@radix-ui/react-slot": "npm:@radix-ui/react-slot@^1.2.3",
+    "@radix-ui/react-switch": "npm:@radix-ui/react-switch@^1.2.6",
+    "@radix-ui/react-toast": "npm:@radix-ui/react-toast@^1.2.15",
+    "@tailwindcss/typography": "npm:@tailwindcss/typography@^0.5.16",
+    "@tailwindcss/vite": "npm:@tailwindcss/vite@^4.1.12",
+    "ai": "npm:ai@^5.0.22",
+    "class-variance-authority": "npm:class-variance-authority@^0.7.1",
+    "clsx": "npm:clsx@^2.1.1",
+    "lucide-react": "npm:lucide-react@^0.541.0",
+    "next-themes": "npm:next-themes@^0.4.6",
+    "react": "npm:react@^19.1.1",
+    "react/jsx-runtime": "npm:react@^19.1.1/jsx-runtime",
+    "react-dom": "npm:react-dom@^19.1.1",
+    "react-markdown": "npm:react-markdown@^10.1.0",
+    "sonner": "npm:sonner@^2.0.7",
+    "tailwind-merge": "npm:tailwind-merge@^3.3.1",
+    "tw-animate-css": "npm:tw-animate-css@^1.3.7",
+    "uuid": "npm:uuid@^11.1.0",
+    "zod": "npm:zod@^3.25.76",
+    "@vitejs/plugin-react": "npm:@vitejs/plugin-react@^5.0.1"
+  },
+  "compilerOptions": {
+    "lib": [
+      "DOM",
+      "DOM.Iterable",
+      "esnext"
+    ],
+    "strict": true,
+    "jsx": "react-jsx",
+    "noImplicitAny": false
+  }
+}

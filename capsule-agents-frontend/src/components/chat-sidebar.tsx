@@ -1,13 +1,13 @@
 "use client"
 
-import { useState, useEffect } from "react"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Card, CardContent, CardHeader } from "@/components/ui/card"
-import { Plus, Search, MessageSquare, Loader2 } from "lucide-react"
-import { getChatsList, deleteChatById, type ChatSummary } from "@/lib/api"
-import { showErrorToast } from "@/lib/error-utils"
-import { ChatListItem } from "@/components/chat-list-item"
+import { useEffect, useState } from "react"
+import { Button } from "./ui/button.tsx"
+import { Input } from "./ui/input.tsx"
+import { Card, CardContent, CardHeader } from "./ui/card.tsx"
+import { Loader2, MessageSquare, Plus, Search } from "lucide-react"
+import { type ChatSummary, deleteChatById, getChatsList } from "../lib/api.ts"
+import { showErrorToast } from "../lib/error-utils.ts"
+import { ChatListItem } from "./chat-list-item.tsx"
 
 interface ChatSidebarProps {
   currentChatId?: string | null
@@ -16,17 +16,17 @@ interface ChatSidebarProps {
   className?: string
   refreshKey?: number
   hideTitleBar?: boolean
-  variant?: 'card' | 'inline'
+  variant?: "card" | "inline"
 }
 
-export function ChatSidebar({ 
-  currentChatId, 
-  onChatSelect, 
+export function ChatSidebar({
+  currentChatId,
+  onChatSelect,
   onNewChat,
   className = "",
   refreshKey,
   hideTitleBar = false,
-  variant = 'card',
+  variant = "card",
 }: ChatSidebarProps) {
   const [chats, setChats] = useState<ChatSummary[]>([])
   const [filteredChats, setFilteredChats] = useState<ChatSummary[]>([])
@@ -59,8 +59,8 @@ export function ChatSidebar({
       setFilteredChats(chats)
     } else {
       const query = searchQuery.toLowerCase()
-      const filtered = chats.filter(chat => 
-        chat.title.toLowerCase().includes(query) || 
+      const filtered = chats.filter((chat) =>
+        chat.title.toLowerCase().includes(query) ||
         chat.preview.toLowerCase().includes(query)
       )
       setFilteredChats(filtered)
@@ -74,11 +74,15 @@ export function ChatSidebar({
       const chatsList = await getChatsList()
       console.log("ChatSidebar: Received chats list:", chatsList)
       setChats(chatsList)
-      console.log("ChatSidebar: Set chats state with", chatsList.length, "chats")
+      console.log(
+        "ChatSidebar: Set chats state with",
+        chatsList.length,
+        "chats",
+      )
     } catch (error) {
       console.error("ChatSidebar: Failed to load chats:", error)
-      showErrorToast(error, { 
-        title: "Failed to Load Chats"
+      showErrorToast(error, {
+        title: "Failed to Load Chats",
       })
     } finally {
       setIsLoading(false)
@@ -87,19 +91,23 @@ export function ChatSidebar({
 
   const handleDeleteChat = async (chatId: string, event: React.MouseEvent) => {
     event.stopPropagation() // Prevent chat selection
-    
-    if (!confirm("Are you sure you want to delete this conversation? This action cannot be undone.")) {
+
+    if (
+      !confirm(
+        "Are you sure you want to delete this conversation? This action cannot be undone.",
+      )
+    ) {
       return
     }
 
     try {
       setIsDeleting(chatId)
       const success = await deleteChatById(chatId)
-      
+
       if (success) {
         // Remove from local state
-        setChats(prev => prev.filter(chat => chat.id !== chatId))
-        
+        setChats((prev) => prev.filter((chat) => chat.id !== chatId))
+
         // If this was the current chat, trigger new chat
         if (currentChatId === chatId) {
           onNewChat()
@@ -109,8 +117,8 @@ export function ChatSidebar({
       }
     } catch (error) {
       console.error("Failed to delete chat:", error)
-      showErrorToast(error, { 
-        title: "Failed to Delete Chat"
+      showErrorToast(error, {
+        title: "Failed to Delete Chat",
       })
     } finally {
       setIsDeleting(null)
@@ -123,11 +131,11 @@ export function ChatSidebar({
     const diffInHours = (now.getTime() - date.getTime()) / (1000 * 60 * 60)
 
     if (diffInHours < 24) {
-      return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
     } else if (diffInHours < 24 * 7) {
-      return date.toLocaleDateString([], { weekday: 'short' })
+      return date.toLocaleDateString([], { weekday: "short" })
     } else {
-      return date.toLocaleDateString([], { month: 'short', day: 'numeric' })
+      return date.toLocaleDateString([], { month: "short", day: "numeric" })
     }
   }
 
@@ -155,7 +163,10 @@ export function ChatSidebar({
         <Input
           placeholder="Search conversations..."
           value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
+          onChange={(e) =>
+            setSearchQuery(
+              (e.target as HTMLInputElement | HTMLTextAreaElement).value,
+            )}
           className="pl-10"
         />
       </div>
@@ -164,41 +175,45 @@ export function ChatSidebar({
 
   const body = (
     <div className="flex-1 overflow-y-auto">
-      {isLoading ? (
-        <div className="flex items-center justify-center p-8">
-          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-        </div>
-      ) : filteredChats.length === 0 ? (
-        <div className="flex flex-col items-center justify-center p-8 text-center">
-          <MessageSquare className="h-12 w-12 text-muted-foreground mb-4" />
-          <p className="text-muted-foreground">
-            {searchQuery ? "No conversations found" : "No conversations yet"}
-          </p>
-          {!searchQuery && (
-            <p className="text-sm text-muted-foreground mt-2">
-              Start a new conversation to get going
+      {isLoading
+        ? (
+          <div className="flex items-center justify-center p-8">
+            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+          </div>
+        )
+        : filteredChats.length === 0
+        ? (
+          <div className="flex flex-col items-center justify-center p-8 text-center">
+            <MessageSquare className="h-12 w-12 text-muted-foreground mb-4" />
+            <p className="text-muted-foreground">
+              {searchQuery ? "No conversations found" : "No conversations yet"}
             </p>
-          )}
-        </div>
-      ) : (
-        <div className="space-y-1 p-2">
-          {filteredChats.map((chat) => (
-            <ChatListItem
-              key={chat.id}
-              chat={chat}
-              isActive={currentChatId === chat.id}
-              onClick={() => onChatSelect(chat.id)}
-              onDelete={(e) => handleDeleteChat(chat.id, e)}
-              isDeleting={isDeleting === chat.id}
-              formatTimestamp={formatLastActivity}
-            />
-          ))}
-        </div>
-      )}
+            {!searchQuery && (
+              <p className="text-sm text-muted-foreground mt-2">
+                Start a new conversation to get going
+              </p>
+            )}
+          </div>
+        )
+        : (
+          <div className="space-y-1 p-2">
+            {filteredChats.map((chat) => (
+              <ChatListItem
+                key={chat.id}
+                chat={chat}
+                isActive={currentChatId === chat.id}
+                onClick={() => onChatSelect(chat.id)}
+                onDelete={(e) => handleDeleteChat(chat.id, e)}
+                isDeleting={isDeleting === chat.id}
+                formatTimestamp={formatLastActivity}
+              />
+            ))}
+          </div>
+        )}
     </div>
   )
 
-  if (variant === 'inline') {
+  if (variant === "inline") {
     return (
       <div className={`flex flex-col h-full ${className}`}>
         {header}

@@ -1,23 +1,15 @@
 {
-    "[python]": {
-        "editor.defaultFormatter": "charliermarsh.ruff",
-        "editor.formatOnSave": true,
-        "editor.codeActionsOnSave": {
-            "source.fixAll": "explicit",
-            "source.organizeImports": "explicit"
-        },
-    },
-    "python.defaultInterpreterPath": "${workspaceFolder}/backend/.venv/bin/python",
-    "python.testing.pytestEnabled": true,
-    "python.testing.cwd": "${workspaceFolder}/backend",
-    "python.testing.pytestArgs": [
-        "backend/tests"
-    ],
-    "deno.enable": true,
-    "deno.enablePaths": [
-        "capsule-agents-backend"
-    ],
-    "cSpell.words": [
-        "uuidv"
-    ]
+  "[python]": {
+    "editor.defaultFormatter": "charliermarsh.ruff",
+    "editor.formatOnSave": true,
+    "editor.codeActionsOnSave": {
+      "source.fixAll": "explicit",
+      "source.organizeImports": "explicit"
+    }
+  },
+  "deno.enable": true,
+  "cSpell.words": [
+    "uuidv",
+    "denoland"
+  ]
 }

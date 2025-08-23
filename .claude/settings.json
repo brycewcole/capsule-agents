@@ -1,13 +1,13 @@
 {
-    "env": {
-        "CLAUDE_BASH_MAINTAIN_PROJECT_WORKING_DIR": "true"
-    },
-    "hooks": {
-        "PostToolUse": [
-            {
-                "matcher": "Write|Edit|MultiEdit",
-                "hooks": []
-            }
-        ]
-    }
+  "env": {
+    "CLAUDE_BASH_MAINTAIN_PROJECT_WORKING_DIR": "true"
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit|MultiEdit",
+        "hooks": []
+      }
+    ]
+  }
 }

@@ -1,6 +1,4 @@
 {
-  "name": "@capsule-agents/backend",
-  "version": "1.0.0",
   "exports": "./src/index.ts",
   "tasks": {
     "start": "deno run --allow-all src/index.ts",
@@ -11,8 +9,8 @@
     "hono/cors": "jsr:@hono/hono/cors",
     "hono/streaming": "jsr:@hono/hono/streaming",
     "hono/deno": "jsr:@hono/hono/deno",
-    "@a2a-js/sdk": "npm:@a2a-js/sdk@^0.2.5",
-    "@a2a-js/sdk/server": "npm:@a2a-js/sdk/server",
+    "@a2a-js/sdk": "npm:@a2a-js/sdk@^0.3.2",
+    "@a2a-js/sdk/server": "npm:@a2a-js/sdk@^0.3.2/server",
     "@ai-sdk/anthropic": "npm:@ai-sdk/anthropic@^2.0.0",
     "@ai-sdk/google": "npm:@ai-sdk/google@^2.0.0",
     "@ai-sdk/openai": "npm:@ai-sdk/openai@^2.0.0",
@@ -25,12 +23,7 @@
     "zod": "npm:zod@^3.25.0"
   },
   "compilerOptions": {
-    "lib": [
-      "deno.window",
-      "deno.ns"
-    ],
-    "strict": true
-  },
-  "nodeModulesDir": "auto",
-  "lock": false
+    "strict": true,
+    "noImplicitAny": false
+  }
 }

@@ -1,26 +1,25 @@
-import { z } from "zod";
-
+import { z } from "zod"
 
 export const ToolCallDataSchema = z.object({
-  type: z.literal('function_call'),
+  type: z.literal("function_call"),
   id: z.string(),
   name: z.string(),
   args: z.unknown(),
-}).catchall(z.unknown());
+}).catchall(z.unknown())
 
-export type ToolCallData = z.infer<typeof ToolCallDataSchema>;
+export type ToolCallData = z.infer<typeof ToolCallDataSchema>
 
 export const isToolCallData = (u: unknown): u is ToolCallData =>
-  ToolCallDataSchema.safeParse(u).success;
+  ToolCallDataSchema.safeParse(u).success
 
 export const ToolResultDataSchema = z.object({
-  type: z.literal('function_response'),
+  type: z.literal("function_response"),
   id: z.string(),
   name: z.string(),
   response: z.unknown(),
-}).catchall(z.unknown());
+}).catchall(z.unknown())
 
-export type ToolResultData = z.infer<typeof ToolResultDataSchema>;
+export type ToolResultData = z.infer<typeof ToolResultDataSchema>
 
 export const isToolResultData = (u: unknown): u is ToolResultData =>
-  ToolResultDataSchema.safeParse(u).success;
+  ToolResultDataSchema.safeParse(u).success
