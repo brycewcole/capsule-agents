@@ -21,3 +21,7 @@ jobs:
       - name: Run lint check
         if: matrix.check == 'lint'
         run: deno task lint
+
+      - name: Run type check
+        if: matrix.check == 'check'
+        run: deno task check

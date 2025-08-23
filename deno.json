@@ -8,7 +8,8 @@
     "dev:frontend": "deno task --cwd capsule-agents-frontend dev",
     "dev:backend": "deno task --cwd capsule-agents-backend dev",
     "lint": "deno lint",
-    "fmt": "deno fmt"
+    "fmt": "deno fmt",
+    "check": "deno check"
   },
   "fmt": {
     "useTabs": false,
