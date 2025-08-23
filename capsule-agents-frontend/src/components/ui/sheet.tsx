@@ -78,7 +78,7 @@ function SheetContent(
   } as const
 
   return (
-    <SheetPortal container={container as any}>
+    <SheetPortal container={container as Element | null}>
       {withOverlay && <SheetOverlay />}
       <DialogPrimitive.Content
         data-slot="sheet-content"

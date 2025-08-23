@@ -158,6 +158,7 @@ export class TaskService {
           type: "tool_result",
           id: toolResult.toolCallId,
           name: toolResult.toolName,
+          // deno-lint-ignore no-explicit-any
           result: (toolResult as any).result,
         }
 

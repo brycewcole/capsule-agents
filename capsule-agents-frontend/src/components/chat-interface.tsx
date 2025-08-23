@@ -117,7 +117,7 @@ export default function ChatInterface({
     const taskTime = (t: A2ATask) => {
       const id = t.id
       if (id && taskStartTimes[id] != null) return taskStartTimes[id]
-      const created = (t as any).createdAt
+      const created = (t as { createdAt?: number }).createdAt
       if (typeof created === "number") return created
       if (t.status?.timestamp) return Date.parse(t.status.timestamp) / 1000
       return Date.now() / 1000
@@ -183,24 +183,24 @@ export default function ChatInterface({
       console.log("Loading initial chat data:", initialChatData)
 
       // Convert backend messages to frontend Message format
-      const convertedMessages: Message[] = initialChatData.messages.map(
-        (msg: any) => {
+      const convertedMessages: Message[] = (initialChatData.messages as Array<{ role?: string; content?: string; parts?: Array<{ text?: string }>; toolCalls?: unknown; timestamp?: number }>).map(
+        (msg) => {
           // Normalize role: backend stores 'assistant', UI expects 'agent' for assistant messages
           const role: "user" | "agent" = msg.role === "assistant"
             ? "agent"
-            : (msg.role as any)
+            : (msg.role as "user" | "agent")
           // Normalize content: either legacy msg.content or Vercel UIMessage parts array
           const content: string = typeof msg.content === "string"
             ? msg.content
             : Array.isArray(msg.parts)
             ? msg.parts.map((
-              p: any,
+              p: { text?: string },
             ) => (typeof p?.text === "string" ? p.text : "")).join("")
             : ""
           return {
             role,
             content,
-            toolCalls: (msg.toolCalls as any) || undefined,
+            toolCalls: msg.toolCalls || undefined,
             timestamp: typeof msg.timestamp === "number"
               ? msg.timestamp
               : undefined,
@@ -210,14 +210,14 @@ export default function ChatInterface({
 
       setMessages(convertedMessages)
       // Attach most recent task as current task so status is visible on load
-      const loadedTasks = (initialChatData.tasks || []) as any[]
+      const loadedTasks = (initialChatData.tasks || []) as Array<{ id?: string; createdAt?: number; updatedAt?: number }>
       setTasks(loadedTasks as unknown as A2ATask[])
       // Seed task start times from createdAt
       setTaskStartTimes((prev) => {
         const next = { ...prev }
         for (const t of loadedTasks) {
-          const id = (t as any).id
-          const createdAt = (t as any).createdAt
+          const id = t.id
+          const createdAt = t.createdAt
           if (id && typeof createdAt === "number" && next[id] == null) {
             next[id] = createdAt
           }
@@ -327,9 +327,9 @@ export default function ChatInterface({
             })
 
             // If no task was created, ensure we capture the contextId from the message
-            if (!contextId && (event as any).contextId) {
-              setContextId((event as any).contextId)
-              if (onChatCreated) onChatCreated((event as any).contextId)
+            if (!contextId && (event as { contextId?: string }).contextId) {
+              setContextId((event as { contextId?: string }).contextId!)
+              if (onChatCreated) onChatCreated((event as { contextId?: string }).contextId!)
             }
 
             // If no task was created, this is a simple message and we're done

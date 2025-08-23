@@ -70,7 +70,7 @@ export const fileAccessTool = tool({
           }
         }
         case "list": {
-          const files = []
+          const files: string[] = []
           for await (const entry of Deno.readDir(absolutePath)) {
             files.push(entry.name)
           }

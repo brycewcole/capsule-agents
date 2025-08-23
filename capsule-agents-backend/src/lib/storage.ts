@@ -1,3 +1,4 @@
+// deno-lint-ignore-file no-explicit-any
 import { getDb } from "./db.ts"
 import type { UIMessage } from "ai"
 import { v4 as uuidv4 } from "uuid"
@@ -42,7 +43,7 @@ export function createChatWithId(contextId: string, userId: string): void {
     now,
     now,
   )
-  log.info(`createChatWithId result: ${(result as any).changes} rows affected`)
+  log.info(`createChatWithId result: ${(result as unknown as { changes: number }).changes} rows affected`)
 }
 
 export function loadChat(contextId: string): UIMessage[] {
@@ -58,15 +59,15 @@ export function loadChat(contextId: string): UIMessage[] {
   }[]
 
   return rows.map((row) => {
-    const msg = JSON.parse(row.content) as any
+    const msg = JSON.parse(row.content) as UIMessage
     // Attach DB metadata for frontend timeline features
     if (msg && typeof msg === "object") {
       if (!msg.id) msg.id = row.id
-      ;(msg as any).timestamp = row.timestamp
+        ; (msg as UIMessage & { timestamp?: number }).timestamp = row.timestamp
       if (!msg.role && row.author) {
-        ;(msg as any).role = row.author === "assistant"
+        ; (msg as UIMessage & { role?: "system" | "user" | "assistant" }).role = row.author === "assistant"
           ? "assistant"
-          : row.author
+          : row.author as "system" | "user" | "assistant"
       }
     }
     return msg as UIMessage
@@ -147,22 +148,29 @@ export interface ChatWithHistory {
   contextId: string
   title: string
   messages: UIMessage[]
-  tasks: any[]
-  metadata: Record<string, any>
+  tasks: Array<{
+    id: string
+    status: unknown
+    history: unknown
+    metadata: unknown
+    createdAt: number
+    updatedAt: number
+  }>
+  metadata: Record<string, unknown>
   createTime: number
   updateTime: number
 }
 
 // Extract text from a Vercel UIMessage, handling both legacy {content} and current {parts}
-function extractTextFromUIMessage(msg: any): string {
+function extractTextFromUIMessage(msg: UIMessage | null | undefined): string {
   if (msg == null) return ""
-  if (typeof msg.content === "string" && msg.content.length > 0) {
-    return msg.content
+  if (typeof (msg as any).content === "string" && (msg as any).content.length > 0) {
+    return (msg as any).content
   }
   // Vercel UIMessage: parts: [{ type: 'text', text: string }, ...]
   if (Array.isArray(msg.parts)) {
     return msg.parts
-      .map((p: any) => (typeof p?.text === "string" ? p.text : ""))
+      .map((p) => (p && typeof p === "object" && "text" in p && typeof p.text === "string" ? p.text : ""))
       .join("")
       .trim()
   }
@@ -171,7 +179,7 @@ function extractTextFromUIMessage(msg: any): string {
 
 // Extract or generate a title from the first user message
 function extractChatTitle(messages: UIMessage[]): string {
-  const firstUserMessage = messages.find((m: any) => m.role === "user")
+  const firstUserMessage = messages.find((m) => m.role === "user")
   const text = extractTextFromUIMessage(firstUserMessage)
   if (text) {
     const title = text.slice(0, 50).trim()
@@ -183,7 +191,7 @@ function extractChatTitle(messages: UIMessage[]): string {
 // Get a preview of the last message
 function getMessagePreview(messages: UIMessage[]): string {
   if (messages.length === 0) return "No messages"
-  const lastMessage: any = messages[messages.length - 1]
+  const lastMessage = messages[messages.length - 1]
   const text = extractTextFromUIMessage(lastMessage)
   if (!text) return "No content"
   const preview = text.slice(0, 100).trim()
@@ -386,7 +394,7 @@ export function deleteChatById(contextId: string): boolean {
     const deleteContextStmt = db.prepare("DELETE FROM contexts WHERE id = ?")
     const result = deleteContextStmt.run(contextId)
 
-    return (result as any).changes > 0
+    return (result as unknown as { changes: number }).changes > 0
   })
 
   try {
@@ -400,7 +408,7 @@ export function deleteChatById(contextId: string): boolean {
 // Update chat metadata (for features like renaming)
 export function updateChatMetadata(
   contextId: string,
-  metadata: Record<string, any>,
+  metadata: Record<string, unknown>,
 ): boolean {
   const db = getDb()
 
@@ -417,7 +425,7 @@ export function updateChatMetadata(
       APP_NAME,
     )
 
-    return (result as any).changes > 0
+    return (result as unknown as { changes: number }).changes > 0
   } catch (error) {
     console.error("Error updating chat metadata:", error)
     return false

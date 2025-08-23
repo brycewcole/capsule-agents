@@ -101,7 +101,7 @@ type Artifact = {
   name?: string
   description?: string
   parts: Part[]
-  metadata?: Record<string, any>
+  metadata?: Record<string, unknown>
   index: number
   append?: boolean
   lastChunk?: boolean
@@ -112,15 +112,15 @@ type Task = {
   sessionId?: string
   status: TaskStatus
   artifacts?: Artifact[]
-  history?: any[]
-  metadata?: Record<string, any>
+  history?: unknown[]
+  metadata?: Record<string, unknown>
 }
 
 // Type for tool definition
 export type Tool = {
   name: string
   type: string
-  tool_schema: Record<string, any>
+  tool_schema: Record<string, unknown>
 }
 
 // Type for tool calls
@@ -135,7 +135,7 @@ export type AgentInfo = {
   name: string
   description: string
   modelName: string
-  modelParameters: Record<string, any>
+  modelParameters: Record<string, unknown>
   tools?: Tool[]
 }
 
@@ -328,7 +328,7 @@ export async function getAgentInfo(): Promise<AgentInfo> {
 
 // Function to update agent configuration
 export async function updateAgentInfo(info: AgentInfo): Promise<AgentInfo> {
-  const body: any = { ...info }
+  const body = { ...info }
   const response = await fetch(`${API_BASE_URL}/api/agent`, {
     method: "PUT",
     headers: {
@@ -397,15 +397,20 @@ export async function getAvailableModels(): Promise<Model[]> {
 
 // Helper function to extract tool calls from A2A task or message
 export function extractToolCalls(
-  taskOrEvent: A2ATask | A2AMessage | any,
+  taskOrEvent: A2ATask | A2AMessage | unknown,
 ): ToolCall[] {
   const toolCalls: ToolCall[] = []
 
+  if (!taskOrEvent || typeof taskOrEvent !== 'object') {
+    return toolCalls
+  }
+
   // Handle A2A Task type
-  if (taskOrEvent.kind === "task" && taskOrEvent.history) {
+  if ((taskOrEvent as { kind?: string; history?: unknown[] }).kind === "task" && (taskOrEvent as { kind?: string; history?: unknown[] }).history) {
+    const task = taskOrEvent as A2ATask
     console.log(
       "Processing A2A task history with",
-      taskOrEvent.history.length,
+      task.history?.length || 0,
       "messages",
     )
 
@@ -415,34 +420,36 @@ export function extractToolCalls(
       { name: string; args: Record<string, unknown> }
     >()
 
-    for (const message of taskOrEvent.history) {
+    for (const message of task.history || []) {
       if (message.parts) {
         for (const part of message.parts) {
           // Check for function calls
           if ("function_call" in part && part.function_call) {
-            console.log("Found function call:", part.function_call)
-            functionCalls.set(part.function_call.id, {
-              name: part.function_call.name,
-              args: part.function_call.args || {},
+            const functionCall = part.function_call as { id: string; name: string; args?: Record<string, unknown> }
+            console.log("Found function call:", functionCall)
+            functionCalls.set(functionCall.id, {
+              name: functionCall.name,
+              args: functionCall.args || {},
             })
           }
 
           // Check for function responses
           if ("function_response" in part && part.function_response) {
-            console.log("Found function response:", part.function_response)
-            const callId = part.function_response.id
+            const functionResponse = part.function_response as { id: string; response: unknown }
+            console.log("Found function response:", functionResponse)
+            const callId = functionResponse.id
             const call = functionCalls.get(callId)
 
             if (call) {
               toolCalls.push({
                 name: call.name,
                 args: call.args,
-                result: part.function_response.response,
+                result: functionResponse.response,
               })
               console.log("Created tool call:", {
                 name: call.name,
                 args: call.args,
-                result: part.function_response.response,
+                result: functionResponse.response,
               })
             }
           }
@@ -450,7 +457,8 @@ export function extractToolCalls(
       }
     }
   } // Handle legacy Task type for backward compatibility
-  else if (taskOrEvent.history && taskOrEvent.history.length > 0) {
+  else if ((taskOrEvent as { history?: unknown[] }).history && (taskOrEvent as { history?: unknown[] }).history!.length > 0) {
+    const legacyTask = taskOrEvent as { history: unknown[] }
     console.log("Processing legacy task history")
     // Keep the old logic for backward compatibility
     const functionCalls = new Map<
@@ -458,25 +466,27 @@ export function extractToolCalls(
       { name: string; args: Record<string, unknown> }
     >()
 
-    for (const event of taskOrEvent.history) {
-      if (event.content && event.content.parts) {
-        for (const part of event.content.parts) {
-          if (part.function_call) {
-            functionCalls.set(part.function_call.id, {
-              name: part.function_call.name,
-              args: part.function_call.args || {},
+    for (const event of legacyTask.history) {
+      const typedEvent = event as { content?: { parts?: unknown[] } }
+      if (typedEvent.content && typedEvent.content.parts) {
+        for (const part of typedEvent.content.parts) {
+          const typedPart = part as { function_call?: { id: string; name: string; args?: Record<string, unknown> }; function_response?: { id: string; response: unknown } }
+          if (typedPart.function_call) {
+            functionCalls.set(typedPart.function_call.id, {
+              name: typedPart.function_call.name,
+              args: typedPart.function_call.args || {},
             })
           }
 
-          if (part.function_response) {
-            const callId = part.function_response.id
+          if (typedPart.function_response) {
+            const callId = typedPart.function_response.id
             const call = functionCalls.get(callId)
 
             if (call) {
               toolCalls.push({
                 name: call.name,
                 args: call.args,
-                result: part.function_response.response,
+                result: typedPart.function_response.response,
               })
             }
           }
@@ -520,10 +530,10 @@ export function extractResponseText(
     // Check status message
     if (a2aTask.status && a2aTask.status.message) {
       // Handle legacy Content type in status message
-      const statusMessage = a2aTask.status.message as any
+      const statusMessage = a2aTask.status.message as { parts?: Array<{ text?: string }> }
       if (statusMessage.parts) {
         return statusMessage.parts
-          .map((part: any) => part.text || "")
+          .map((part: { text?: string }) => part.text || "")
           .join("")
       }
     }
@@ -544,18 +554,18 @@ export function extractResponseText(
   if ("kind" in taskOrEvent && taskOrEvent.kind === "status-update") {
     const statusEvent = taskOrEvent as TaskStatusUpdateEvent
     if (statusEvent.status.message) {
-      const statusMessage = statusEvent.status.message as any
+      const statusMessage = statusEvent.status.message as { kind?: string; parts?: Array<{ kind?: string; text?: string }> }
       // Handle A2A message format with kind and parts
       if (statusMessage.kind === "message" && statusMessage.parts) {
         return statusMessage.parts
-          .filter((part: any) => part.kind === "text")
-          .map((part: any) => part.text || "")
+          .filter((part: { kind?: string }) => part.kind === "text")
+          .map((part: { text?: string }) => part.text || "")
           .join("")
       }
       // Handle legacy Content type in status message
       if (statusMessage.parts) {
         return statusMessage.parts
-          .map((part: any) => part.text || "")
+          .map((part: { text?: string }) => part.text || "")
           .join("")
       }
     }
@@ -599,9 +609,9 @@ export interface ChatSummary {
 export interface ChatWithHistory {
   contextId: string
   title: string
-  messages: any[]
-  tasks: any[]
-  metadata: Record<string, any>
+  messages: unknown[]
+  tasks: unknown[]
+  metadata: Record<string, unknown>
   createTime: number
   updateTime: number
 }
@@ -703,7 +713,7 @@ export async function deleteChatById(contextId: string): Promise<boolean> {
 
 export async function updateChatMetadata(
   contextId: string,
-  metadata: Record<string, any>,
+  metadata: Record<string, unknown>,
 ): Promise<boolean> {
   try {
     const response = await fetch(`${API_BASE_URL}/api/chats/${contextId}`, {

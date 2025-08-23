@@ -274,7 +274,7 @@ export default function AgentEditor() {
         return
       }
 
-      let toolDataSchema: Record<string, any> = {}
+      let toolDataSchema: Record<string, unknown> = {}
 
       if (toolType === "a2a_call") {
         if (!agentUrl) {
@@ -316,7 +316,7 @@ export default function AgentEditor() {
         // Try to parse the schema as JSON for other tool types
         try {
           toolDataSchema = JSON.parse(toolSchema || "{}")
-        } catch (error) {
+        } catch (_error) {
           toast.error("Invalid schema", {
             description: "The tool schema must be valid JSON.",
           })
@@ -377,7 +377,7 @@ export default function AgentEditor() {
       setAgentUrl(tool.tool_schema.agent_url)
     } else if (tool.type === "mcp_server" && tool.tool_schema) {
       setToolType(tool.type)
-      setMcpServerUrl(tool.tool_schema.server_url || "")
+      setMcpServerUrl(String((tool.tool_schema as { server_url?: string }).server_url || ""))
     } else {
       setToolType(tool.type)
       setToolSchema(JSON.stringify(tool.tool_schema || {}, null, 2))

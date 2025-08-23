@@ -14,7 +14,7 @@ import { cn } from "@/lib/utils.ts"
 export interface JSONRPCError {
   code: number
   message: string
-  data?: any
+  data?: unknown
   user_message?: string
   recovery_action?: string
 }

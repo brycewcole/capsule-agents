@@ -5,7 +5,7 @@ import { toast } from "@/hooks/use-toast.ts"
 export interface JSONRPCError {
   code: number
   message: string
-  data?: any
+  data?: unknown
   user_message?: string
   recovery_action?: string
 }
@@ -21,8 +21,8 @@ export function isJSONRPCError(error: unknown): error is JSONRPCError {
     error !== null &&
     "code" in error &&
     "message" in error &&
-    typeof (error as any).code === "number" &&
-    typeof (error as any).message === "string"
+    typeof (error as JSONRPCError).code === "number" &&
+    typeof (error as JSONRPCError).message === "string"
   )
 }
 
@@ -32,7 +32,7 @@ export function isAPIError(error: unknown): error is APIError {
     typeof error === "object" &&
     error !== null &&
     "error" in error &&
-    isJSONRPCError((error as any).error)
+    isJSONRPCError((error as APIError).error)
   )
 }
 
@@ -109,7 +109,6 @@ export function showErrorToast(error: unknown, options?: {
     title: options?.title || "Error",
     description,
     variant: "default",
-    action: options?.action as any,
   })
 }
 
@@ -122,7 +121,6 @@ export function showSuccessToast(message: string, options?: {
     title: options?.title || "Success",
     description: message,
     variant: "default",
-    action: options?.action as any,
   })
 }
 
@@ -135,7 +133,6 @@ export function showWarningToast(message: string, options?: {
     title: options?.title || "Warning",
     description: message,
     variant: "default",
-    action: options?.action as any,
   })
 }
 
@@ -148,7 +145,6 @@ export function showInfoToast(message: string, options?: {
     title: options?.title || "Info",
     description: message,
     variant: "default",
-    action: options?.action as any,
   })
 }
 

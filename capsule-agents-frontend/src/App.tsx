@@ -41,7 +41,9 @@ function App() {
         const isWide = globalThis.innerWidth >= 1024 // lg breakpoint
         setIsConversationsOpen(isWide)
       }
-    } catch {}
+    } catch {
+      // Ignore localStorage errors
+    }
   }, [])
 
   // Persist conversations panel state across reloads
@@ -51,7 +53,9 @@ function App() {
         "chat:conversationsOpen",
         String(isConversationsOpen),
       )
-    } catch {}
+    } catch {
+      // Ignore localStorage errors
+    }
   }, [isConversationsOpen])
 
   // Auto-toggle on resize only if user hasn't set a preference
@@ -79,7 +83,9 @@ function App() {
         // Load chat data for saved id
         handleChatSelect(savedId)
       }
-    } catch {}
+    } catch {
+      // Ignore localStorage errors
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -91,7 +97,9 @@ function App() {
       } else {
         localStorage.removeItem("chat:lastContextId")
       }
-    } catch {}
+    } catch {
+      // Ignore localStorage errors
+    }
   }, [currentChatId])
 
   // Keyboard shortcut: Cmd/Ctrl+K to toggle conversations panel

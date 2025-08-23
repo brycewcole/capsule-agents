@@ -1,5 +1,4 @@
 import {
-  type ConfigFile,
   ConfigFileSchema,
   transformConfigToAgentInfo,
 } from "./config-schema.ts"
