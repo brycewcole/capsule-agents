@@ -38,7 +38,7 @@ function App() {
         setIsConversationsOpen(saved === "true")
         convPrefLockedRef.current = true
       } else {
-        const isWide = window.innerWidth >= 1024 // lg breakpoint
+        const isWide = globalThis.innerWidth >= 1024 // lg breakpoint
         setIsConversationsOpen(isWide)
       }
     } catch {}
@@ -58,11 +58,11 @@ function App() {
   useEffect(() => {
     const onResize = () => {
       if (convPrefLockedRef.current) return
-      const isWide = window.innerWidth >= 1024
+      const isWide = globalThis.innerWidth >= 1024
       setIsConversationsOpen(isWide)
     }
-    window.addEventListener("resize", onResize)
-    return () => window.removeEventListener("resize", onResize)
+    globalThis.addEventListener("resize", onResize)
+    return () => globalThis.removeEventListener("resize", onResize)
   }, [])
 
   useEffect(() => {
@@ -105,8 +105,8 @@ function App() {
         setIsConversationsOpen((v) => !v)
       }
     }
-    window.addEventListener("keydown", handler)
-    return () => window.removeEventListener("keydown", handler)
+    globalThis.addEventListener("keydown", handler)
+    return () => globalThis.removeEventListener("keydown", handler)
   }, [])
 
   const handleLogin = async (password: string) => {
