@@ -1,0 +1,27 @@
+name: PR Quality
+
+on: push
+
+jobs:
+  quality-checks:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        check: [format, lint, test]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x # Run with latest stable Deno.
+
+      - name: Run format check
+        if: matrix.check == 'format'
+        run: deno fmt --check
+
+      - name: Run lint check
+        if: matrix.check == 'lint'
+        run: deno lint
+
+      - name: Run tests
+        if: matrix.check == 'test'
+        run: deno test --allow-all
