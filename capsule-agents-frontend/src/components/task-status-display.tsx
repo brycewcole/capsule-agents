@@ -4,16 +4,16 @@ import { useState } from "react"
 import { Badge } from "./ui/badge.tsx"
 import { Card, CardContent, CardHeader } from "./ui/card.tsx"
 import { Button } from "./ui/button.tsx"
-import { 
-  ChevronDown, 
-  ChevronUp, 
-  Clock, 
-  CheckCircle, 
-  XCircle, 
-  AlertCircle, 
-  Loader2, 
+import {
+  AlertCircle,
+  CheckCircle,
+  ChevronDown,
+  ChevronUp,
+  Clock,
+  Loader2,
+  PauseCircle,
   PlayCircle,
-  PauseCircle
+  XCircle,
 } from "lucide-react"
 import { cn } from "../lib/utils.ts"
 import { type A2ATask } from "../lib/api.ts"
@@ -36,7 +36,7 @@ export function TaskStatusDisplay({ task, className }: TaskStatusDisplayProps) {
           icon: PlayCircle,
           color: "bg-blue-100 text-blue-800 border-blue-200",
           label: "Submitted",
-          description: "Task has been submitted and is queued for processing"
+          description: "Task has been submitted and is queued for processing",
         }
       case "working":
         return {
@@ -44,42 +44,42 @@ export function TaskStatusDisplay({ task, className }: TaskStatusDisplayProps) {
           color: "bg-yellow-100 text-yellow-800 border-yellow-200",
           label: "Working",
           description: "Agent is actively processing the task",
-          animated: true
+          animated: true,
         }
       case "input-required":
         return {
           icon: PauseCircle,
           color: "bg-orange-100 text-orange-800 border-orange-200",
           label: "Input Required",
-          description: "Task is waiting for additional input"
+          description: "Task is waiting for additional input",
         }
       case "completed":
         return {
           icon: CheckCircle,
           color: "bg-green-100 text-green-800 border-green-200",
           label: "Completed",
-          description: "Task has been completed successfully"
+          description: "Task has been completed successfully",
         }
       case "canceled":
         return {
           icon: XCircle,
           color: "bg-gray-100 text-gray-800 border-gray-200",
           label: "Canceled",
-          description: "Task was canceled before completion"
+          description: "Task was canceled before completion",
         }
       case "failed":
         return {
           icon: AlertCircle,
           color: "bg-red-100 text-red-800 border-red-200",
           label: "Failed",
-          description: "Task encountered an error and could not complete"
+          description: "Task encountered an error and could not complete",
         }
       default:
         return {
           icon: AlertCircle,
           color: "bg-gray-100 text-gray-800 border-gray-200",
           label: "Unknown",
-          description: "Task is in an unknown state"
+          description: "Task is in an unknown state",
         }
     }
   }
@@ -93,12 +93,15 @@ export function TaskStatusDisplay({ task, className }: TaskStatusDisplayProps) {
       <CardHeader className="pb-2">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <Badge className={cn("gap-1.5", statusInfo.color)} variant="outline">
-              <StatusIcon 
+            <Badge
+              className={cn("gap-1.5", statusInfo.color)}
+              variant="outline"
+            >
+              <StatusIcon
                 className={cn(
-                  "h-3 w-3", 
-                  statusInfo.animated && "animate-spin"
-                )} 
+                  "h-3 w-3",
+                  statusInfo.animated && "animate-spin",
+                )}
               />
               {statusInfo.label}
             </Badge>
@@ -112,11 +115,9 @@ export function TaskStatusDisplay({ task, className }: TaskStatusDisplayProps) {
             onClick={() => setIsExpanded(!isExpanded)}
             className="h-6 w-6 p-0"
           >
-            {isExpanded ? (
-              <ChevronUp className="h-3 w-3" />
-            ) : (
-              <ChevronDown className="h-3 w-3" />
-            )}
+            {isExpanded
+              ? <ChevronUp className="h-3 w-3" />
+              : <ChevronDown className="h-3 w-3" />}
           </Button>
         </div>
         {!isExpanded && (
@@ -132,14 +133,18 @@ export function TaskStatusDisplay({ task, className }: TaskStatusDisplayProps) {
             <p className="text-sm text-muted-foreground">
               {statusInfo.description}
             </p>
-            
+
             <div className="grid grid-cols-2 gap-4 text-sm">
               <div>
-                <span className="font-medium text-muted-foreground">Task ID:</span>
+                <span className="font-medium text-muted-foreground">
+                  Task ID:
+                </span>
                 <p className="font-mono text-xs mt-1">{task.id}</p>
               </div>
               <div>
-                <span className="font-medium text-muted-foreground">Context ID:</span>
+                <span className="font-medium text-muted-foreground">
+                  Context ID:
+                </span>
                 <p className="font-mono text-xs mt-1">{task.contextId}</p>
               </div>
             </div>
@@ -148,21 +153,28 @@ export function TaskStatusDisplay({ task, className }: TaskStatusDisplayProps) {
               <div className="flex items-center gap-2 text-xs text-muted-foreground">
                 <Clock className="h-3 w-3" />
                 <span>
-                  Updated: {new Date(task.status.timestamp).toLocaleTimeString()}
+                  Updated:{" "}
+                  {new Date(task.status.timestamp).toLocaleTimeString()}
                 </span>
               </div>
             )}
 
-            {'sessionId' in task && (task as any).sessionId && (
+            {"sessionId" in task && (task as any).sessionId && (
               <div>
-                <span className="font-medium text-muted-foreground text-sm">Session ID:</span>
-                <p className="font-mono text-xs mt-1">{String((task as any).sessionId)}</p>
+                <span className="font-medium text-muted-foreground text-sm">
+                  Session ID:
+                </span>
+                <p className="font-mono text-xs mt-1">
+                  {String((task as any).sessionId)}
+                </p>
               </div>
             )}
 
             {task.metadata && Object.keys(task.metadata).length > 0 && (
               <div>
-                <span className="font-medium text-muted-foreground text-sm">Metadata:</span>
+                <span className="font-medium text-muted-foreground text-sm">
+                  Metadata:
+                </span>
                 <pre className="bg-muted p-2 rounded text-xs mt-1 overflow-auto">
                   {JSON.stringify(task.metadata, null, 2)}
                 </pre>

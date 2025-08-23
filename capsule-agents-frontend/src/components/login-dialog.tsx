@@ -1,9 +1,15 @@
-import { useState } from 'react'
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "./ui/dialog.tsx"
+import { useState } from "react"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "./ui/dialog.tsx"
 import { Button } from "./ui/button.tsx"
 import { Input } from "./ui/input.tsx"
 import { Label } from "./ui/label.tsx"
-import { LockIcon } from 'lucide-react'
+import { LockIcon } from "lucide-react"
 
 interface LoginDialogProps {
   open: boolean
@@ -12,13 +18,13 @@ interface LoginDialogProps {
 }
 
 export function LoginDialog({ open, onLogin, error }: LoginDialogProps) {
-  const [password, setPassword] = useState('')
+  const [password, setPassword] = useState("")
   const [isLoading, setIsLoading] = useState(false)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!password.trim()) return
-    
+
     setIsLoading(true)
     try {
       await onLogin(password)
@@ -39,7 +45,7 @@ export function LoginDialog({ open, onLogin, error }: LoginDialogProps) {
             Enter the admin password to access the configurator
           </DialogDescription>
         </DialogHeader>
-        
+
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
             <Label htmlFor="username">Username</Label>
@@ -50,32 +56,35 @@ export function LoginDialog({ open, onLogin, error }: LoginDialogProps) {
               className="bg-muted"
             />
           </div>
-          
+
           <div className="space-y-2">
             <Label htmlFor="password">Password</Label>
             <Input
               id="password"
               type="password"
               value={password}
-              onChange={(e) => setPassword((e.target as HTMLInputElement | HTMLTextAreaElement).value)}
+              onChange={(e) =>
+                setPassword(
+                  (e.target as HTMLInputElement | HTMLTextAreaElement).value,
+                )}
               placeholder="Enter admin password"
               autoFocus
               disabled={isLoading}
             />
           </div>
-          
+
           {error && (
             <div className="text-sm text-destructive">
               {error}
             </div>
           )}
-          
-          <Button 
-            type="submit" 
-            className="w-full" 
+
+          <Button
+            type="submit"
+            className="w-full"
             disabled={!password.trim() || isLoading}
           >
-            {isLoading ? 'Logging in...' : 'Login'}
+            {isLoading ? "Logging in..." : "Login"}
           </Button>
         </form>
       </DialogContent>

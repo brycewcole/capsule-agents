@@ -1,48 +1,48 @@
 {
-    "version": "0.2.0",
-    "configurations": [
-        {
-            "name": "Python Debugger: FastAPI",
-            "type": "debugpy",
-            "request": "launch",
-            "module": "uvicorn",
-            "args": [
-                "backend.app.main:app",
-                "--reload",
-                "--host",
-                "0.0.0.0",
-                "--port",
-                "8000"
-            ],
-            "env": {
-                "STATIC_DIR": "capsule-agents-frontend/dist"
-            },
-            "envFile": "${workspaceFolder}/.env",
-            "jinja": true,
-            "console": "integratedTerminal",
-            "cwd": "${workspaceFolder}"
-        },
-        {
-            "name": "Build Frontend",
-            "type": "node",
-            "request": "launch",
-            "cwd": "${workspaceFolder}/capsule-agents-frontend",
-            "runtimeExecutable": "npm",
-            "runtimeArgs": [
-                "run",
-                "build"
-            ],
-            "console": "integratedTerminal"
-        }
-    ],
-    "compounds": [
-        {
-            "name": "Run Full-Stack Locally (Single Server - Recommended)",
-            "configurations": [
-                "Build Frontend",
-                "Python Debugger: FastAPI"
-            ],
-            "stopAll": true
-        }
-    ]
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Python Debugger: FastAPI",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "uvicorn",
+      "args": [
+        "backend.app.main:app",
+        "--reload",
+        "--host",
+        "0.0.0.0",
+        "--port",
+        "8000"
+      ],
+      "env": {
+        "STATIC_DIR": "capsule-agents-frontend/dist"
+      },
+      "envFile": "${workspaceFolder}/.env",
+      "jinja": true,
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "name": "Build Frontend",
+      "type": "node",
+      "request": "launch",
+      "cwd": "${workspaceFolder}/capsule-agents-frontend",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "run",
+        "build"
+      ],
+      "console": "integratedTerminal"
+    }
+  ],
+  "compounds": [
+    {
+      "name": "Run Full-Stack Locally (Single Server - Recommended)",
+      "configurations": [
+        "Build Frontend",
+        "Python Debugger: FastAPI"
+      ],
+      "stopAll": true
+    }
+  ]
 }

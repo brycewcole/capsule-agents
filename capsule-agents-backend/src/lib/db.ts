@@ -1,16 +1,16 @@
-import { Database } from 'better-sqlite3';
+import { Database } from "better-sqlite3"
 
-const dbPath = './data/sessions.db';
+const dbPath = "./data/sessions.db"
 
-let db: Database;
+let db: Database
 
 export function getDb() {
   if (!db) {
-    db = new Database(dbPath);
-    db.exec('PRAGMA journal_mode = WAL');
-    createTables(db);
+    db = new Database(dbPath)
+    db.exec("PRAGMA journal_mode = WAL")
+    createTables(db)
   }
-  return db;
+  return db
 }
 
 function createTables(db: Database) {
@@ -79,36 +79,38 @@ function createTables(db: Database) {
         created_at        REAL NOT NULL,
         updated_at        REAL NOT NULL
     );
-  `);
-  
+  `)
+
   // Insert default agent info if it doesn't exist
   try {
-    const existingAgent = db.prepare("SELECT 1 FROM agent_info WHERE key = 1").get();
+    const existingAgent = db.prepare("SELECT 1 FROM agent_info WHERE key = 1")
+      .get()
     if (!existingAgent) {
       const mockAgent = {
-        name: "capsule_agent", 
-        description: "You are a Capsule agent. You are a friendly and helpful assistant.",
+        name: "capsule_agent",
+        description:
+          "You are a Capsule agent. You are a friendly and helpful assistant.",
         model_name: "openai/gpt-4o",
         model_parameters: {},
-        tools: []
-      };
-      
+        tools: [],
+      }
+
       const stmt = db.prepare(`
         INSERT INTO agent_info(key, name, description, model_name, model_parameters, tools) 
         VALUES(1, ?, ?, ?, ?, ?)
-      `);
+      `)
       stmt.run(
         mockAgent.name,
         mockAgent.description,
         mockAgent.model_name,
         JSON.stringify(mockAgent.model_parameters),
-        JSON.stringify(mockAgent.tools)
-      );
-      console.log('Default agent info inserted.');
+        JSON.stringify(mockAgent.tools),
+      )
+      console.log("Default agent info inserted.")
     }
   } catch (error) {
-    console.error('Error initializing default agent info:', error);
+    console.error("Error initializing default agent info:", error)
   }
-  
-  console.log('Database tables created or already exist.');
+
+  console.log("Database tables created or already exist.")
 }

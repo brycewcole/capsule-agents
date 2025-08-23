@@ -9,15 +9,17 @@ Capsule Agents is a framework for creating Agent-to-Agent (A2A) protocol compati
 ## Architecture
 
 ### Backend (`capsule-agents-backend/`)
+
 - **Framework**: Hono web server running on Deno
 - **Language**: TypeScript
 - **Database**: SQLite with better-sqlite3 (`jsr:@db/sqlite`)
-- **Key Dependencies**: 
+- **Key Dependencies**:
   - A2A SDK (`@a2a-js/sdk`) for agent protocol compatibility
   - AI SDK (`ai`, `@ai-sdk/*`) for LLM integrations (OpenAI, Anthropic, Google)
   - Zod for schema validation
 
 ### Frontend (`capsule-agents-frontend/`)
+
 - **Framework**: React with TypeScript
 - **Build Tool**: Vite running on Deno
 - **UI**: Radix UI components with Tailwind CSS
@@ -47,6 +49,7 @@ docker run --env-file .env -p 8080:80 capsule-agents
 ## Environment Configuration
 
 Required environment variables (create `.env` file):
+
 ```
 OPENAI_API_KEY=sk-your-openai-key
 BRAVE_API_KEY=your-brave-search-key  
@@ -56,27 +59,31 @@ ADMIN_PASSWORD=admin
 ## API Endpoints
 
 ### A2A Protocol
+
 - `GET /.well-known/agent.json` - Agent card/capabilities
 - `POST /` - JSON-RPC A2A endpoint with SSE streaming support
 
-### Agent Management  
+### Agent Management
+
 - `GET /api/agent` - Get agent configuration
 - `PUT /api/agent` - Update agent configuration
 - `GET /api/models` - Get available AI models
 
 ### Chat Management
+
 - `GET /api/chats` - List user chats
 - `GET /api/chats/:contextId` - Get specific chat with history
 - `DELETE /api/chats/:contextId` - Delete chat
 - `PATCH /api/chats/:contextId` - Update chat metadata
 
 ### UI
+
 - `/editor` - Agent configuration interface
 
 ## Code Conventions
 
 - **Formatting**: Deno fmt (2 spaces, no semicolons, double quotes)
-- **Linting**: Deno lint with recommended rules  
+- **Linting**: Deno lint with recommended rules
 - **Imports**: Use JSR imports for Deno packages, npm: for Node packages
 - **File Structure**: Organized by feature in `src/lib/` and `src/tools/`
 - **Error Handling**: Comprehensive logging with `@std/log`, structured error responses
@@ -85,15 +92,17 @@ ADMIN_PASSWORD=admin
 ## Database Schema
 
 SQLite database stored in `/app/data/` (containerized) with tables:
+
 - `chats` - Chat metadata and conversation history
-- `tasks` - A2A task execution records  
+- `tasks` - A2A task execution records
 - `agent_config` - Agent configuration persistence
 
 ## Tool System
 
 Built-in MCP-compatible tools:
+
 - **File Access**: Read/write files in agent workspace
-- **Brave Search**: Web search capabilities  
+- **Brave Search**: Web search capabilities
 - **Memory**: Persistent conversation memory
 - **A2A**: Communication with other agents
 

@@ -91,15 +91,15 @@ export function showErrorToast(error: unknown, options?: {
   const message = getErrorMessage(error)
   const recoveryAction = getRecoveryAction(error)
   const code = getErrorCode(error)
-  
+
   // Build clean description
   let description = message
-  
+
   // Add error code if available
   if (code) {
     description += `\n\nError Code: ${code}`
   }
-  
+
   // Add recovery action if available
   if (recoveryAction) {
     description += `\n\n💡 ${recoveryAction}`
@@ -202,7 +202,7 @@ export function isA2AError(error: unknown): boolean {
 // Get MCP-specific error guidance
 export function getMCPErrorGuidance(error: unknown): string | undefined {
   const code = getErrorCode(error)
-  
+
   switch (code) {
     case -32016:
       return "Check if the MCP server is running and the URL is correct"
@@ -232,11 +232,15 @@ export function createUserFriendlyErrorMessage(error: unknown): string {
     [-32013]: "Please check your input and try again.",
     [-32014]: "The request timed out. Please try again.",
     [-32015]: "Connection failed. Please check your internet connection.",
-    [-32016]: "MCP server is not running or unreachable. Start the MCP server and try again.",
+    [-32016]:
+      "MCP server is not running or unreachable. Start the MCP server and try again.",
     [-32017]: "The requested tool operation failed. Check tool configuration.",
-    [-32018]: "MCP server configuration is invalid. Check settings and server URL.",
-    [-32019]: "A2A agent is not reachable. Check the agent URL and network connection.",
-    [-32020]: "A2A agent endpoint not found (404). Verify the URL and agent deployment.",
+    [-32018]:
+      "MCP server configuration is invalid. Check settings and server URL.",
+    [-32019]:
+      "A2A agent is not reachable. Check the agent URL and network connection.",
+    [-32020]:
+      "A2A agent endpoint not found (404). Verify the URL and agent deployment.",
   }
 
   const context = contextMap[code]

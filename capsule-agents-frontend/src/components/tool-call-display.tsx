@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader } from "./ui/card.tsx"
 import { Badge } from "./ui/badge.tsx"
 import { Button } from "./ui/button.tsx"
 import { Separator } from "./ui/separator.tsx"
-import { ChevronDown, ChevronRight, Settings, ArrowRight } from "lucide-react"
+import { ArrowRight, ChevronDown, ChevronRight, Settings } from "lucide-react"
 
 type ToolCall = {
   name: string
@@ -47,22 +47,22 @@ function ToolCallItem({ toolCall }: { toolCall: ToolCall }) {
             onClick={() => setIsExpanded(!isExpanded)}
             className="h-6 w-6 p-0"
           >
-            {isExpanded ? (
-              <ChevronDown className="h-3 w-3" />
-            ) : (
-              <ChevronRight className="h-3 w-3" />
-            )}
+            {isExpanded
+              ? <ChevronDown className="h-3 w-3" />
+              : <ChevronRight className="h-3 w-3" />}
           </Button>
         </div>
       </CardHeader>
-      
+
       {isExpanded && (
         <CardContent className="pt-0 pb-3 space-y-3">
           {/* Arguments Section */}
           <div>
             <div className="flex items-center gap-2 mb-1">
               <ArrowRight className="h-3 w-3 text-muted-foreground" />
-              <span className="text-xs font-medium text-foreground">Arguments</span>
+              <span className="text-xs font-medium text-foreground">
+                Arguments
+              </span>
             </div>
             <div className="bg-muted/50 rounded-md p-2 border">
               <pre className="text-xs font-mono text-foreground whitespace-pre-wrap break-all overflow-hidden">
@@ -70,7 +70,7 @@ function ToolCallItem({ toolCall }: { toolCall: ToolCall }) {
               </pre>
             </div>
           </div>
-          
+
           {toolCall.result !== undefined && (
             <>
               <Separator />
@@ -78,7 +78,9 @@ function ToolCallItem({ toolCall }: { toolCall: ToolCall }) {
               <div>
                 <div className="flex items-center gap-2 mb-1">
                   <ArrowRight className="h-3 w-3 text-muted-foreground" />
-                  <span className="text-xs font-medium text-foreground">Result</span>
+                  <span className="text-xs font-medium text-foreground">
+                    Result
+                  </span>
                 </div>
                 <div className="bg-muted/30 rounded-md p-2 border">
                   <pre className="text-xs font-mono text-foreground whitespace-pre-wrap break-all overflow-hidden">
@@ -103,7 +105,7 @@ export function ToolCallDisplay({ toolCalls }: ToolCallDisplayProps) {
     <div className="my-2 space-y-1">
       <div className="text-xs font-medium text-muted-foreground mb-1 flex items-center gap-1">
         <Settings className="h-3 w-3" />
-        Tool {toolCalls.length === 1 ? 'Call' : 'Calls'} ({toolCalls.length})
+        Tool {toolCalls.length === 1 ? "Call" : "Calls"} ({toolCalls.length})
       </div>
       {toolCalls.map((toolCall, index) => (
         <ToolCallItem key={index} toolCall={toolCall} />

@@ -27,40 +27,38 @@ Capsule Agents is a framework designed with the goal of making it as easy as pos
 1. Ensure [Docker](https://docs.docker.com/get-started/get-docker/) is installed on your system
 
 2. **Set up environment variables**
-  Create a `.env` file with
-  
-  ```env
-  # Required for OpenAI
-  OPENAI_API_KEY=sk-abc123
-  
-  # Required for Search
-  BRAVE_API_KEY=your_brave_search_api_key
-  
-  # Used to restrict access to the configure page
-  ADMIN_PASSWORD=admin
-  ```
+   Create a `.env` file with
+
+```env
+# Required for OpenAI
+OPENAI_API_KEY=sk-abc123
+
+# Required for Search
+BRAVE_API_KEY=your_brave_search_api_key
+
+# Used to restrict access to the configure page
+ADMIN_PASSWORD=admin
+```
 
 3. **Run!**
    ```bash
    docker run --env-file .env -e AGENT_URL=http://host.docker.internal:8080 -p 8080:80 -it brycewcole/capsule-agents:latest
    ```
 
-3. **Access the agent**
+4. **Access the agent**
    - Configuration UI: http://localhost:8080/editor
    - Agent endpoint: http://localhost:8080
-
 
 ## 🔗 Agent-to-Agent Communication
 
 Connect agents together by adding A2A tools in the configuration panel:
 
 1. **Add A2A Tool**: In the tools section, click "Add Custom Tool"
-2. **Tool Type**: Select "a2a" 
+2. **Tool Type**: Select "a2a"
 3. **Agent URL**: Enter the target agent's URL (e.g., `http://localhost:8001`)
 4. **Save**: The tool will be available to your agent
 
 Your agent can now communicate with other A2A-compatible agents!
-
 
 ## License
 

@@ -1,7 +1,13 @@
-import { AlertCircle, RefreshCw, X, AlertTriangle, Info } from "lucide-react"
+import { AlertCircle, AlertTriangle, Info, RefreshCw, X } from "lucide-react"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert.tsx"
 import { Button } from "@/components/ui/button.tsx"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card.tsx"
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card.tsx"
 import { cn } from "@/lib/utils.ts"
 
 // Error types matching backend JSON-RPC errors
@@ -28,7 +34,7 @@ export function ErrorDisplay({
   onRetry,
   onDismiss,
   className,
-  variant = "destructive"
+  variant = "destructive",
 }: ErrorDisplayProps) {
   const getErrorDetails = () => {
     if (typeof error === "string") {
@@ -36,30 +42,30 @@ export function ErrorDisplay({
         message: error,
         userMessage: error,
         recoveryAction: undefined,
-        code: undefined
+        code: undefined,
       }
     }
-    
+
     if (error instanceof Error) {
       return {
         message: error.message,
         userMessage: error.message,
         recoveryAction: undefined,
-        code: undefined
+        code: undefined,
       }
     }
-    
+
     // JSONRPCError
     return {
       message: error.message,
       userMessage: error.user_message || error.message,
       recoveryAction: error.recovery_action,
-      code: error.code
+      code: error.code,
     }
   }
-  
+
   const { userMessage, recoveryAction, code } = getErrorDetails()
-  
+
   const getIcon = () => {
     switch (variant) {
       case "warning":
@@ -70,7 +76,7 @@ export function ErrorDisplay({
         return <AlertCircle className="h-4 w-4" />
     }
   }
-  
+
   const getAlertVariant = () => {
     switch (variant) {
       case "warning":
@@ -81,7 +87,7 @@ export function ErrorDisplay({
         return "destructive"
     }
   }
-  
+
   return (
     <Alert variant={getAlertVariant()} className={cn("relative", className)}>
       {getIcon()}
@@ -110,7 +116,7 @@ export function ErrorDisplay({
             💡 <strong>Suggested Action:</strong> {recoveryAction}
           </p>
         )}
-        
+
         {onRetry && (
           <Button
             variant="outline"
@@ -131,7 +137,7 @@ export function ErrorDisplay({
 export function InlineErrorDisplay({
   error,
   onRetry,
-  className
+  className,
 }: {
   error: JSONRPCError | Error | string
   onRetry?: () => void
@@ -142,9 +148,14 @@ export function InlineErrorDisplay({
     if (error instanceof Error) return error.message
     return error.user_message || error.message
   }
-  
+
   return (
-    <div className={cn("flex items-center gap-2 text-sm text-destructive", className)}>
+    <div
+      className={cn(
+        "flex items-center gap-2 text-sm text-destructive",
+        className,
+      )}
+    >
       <AlertCircle className="h-4 w-4" />
       <span>{getErrorMessage()}</span>
       {onRetry && (
@@ -167,7 +178,7 @@ export function ErrorCard({
   title = "Something went wrong",
   onRetry,
   onDismiss,
-  className
+  className,
 }: ErrorDisplayProps) {
   const getErrorDetails = () => {
     if (typeof error === "string") {
@@ -175,29 +186,29 @@ export function ErrorCard({
         message: error,
         userMessage: error,
         recoveryAction: undefined,
-        code: undefined
+        code: undefined,
       }
     }
-    
+
     if (error instanceof Error) {
       return {
         message: error.message,
         userMessage: error.message,
         recoveryAction: undefined,
-        code: undefined
+        code: undefined,
       }
     }
-    
+
     return {
       message: error.message,
       userMessage: error.user_message || error.message,
       recoveryAction: error.recovery_action,
-      code: error.code
+      code: error.code,
     }
   }
-  
+
   const { userMessage, recoveryAction, code } = getErrorDetails()
-  
+
   return (
     <Card className={cn("border-destructive", className)}>
       <CardHeader className="pb-3">
@@ -230,7 +241,7 @@ export function ErrorCard({
             💡 <strong>Suggested Action:</strong> {recoveryAction}
           </p>
         )}
-        
+
         {onRetry && (
           <Button
             variant="outline"
@@ -249,7 +260,7 @@ export function ErrorCard({
 // Error boundary fallback component
 export function ErrorBoundaryFallback({
   error,
-  resetErrorBoundary
+  resetErrorBoundary,
 }: {
   error: Error
   resetErrorBoundary: () => void

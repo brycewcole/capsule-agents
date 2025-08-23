@@ -1,15 +1,15 @@
 {
-    "[python]": {
-        "editor.defaultFormatter": "charliermarsh.ruff",
-        "editor.formatOnSave": true,
-        "editor.codeActionsOnSave": {
-            "source.fixAll": "explicit",
-            "source.organizeImports": "explicit"
-        },
-    },
-    "deno.enable": true,
-    "cSpell.words": [
-        "uuidv",
-        "denoland"
-    ]
+  "[python]": {
+    "editor.defaultFormatter": "charliermarsh.ruff",
+    "editor.formatOnSave": true,
+    "editor.codeActionsOnSave": {
+      "source.fixAll": "explicit",
+      "source.organizeImports": "explicit"
+    }
+  },
+  "deno.enable": true,
+  "cSpell.words": [
+    "uuidv",
+    "denoland"
+  ]
 }
