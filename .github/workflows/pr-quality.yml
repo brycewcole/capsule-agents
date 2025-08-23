@@ -7,7 +7,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        check: [format, lint]
+        check: [format, lint, check]
     steps:
       - uses: actions/checkout@v4
       - uses: denoland/setup-deno@v2
