@@ -43,7 +43,11 @@ export function createChatWithId(contextId: string, userId: string): void {
     now,
     now,
   )
-  log.info(`createChatWithId result: ${(result as unknown as { changes: number }).changes} rows affected`)
+  log.info(
+    `createChatWithId result: ${
+      (result as unknown as { changes: number }).changes
+    } rows affected`,
+  )
 }
 
 export function loadChat(contextId: string): UIMessage[] {
@@ -63,11 +67,12 @@ export function loadChat(contextId: string): UIMessage[] {
     // Attach DB metadata for frontend timeline features
     if (msg && typeof msg === "object") {
       if (!msg.id) msg.id = row.id
-        ; (msg as UIMessage & { timestamp?: number }).timestamp = row.timestamp
+      ;(msg as UIMessage & { timestamp?: number }).timestamp = row.timestamp
       if (!msg.role && row.author) {
-        ; (msg as UIMessage & { role?: "system" | "user" | "assistant" }).role = row.author === "assistant"
-          ? "assistant"
-          : row.author as "system" | "user" | "assistant"
+        ;(msg as UIMessage & { role?: "system" | "user" | "assistant" }).role =
+          row.author === "assistant"
+            ? "assistant"
+            : row.author as "system" | "user" | "assistant"
       }
     }
     return msg as UIMessage
@@ -164,13 +169,21 @@ export interface ChatWithHistory {
 // Extract text from a Vercel UIMessage, handling both legacy {content} and current {parts}
 function extractTextFromUIMessage(msg: UIMessage | null | undefined): string {
   if (msg == null) return ""
-  if (typeof (msg as any).content === "string" && (msg as any).content.length > 0) {
+  if (
+    typeof (msg as any).content === "string" && (msg as any).content.length > 0
+  ) {
     return (msg as any).content
   }
   // Vercel UIMessage: parts: [{ type: 'text', text: string }, ...]
   if (Array.isArray(msg.parts)) {
     return msg.parts
-      .map((p) => (p && typeof p === "object" && "text" in p && typeof p.text === "string" ? p.text : ""))
+      .map((
+        p,
+      ) => (p && typeof p === "object" && "text" in p &&
+          typeof p.text === "string"
+        ? p.text
+        : "")
+      )
       .join("")
       .trim()
   }

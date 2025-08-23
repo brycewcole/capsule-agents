@@ -183,7 +183,15 @@ export default function ChatInterface({
       console.log("Loading initial chat data:", initialChatData)
 
       // Convert backend messages to frontend Message format
-      const convertedMessages: Message[] = (initialChatData.messages as Array<{ role?: string; content?: string; parts?: Array<{ text?: string }>; toolCalls?: unknown; timestamp?: number }>).map(
+      const convertedMessages: Message[] = (initialChatData.messages as Array<
+        {
+          role?: string
+          content?: string
+          parts?: Array<{ text?: string }>
+          toolCalls?: unknown
+          timestamp?: number
+        }
+      >).map(
         (msg) => {
           // Normalize role: backend stores 'assistant', UI expects 'agent' for assistant messages
           const role: "user" | "agent" = msg.role === "assistant"
@@ -210,7 +218,9 @@ export default function ChatInterface({
 
       setMessages(convertedMessages)
       // Attach most recent task as current task so status is visible on load
-      const loadedTasks = (initialChatData.tasks || []) as Array<{ id?: string; createdAt?: number; updatedAt?: number }>
+      const loadedTasks = (initialChatData.tasks || []) as Array<
+        { id?: string; createdAt?: number; updatedAt?: number }
+      >
       setTasks(loadedTasks as unknown as A2ATask[])
       // Seed task start times from createdAt
       setTaskStartTimes((prev) => {
@@ -329,7 +339,9 @@ export default function ChatInterface({
             // If no task was created, ensure we capture the contextId from the message
             if (!contextId && (event as { contextId?: string }).contextId) {
               setContextId((event as { contextId?: string }).contextId!)
-              if (onChatCreated) onChatCreated((event as { contextId?: string }).contextId!)
+              if (onChatCreated) {
+                onChatCreated((event as { contextId?: string }).contextId!)
+              }
             }
 
             // If no task was created, this is a simple message and we're done

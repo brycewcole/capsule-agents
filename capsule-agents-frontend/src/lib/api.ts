@@ -401,12 +401,15 @@ export function extractToolCalls(
 ): ToolCall[] {
   const toolCalls: ToolCall[] = []
 
-  if (!taskOrEvent || typeof taskOrEvent !== 'object') {
+  if (!taskOrEvent || typeof taskOrEvent !== "object") {
     return toolCalls
   }
 
   // Handle A2A Task type
-  if ((taskOrEvent as { kind?: string; history?: unknown[] }).kind === "task" && (taskOrEvent as { kind?: string; history?: unknown[] }).history) {
+  if (
+    (taskOrEvent as { kind?: string; history?: unknown[] }).kind === "task" &&
+    (taskOrEvent as { kind?: string; history?: unknown[] }).history
+  ) {
     const task = taskOrEvent as A2ATask
     console.log(
       "Processing A2A task history with",
@@ -425,7 +428,11 @@ export function extractToolCalls(
         for (const part of message.parts) {
           // Check for function calls
           if ("function_call" in part && part.function_call) {
-            const functionCall = part.function_call as { id: string; name: string; args?: Record<string, unknown> }
+            const functionCall = part.function_call as {
+              id: string
+              name: string
+              args?: Record<string, unknown>
+            }
             console.log("Found function call:", functionCall)
             functionCalls.set(functionCall.id, {
               name: functionCall.name,
@@ -435,7 +442,10 @@ export function extractToolCalls(
 
           // Check for function responses
           if ("function_response" in part && part.function_response) {
-            const functionResponse = part.function_response as { id: string; response: unknown }
+            const functionResponse = part.function_response as {
+              id: string
+              response: unknown
+            }
             console.log("Found function response:", functionResponse)
             const callId = functionResponse.id
             const call = functionCalls.get(callId)
@@ -457,7 +467,10 @@ export function extractToolCalls(
       }
     }
   } // Handle legacy Task type for backward compatibility
-  else if ((taskOrEvent as { history?: unknown[] }).history && (taskOrEvent as { history?: unknown[] }).history!.length > 0) {
+  else if (
+    (taskOrEvent as { history?: unknown[] }).history &&
+    (taskOrEvent as { history?: unknown[] }).history!.length > 0
+  ) {
     const legacyTask = taskOrEvent as { history: unknown[] }
     console.log("Processing legacy task history")
     // Keep the old logic for backward compatibility
@@ -470,7 +483,14 @@ export function extractToolCalls(
       const typedEvent = event as { content?: { parts?: unknown[] } }
       if (typedEvent.content && typedEvent.content.parts) {
         for (const part of typedEvent.content.parts) {
-          const typedPart = part as { function_call?: { id: string; name: string; args?: Record<string, unknown> }; function_response?: { id: string; response: unknown } }
+          const typedPart = part as {
+            function_call?: {
+              id: string
+              name: string
+              args?: Record<string, unknown>
+            }
+            function_response?: { id: string; response: unknown }
+          }
           if (typedPart.function_call) {
             functionCalls.set(typedPart.function_call.id, {
               name: typedPart.function_call.name,
@@ -530,7 +550,9 @@ export function extractResponseText(
     // Check status message
     if (a2aTask.status && a2aTask.status.message) {
       // Handle legacy Content type in status message
-      const statusMessage = a2aTask.status.message as { parts?: Array<{ text?: string }> }
+      const statusMessage = a2aTask.status.message as {
+        parts?: Array<{ text?: string }>
+      }
       if (statusMessage.parts) {
         return statusMessage.parts
           .map((part: { text?: string }) => part.text || "")
@@ -554,7 +576,10 @@ export function extractResponseText(
   if ("kind" in taskOrEvent && taskOrEvent.kind === "status-update") {
     const statusEvent = taskOrEvent as TaskStatusUpdateEvent
     if (statusEvent.status.message) {
-      const statusMessage = statusEvent.status.message as { kind?: string; parts?: Array<{ kind?: string; text?: string }> }
+      const statusMessage = statusEvent.status.message as {
+        kind?: string
+        parts?: Array<{ kind?: string; text?: string }>
+      }
       // Handle A2A message format with kind and parts
       if (statusMessage.kind === "message" && statusMessage.parts) {
         return statusMessage.parts

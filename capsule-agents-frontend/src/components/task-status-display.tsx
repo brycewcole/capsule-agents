@@ -159,7 +159,8 @@ export function TaskStatusDisplay({ task, className }: TaskStatusDisplayProps) {
               </div>
             )}
 
-            {"sessionId" in task && (task as { sessionId?: string }).sessionId && (
+            {"sessionId" in task &&
+              (task as { sessionId?: string }).sessionId && (
               <div>
                 <span className="font-medium text-muted-foreground text-sm">
                   Session ID:

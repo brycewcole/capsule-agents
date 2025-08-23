@@ -377,7 +377,9 @@ export default function AgentEditor() {
       setAgentUrl(tool.tool_schema.agent_url)
     } else if (tool.type === "mcp_server" && tool.tool_schema) {
       setToolType(tool.type)
-      setMcpServerUrl(String((tool.tool_schema as { server_url?: string }).server_url || ""))
+      setMcpServerUrl(
+        String((tool.tool_schema as { server_url?: string }).server_url || ""),
+      )
     } else {
       setToolType(tool.type)
       setToolSchema(JSON.stringify(tool.tool_schema || {}, null, 2))
