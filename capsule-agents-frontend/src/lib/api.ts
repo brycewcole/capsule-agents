@@ -547,19 +547,6 @@ export function extractResponseText(
       }
     }
 
-    // Check status message
-    if (a2aTask.status && a2aTask.status.message) {
-      // Handle legacy Content type in status message
-      const statusMessage = a2aTask.status.message as {
-        parts?: Array<{ text?: string }>
-      }
-      if (statusMessage.parts) {
-        return statusMessage.parts
-          .map((part: { text?: string }) => part.text || "")
-          .join("")
-      }
-    }
-
     // Check latest message in history
     if (a2aTask.history && a2aTask.history.length > 0) {
       const lastMessage = a2aTask.history[a2aTask.history.length - 1]

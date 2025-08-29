@@ -429,7 +429,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
             const completionStatusUpdate = this.taskService.transitionState(
               task,
               "completed",
-              text || undefined,
+              "Response ready",
             )
             statusUpdateQueue.push(completionStatusUpdate)
             log.info("Queued completion status update with final text")
@@ -604,7 +604,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
       this.taskService.transitionState(
         task,
         "completed",
-        fullResponse || undefined,
+        "Response ready",
       )
 
       // Save the conversation using contextId as session ID

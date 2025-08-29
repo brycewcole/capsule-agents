@@ -87,6 +87,18 @@ export function TaskStatusDisplay({ task, className }: TaskStatusDisplayProps) {
   const statusInfo = getStatusInfo()
   const StatusIcon = statusInfo.icon
   const taskId = task.id?.slice(-8) || "unknown"
+  
+  // Extract text from status message to use as description
+  const getStatusMessageText = () => {
+    if (task.status?.message?.parts) {
+      const textPart = task.status.message.parts.find((part: { kind?: string, text?: string }) => part.kind === "text")
+      return textPart?.text?.trim() || null
+    }
+    return null
+  }
+  
+  const statusMessageText = getStatusMessageText()
+  const description = statusMessageText || statusInfo.description
 
   return (
     <Card className={cn("w-full mb-2", className)}>
@@ -122,7 +134,7 @@ export function TaskStatusDisplay({ task, className }: TaskStatusDisplayProps) {
         </div>
         {!isExpanded && (
           <p className="text-xs text-muted-foreground">
-            {statusInfo.description}
+            {description}
           </p>
         )}
       </CardHeader>
@@ -131,7 +143,7 @@ export function TaskStatusDisplay({ task, className }: TaskStatusDisplayProps) {
         <CardContent className="pt-0">
           <div className="space-y-3">
             <p className="text-sm text-muted-foreground">
-              {statusInfo.description}
+              {description}
             </p>
 
             <div className="grid grid-cols-2 gap-4 text-sm">
