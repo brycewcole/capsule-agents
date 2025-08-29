@@ -1,19 +1,19 @@
 import type * as A2A from "@a2a-js/sdk"
 import type { A2ARequestHandler } from "@a2a-js/sdk/server"
-import process from "node:process"
-import * as Vercel from "ai"
 import { openai } from "@ai-sdk/openai"
-import { fileAccessSkill, fileAccessTool } from "../tools/file-access.ts"
-import { braveSearchSkill, braveSearchTool } from "../tools/brave-search.ts"
-import { memorySkill, memoryTool } from "../tools/memory.ts"
-import { executeA2ACall } from "../tools/a2a.ts"
-import { createChatWithId, loadChat, saveChat } from "./storage.ts"
-import { AgentConfigService } from "./agent-config.ts"
-import { TaskStorage } from "./task-storage.ts"
-import { TaskService } from "./task-service.ts"
-import { VercelService } from "./vercel-service.ts"
-import { z } from "zod"
 import * as log from "@std/log"
+import * as Vercel from "ai"
+import process from "node:process"
+import { z } from "zod"
+import { executeA2ACall } from "../tools/a2a.ts"
+import { braveSearchSkill, braveSearchTool } from "../tools/brave-search.ts"
+import { fileAccessSkill, fileAccessTool } from "../tools/file-access.ts"
+import { memorySkill, memoryTool } from "../tools/memory.ts"
+import { AgentConfigService } from "./agent-config.ts"
+import { createChatWithId, loadChat, saveChat } from "./storage.ts"
+import { TaskService } from "./task-service.ts"
+import { TaskStorage } from "./task-storage.ts"
+import { VercelService } from "./vercel-service.ts"
 
 export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
   private taskStorage = new TaskStorage()
@@ -369,7 +369,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
             }
 
             // Don't queue completion status here - we'll do it in onFinish with the full text
-            responseMessage = this.taskService.addVercelResultToHistory(
+            this.taskService.addVercelResultToHistory(
               task,
               text,
               toolCalls,
@@ -429,8 +429,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
             const completionStatusUpdate = this.taskService.transitionState(
               task,
               "completed",
-              finalResponseMessage,
-              true,
+              text || undefined,
             )
             statusUpdateQueue.push(completionStatusUpdate)
             log.info("Queued completion status update with final text")
@@ -461,6 +460,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
             const workingStatus = this.taskService.transitionState(
               task,
               "working",
+              "Task is processing with tool calls",
             )
             log.info(
               `Yielding working status: ${JSON.stringify(workingStatus)}`,
@@ -512,8 +512,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
         const errorStatusUpdate = this.taskService.transitionState(
           task as A2A.Task,
           "failed",
-          errorMessage,
-          true,
+          "Task failed: " + errorMessage,
         )
         yield errorStatusUpdate
       } else {
@@ -539,7 +538,11 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
     params: A2A.MessageSendParams,
   ): Promise<void> {
     try {
-      this.taskService.transitionState(task, "working")
+      this.taskService.transitionState(
+        task,
+        "working",
+        "Task is being processed",
+      )
 
       this.ensureContextExists(task.contextId)
       const chatHistory = loadChat(task.contextId)
@@ -598,7 +601,11 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
         fullResponse,
       )
       this.taskService.addMessageToHistory(task, responseMessage)
-      this.taskService.transitionState(task, "completed", responseMessage, true)
+      this.taskService.transitionState(
+        task,
+        "completed",
+        fullResponse || undefined,
+      )
 
       // Save the conversation using contextId as session ID
       try {
@@ -634,7 +641,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
         error instanceof Error ? error.constructor.name : typeof error
       }`
 
-      this.taskService.transitionState(task, "failed", errorMessage, true)
+      this.taskService.transitionState(task, "failed", errorMessage)
     }
   }
 
