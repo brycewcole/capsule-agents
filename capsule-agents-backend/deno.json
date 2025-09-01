@@ -6,6 +6,7 @@
   },
   "imports": {
     "@ai-sdk/gateway": "npm:@ai-sdk/gateway@^1.0.15",
+    "@ai-sdk/provider-utils": "npm:@ai-sdk/provider-utils@^3.0.7",
     "hono": "jsr:@hono/hono@^4.8.10",
     "hono/cors": "jsr:@hono/hono/cors",
     "hono/streaming": "jsr:@hono/hono/streaming",
@@ -15,7 +16,6 @@
     "@ai-sdk/anthropic": "npm:@ai-sdk/anthropic@^2.0.0",
     "@ai-sdk/google": "npm:@ai-sdk/google@^2.0.0",
     "@ai-sdk/openai": "npm:@ai-sdk/openai@^2.0.0",
-    "@ai-sdk/provider-utils": "npm:@ai-sdk/provider-utils@^2.0.0",
     "ai": "npm:ai@^5.0.0",
     "better-sqlite3": "jsr:@db/sqlite@0.12.0",
     "uuid": "npm:uuid@^11.1.0",
