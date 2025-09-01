@@ -348,7 +348,6 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
             }`,
           )
 
-          // Track if ANY step had tool calls (don't reset to false)
           if (
             (toolCalls && toolCalls.length > 0) ||
             (toolResults && toolResults.length > 0)
@@ -370,12 +369,9 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
               toolCalls,
               toolResults,
             )
-            log.info(
-              "Tool calls completed, will queue final status in onFinish",
-            )
           } else {
             // Create simple response message
-            if (text && text.trim().length > 0) {
+            if (text) {
               responseMessage = {
                 kind: "message",
                 messageId: `msg_${crypto.randomUUID()}`,
@@ -388,8 +384,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
             }
           }
 
-          // Only persist assistant message if it contains non-empty text
-          if (text && text.trim().length > 0) {
+          if (text) {
             createChatIfNotExists(params.message.contextId!, "a2a-agent")
             const assistantMessage = VercelService.createAssistantUIMessage(
               text,
@@ -419,16 +414,14 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
           // Queue completion status update with the final full text if we have tool calls
           if (hasToolCalls && task) {
             // Update the response message with the final text
-            const finalResponseMessage = this.taskService
+            responseMessage = this.taskService
               .addVercelResultToHistory(task, text, toolCalls, toolResults)
-            // Just update task state without queuing status update - the response message is what matters
-            this.taskService.transitionState(
+            statusUpdateQueue.push(this.taskService.transitionState(
               task,
               "completed",
               "Response ready",
-            )
-            log.info("Task completed, will emit response message")
-            responseMessage = finalResponseMessage
+            ))
+            log.info("Task completed")
           } else {
             log.info(
               `Skipping completion status - hasToolCalls: ${hasToolCalls}, task: ${
