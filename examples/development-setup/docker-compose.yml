@@ -25,5 +25,13 @@ services:
         target: /app/static
       # Anonymous volume to prevent node_modules conflicts
       - /app/node_modules
-    command: ["deno", "run", "--allow-all", "--watch", "--node-modules-dir", "--no-lock", "src/index.ts"]
+    command: [
+      "deno",
+      "run",
+      "--allow-all",
+      "--watch",
+      "--node-modules-dir",
+      "--no-lock",
+      "src/index.ts",
+    ]
     restart: unless-stopped
