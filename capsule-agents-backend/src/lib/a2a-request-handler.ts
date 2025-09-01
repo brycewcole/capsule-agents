@@ -10,7 +10,11 @@ import { braveSearchSkill, braveSearchTool } from "../tools/brave-search.ts"
 import { fileAccessSkill, fileAccessTool } from "../tools/file-access.ts"
 import { memorySkill, memoryTool } from "../tools/memory.ts"
 import { AgentConfigService } from "./agent-config.ts"
-import { createChatWithId, loadChat, saveChat } from "./storage.ts"
+import {
+  createChatWithId as createChatIfNotExists,
+  loadChat,
+  saveChat,
+} from "./storage.ts"
 import { TaskService } from "./task-service.ts"
 import { TaskStorage } from "./task-storage.ts"
 import { VercelService } from "./vercel-service.ts"
@@ -306,7 +310,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
     const statusUpdateQueue: A2A.TaskStatusUpdateEvent[] = []
 
     try {
-      this.ensureContextExists(params.message.contextId)
+      createChatIfNotExists(params.message.contextId, "a2a-agent")
       const chatHistory = loadChat(params.message.contextId)
       log.info("Chat history loaded:", { messageCount: chatHistory.length })
 
@@ -319,13 +323,14 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
       const model = this.getConfiguredModel()
 
       let responseMessage: A2A.Message | null = null
+      const agentInfo = this.agentConfigService.getAgentInfo()
 
       const result = Vercel.streamText({
         experimental_telemetry: {
           isEnabled: true,
           functionId: "chat-complete",
         },
-        system: this.getSystemPrompt(),
+        system: agentInfo.description,
         model,
         messages: Vercel.convertToModelMessages(combinedMessages),
         tools,
@@ -385,7 +390,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
 
           // Only persist assistant message if it contains non-empty text
           if (text && text.trim().length > 0) {
-            this.ensureContextExists(params.message.contextId!)
+            createChatIfNotExists(params.message.contextId!, "a2a-agent")
             const assistantMessage = VercelService.createAssistantUIMessage(
               text,
             )
@@ -537,15 +542,5 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
       log.error("Error loading model configuration, using default:", error)
       return openai(process.env.OPENAI_API_MODEL || "gpt-4o")
     }
-  }
-
-  private getSystemPrompt(): string {
-    const agentInfo = this.agentConfigService.getAgentInfo()
-    return agentInfo.description
-  }
-
-  private ensureContextExists(contextId: string): void {
-    // Always ensure the context exists (INSERT OR IGNORE will handle duplicates)
-    createChatWithId(contextId, "a2a-agent")
   }
 }
