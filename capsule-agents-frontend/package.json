@@ -1,6 +1,9 @@
 {
   "name": "capsule-frontend",
   "private": true,
+  "dependencies": {
+    "@ai-sdk/gateway": "^1.0.15"
+  },
   "devDependencies": {
     "vite": "^6",
     "tailwindcss": "^4",
