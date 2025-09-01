@@ -232,19 +232,9 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
   // TODO update this to not always return a task
   // deno-lint-ignore require-await
   async sendMessage(
-    params: A2A.MessageSendParams,
+    _params: A2A.MessageSendParams,
   ): Promise<A2A.Message | A2A.Task> {
-    const contextId = params.message.contextId || crypto.randomUUID()
-    const initialMessage = { ...params.message, contextId }
-    const task = this.taskService.createTask(
-      contextId,
-      initialMessage,
-      params.metadata,
-    )
-
-    this.processMessageAsync(task, params)
-
-    return task
+    throw new Error("Not yet implemented")
   }
 
   // deno-lint-ignore require-await
@@ -426,13 +416,13 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
             // Update the response message with the final text
             const finalResponseMessage = this.taskService
               .addVercelResultToHistory(task, text, toolCalls, toolResults)
-            const completionStatusUpdate = this.taskService.transitionState(
+            // Just update task state without queuing status update - the response message is what matters
+            this.taskService.transitionState(
               task,
               "completed",
               "Response ready",
             )
-            statusUpdateQueue.push(completionStatusUpdate)
-            log.info("Queued completion status update with final text")
+            log.info("Task completed, will emit response message")
             responseMessage = finalResponseMessage
           } else {
             log.info(
@@ -460,7 +450,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
             const workingStatus = this.taskService.transitionState(
               task,
               "working",
-              "Task is processing with tool calls",
+              `Using ${e.toolName}...`,
             )
             log.info(
               `Yielding working status: ${JSON.stringify(workingStatus)}`,
@@ -506,13 +496,10 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
 
       if (task) {
         log.error("Task ID:", task.id)
-        const errorMessage = `Error processing task: ${
-          error instanceof Error ? error.message : String(error)
-        }`
         const errorStatusUpdate = this.taskService.transitionState(
           task as A2A.Task,
           "failed",
-          "Task failed: " + errorMessage,
+          `Task failed`,
         )
         yield errorStatusUpdate
       } else {
@@ -531,118 +518,6 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
   > {
     const task = await this.getTask(params)
     yield task
-  }
-
-  private async processMessageAsync(
-    task: A2A.Task,
-    params: A2A.MessageSendParams,
-  ): Promise<void> {
-    try {
-      this.taskService.transitionState(
-        task,
-        "working",
-        "Task is being processed",
-      )
-
-      this.ensureContextExists(task.contextId)
-      const chatHistory = loadChat(task.contextId)
-
-      const vercelMessage = VercelService.createUIMessage(params.message)
-
-      const combinedMessages = [...chatHistory, vercelMessage]
-
-      // Set up tools
-      const tools = await this.getAvailableTools()
-
-      const messages = Vercel.convertToModelMessages(combinedMessages)
-
-      // Stream the response
-      this.getConfiguredModel()
-      const result = Vercel.streamText({
-        experimental_telemetry: {
-          isEnabled: true,
-          functionId: "chat-complete-2",
-        },
-        model: "gpt-4o",
-        system: this.getSystemPrompt(),
-        messages,
-        tools,
-      })
-
-      let fullResponse = ""
-
-      // Process the full stream including text and tool calls
-      for await (const chunk of result.fullStream) {
-        switch (chunk.type) {
-          case "text-delta": {
-            fullResponse += chunk.text
-            break
-          }
-          case "tool-call": {
-            log.info("Tool call in async processing:", {
-              toolName: chunk.toolName,
-              input: chunk.input,
-            })
-            break
-          }
-          case "tool-result": {
-            log.info("Tool result in async processing:", {
-              toolName: chunk.toolName,
-              output: chunk.output,
-            })
-            break
-          }
-        }
-      }
-
-      // Create response message and update task to completed state
-      const responseMessage = this.taskService.createResponseMessage(
-        task,
-        fullResponse,
-      )
-      this.taskService.addMessageToHistory(task, responseMessage)
-      this.taskService.transitionState(
-        task,
-        "completed",
-        "Response ready",
-      )
-
-      // Save the conversation using contextId as session ID
-      try {
-        this.ensureContextExists(task.contextId)
-
-        const assistantMessage = VercelService.createAssistantUIMessage(
-          fullResponse,
-        )
-        saveChat(task.contextId, [...combinedMessages, assistantMessage])
-      } catch (saveError) {
-        // Enhanced logging for save errors
-        log.error("⚠️  CHAT SAVE ERROR (non-critical):", saveError)
-        log.error(
-          "Save error stack:",
-          saveError instanceof Error ? saveError.stack : "No stack available",
-        )
-        log.error("Context ID for failed save:", task.contextId)
-      }
-    } catch (error) {
-      // Enhanced error logging for async processing
-      log.error("🚨 ASYNC MESSAGE PROCESSING ERROR:", error)
-      log.error(
-        "Error stack:",
-        error instanceof Error ? error.stack : "No stack available",
-      )
-      log.error("Task ID:", task.id)
-      log.error("Context ID:", task.contextId)
-
-      // Update task to failed state
-      const errorMessage = `Error processing task: ${
-        error instanceof Error ? error.message : String(error)
-      }\n\nError type: ${
-        error instanceof Error ? error.constructor.name : typeof error
-      }`
-
-      this.taskService.transitionState(task, "failed", errorMessage)
-    }
   }
 
   private getConfiguredModel() {
