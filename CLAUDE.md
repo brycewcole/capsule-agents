@@ -146,6 +146,7 @@ ADMIN_PASSWORD=admin
 - **File Structure**: Organized by feature in `src/lib/` and `src/tools/`
 - **Error Handling**: Comprehensive logging with `@std/log`, structured error responses
 - **Type Safety**: Zod schemas for runtime validation, strict TypeScript
+- DO NOT use `any` type for backend
 
 ## Database Schema
 
