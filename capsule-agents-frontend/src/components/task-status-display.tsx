@@ -84,10 +84,16 @@ export function TaskStatusDisplay({ task, className }: TaskStatusDisplayProps) {
   // Extract text from status message to use as description
   const getStatusMessageText = () => {
     if (task.status?.message?.parts) {
-      const textPart = task.status.message.parts.find((
-        part: { kind?: string; text?: string },
-      ) => part.kind === "text")
-      return textPart?.text?.trim() || null
+      const textParts = task.status.message.parts
+        .filter((part: unknown) =>
+          part && typeof part === "object" && "kind" in part &&
+          part.kind === "text"
+        )
+        .map((part: unknown) =>
+          part && typeof part === "object" && "text" in part ? part.text : ""
+        )
+        .filter(Boolean)
+      return textParts.join(" ").trim() || null
     }
     return null
   }
