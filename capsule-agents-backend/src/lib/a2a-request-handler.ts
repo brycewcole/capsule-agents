@@ -1,19 +1,23 @@
 import type * as A2A from "@a2a-js/sdk"
 import type { A2ARequestHandler } from "@a2a-js/sdk/server"
-import process from "node:process"
-import * as Vercel from "ai"
 import { openai } from "@ai-sdk/openai"
-import { fileAccessSkill, fileAccessTool } from "../tools/file-access.ts"
-import { braveSearchSkill, braveSearchTool } from "../tools/brave-search.ts"
-import { memorySkill, memoryTool } from "../tools/memory.ts"
-import { executeA2ACall } from "../tools/a2a.ts"
-import { createChatWithId, loadChat, saveChat } from "./storage.ts"
-import { AgentConfigService } from "./agent-config.ts"
-import { TaskStorage } from "./task-storage.ts"
-import { TaskService } from "./task-service.ts"
-import { VercelService } from "./vercel-service.ts"
-import { z } from "zod"
 import * as log from "@std/log"
+import * as Vercel from "ai"
+import process from "node:process"
+import { z } from "zod"
+import { executeA2ACall } from "../tools/a2a.ts"
+import { braveSearchSkill, braveSearchTool } from "../tools/brave-search.ts"
+import { fileAccessSkill, fileAccessTool } from "../tools/file-access.ts"
+import { memorySkill, memoryTool } from "../tools/memory.ts"
+import { AgentConfigService } from "./agent-config.ts"
+import {
+  createChatWithId as createChatIfNotExists,
+  loadChat,
+  saveChat,
+} from "./storage.ts"
+import { TaskService } from "./task-service.ts"
+import { TaskStorage } from "./task-storage.ts"
+import { VercelService } from "./vercel-service.ts"
 
 export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
   private taskStorage = new TaskStorage()
@@ -232,19 +236,9 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
   // TODO update this to not always return a task
   // deno-lint-ignore require-await
   async sendMessage(
-    params: A2A.MessageSendParams,
+    _params: A2A.MessageSendParams,
   ): Promise<A2A.Message | A2A.Task> {
-    const contextId = params.message.contextId || crypto.randomUUID()
-    const initialMessage = { ...params.message, contextId }
-    const task = this.taskService.createTask(
-      contextId,
-      initialMessage,
-      params.metadata,
-    )
-
-    this.processMessageAsync(task, params)
-
-    return task
+    throw new Error("Not yet implemented")
   }
 
   // deno-lint-ignore require-await
@@ -316,7 +310,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
     const statusUpdateQueue: A2A.TaskStatusUpdateEvent[] = []
 
     try {
-      this.ensureContextExists(params.message.contextId)
+      createChatIfNotExists(params.message.contextId, "a2a-agent")
       const chatHistory = loadChat(params.message.contextId)
       log.info("Chat history loaded:", { messageCount: chatHistory.length })
 
@@ -329,13 +323,14 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
       const model = this.getConfiguredModel()
 
       let responseMessage: A2A.Message | null = null
+      const agentInfo = this.agentConfigService.getAgentInfo()
 
       const result = Vercel.streamText({
         experimental_telemetry: {
           isEnabled: true,
           functionId: "chat-complete",
         },
-        system: this.getSystemPrompt(),
+        system: agentInfo.description,
         model,
         messages: Vercel.convertToModelMessages(combinedMessages),
         tools,
@@ -353,7 +348,6 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
             }`,
           )
 
-          // Track if ANY step had tool calls (don't reset to false)
           if (
             (toolCalls && toolCalls.length > 0) ||
             (toolResults && toolResults.length > 0)
@@ -369,18 +363,15 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
             }
 
             // Don't queue completion status here - we'll do it in onFinish with the full text
-            responseMessage = this.taskService.addVercelResultToHistory(
+            this.taskService.addVercelResultToHistory(
               task,
               text,
               toolCalls,
               toolResults,
             )
-            log.info(
-              "Tool calls completed, will queue final status in onFinish",
-            )
           } else {
             // Create simple response message
-            if (text && text.trim().length > 0) {
+            if (text) {
               responseMessage = {
                 kind: "message",
                 messageId: `msg_${crypto.randomUUID()}`,
@@ -393,9 +384,8 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
             }
           }
 
-          // Only persist assistant message if it contains non-empty text
-          if (text && text.trim().length > 0) {
-            this.ensureContextExists(params.message.contextId!)
+          if (text) {
+            createChatIfNotExists(params.message.contextId!, "a2a-agent")
             const assistantMessage = VercelService.createAssistantUIMessage(
               text,
             )
@@ -424,17 +414,14 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
           // Queue completion status update with the final full text if we have tool calls
           if (hasToolCalls && task) {
             // Update the response message with the final text
-            const finalResponseMessage = this.taskService
+            responseMessage = this.taskService
               .addVercelResultToHistory(task, text, toolCalls, toolResults)
-            const completionStatusUpdate = this.taskService.transitionState(
+            statusUpdateQueue.push(this.taskService.transitionState(
               task,
               "completed",
-              finalResponseMessage,
-              true,
-            )
-            statusUpdateQueue.push(completionStatusUpdate)
-            log.info("Queued completion status update with final text")
-            responseMessage = finalResponseMessage
+              "Response ready",
+            ))
+            log.info("Task completed")
           } else {
             log.info(
               `Skipping completion status - hasToolCalls: ${hasToolCalls}, task: ${
@@ -461,6 +448,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
             const workingStatus = this.taskService.transitionState(
               task,
               "working",
+              `Using ${e.toolName}...`,
             )
             log.info(
               `Yielding working status: ${JSON.stringify(workingStatus)}`,
@@ -506,14 +494,10 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
 
       if (task) {
         log.error("Task ID:", task.id)
-        const errorMessage = `Error processing task: ${
-          error instanceof Error ? error.message : String(error)
-        }`
         const errorStatusUpdate = this.taskService.transitionState(
           task as A2A.Task,
           "failed",
-          errorMessage,
-          true,
+          `Task failed`,
         )
         yield errorStatusUpdate
       } else {
@@ -534,110 +518,6 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
     yield task
   }
 
-  private async processMessageAsync(
-    task: A2A.Task,
-    params: A2A.MessageSendParams,
-  ): Promise<void> {
-    try {
-      this.taskService.transitionState(task, "working")
-
-      this.ensureContextExists(task.contextId)
-      const chatHistory = loadChat(task.contextId)
-
-      const vercelMessage = VercelService.createUIMessage(params.message)
-
-      const combinedMessages = [...chatHistory, vercelMessage]
-
-      // Set up tools
-      const tools = await this.getAvailableTools()
-
-      const messages = Vercel.convertToModelMessages(combinedMessages)
-
-      // Stream the response
-      this.getConfiguredModel()
-      const result = Vercel.streamText({
-        experimental_telemetry: {
-          isEnabled: true,
-          functionId: "chat-complete-2",
-        },
-        model: "gpt-4o",
-        system: this.getSystemPrompt(),
-        messages,
-        tools,
-      })
-
-      let fullResponse = ""
-
-      // Process the full stream including text and tool calls
-      for await (const chunk of result.fullStream) {
-        switch (chunk.type) {
-          case "text-delta": {
-            fullResponse += chunk.text
-            break
-          }
-          case "tool-call": {
-            log.info("Tool call in async processing:", {
-              toolName: chunk.toolName,
-              input: chunk.input,
-            })
-            break
-          }
-          case "tool-result": {
-            log.info("Tool result in async processing:", {
-              toolName: chunk.toolName,
-              output: chunk.output,
-            })
-            break
-          }
-        }
-      }
-
-      // Create response message and update task to completed state
-      const responseMessage = this.taskService.createResponseMessage(
-        task,
-        fullResponse,
-      )
-      this.taskService.addMessageToHistory(task, responseMessage)
-      this.taskService.transitionState(task, "completed", responseMessage, true)
-
-      // Save the conversation using contextId as session ID
-      try {
-        this.ensureContextExists(task.contextId)
-
-        const assistantMessage = VercelService.createAssistantUIMessage(
-          fullResponse,
-        )
-        saveChat(task.contextId, [...combinedMessages, assistantMessage])
-      } catch (saveError) {
-        // Enhanced logging for save errors
-        log.error("⚠️  CHAT SAVE ERROR (non-critical):", saveError)
-        log.error(
-          "Save error stack:",
-          saveError instanceof Error ? saveError.stack : "No stack available",
-        )
-        log.error("Context ID for failed save:", task.contextId)
-      }
-    } catch (error) {
-      // Enhanced error logging for async processing
-      log.error("🚨 ASYNC MESSAGE PROCESSING ERROR:", error)
-      log.error(
-        "Error stack:",
-        error instanceof Error ? error.stack : "No stack available",
-      )
-      log.error("Task ID:", task.id)
-      log.error("Context ID:", task.contextId)
-
-      // Update task to failed state
-      const errorMessage = `Error processing task: ${
-        error instanceof Error ? error.message : String(error)
-      }\n\nError type: ${
-        error instanceof Error ? error.constructor.name : typeof error
-      }`
-
-      this.taskService.transitionState(task, "failed", errorMessage, true)
-    }
-  }
-
   private getConfiguredModel() {
     try {
       const agentInfo = this.agentConfigService.getAgentInfo()
@@ -655,15 +535,5 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
       log.error("Error loading model configuration, using default:", error)
       return openai(process.env.OPENAI_API_MODEL || "gpt-4o")
     }
-  }
-
-  private getSystemPrompt(): string {
-    const agentInfo = this.agentConfigService.getAgentInfo()
-    return agentInfo.description
-  }
-
-  private ensureContextExists(contextId: string): void {
-    // Always ensure the context exists (INSERT OR IGNORE will handle duplicates)
-    createChatWithId(contextId, "a2a-agent")
   }
 }

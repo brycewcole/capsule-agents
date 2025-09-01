@@ -59,27 +59,35 @@ export class TaskService {
   transitionState(
     task: A2A.Task,
     newState: TaskState,
-    message?: string | A2A.Message,
-    isFinal: boolean = false,
+    message?: string,
   ): A2A.TaskStatusUpdateEvent {
     task.status.state = newState
     task.status.timestamp = new Date().toISOString()
-
+    let final = false
     if (message) {
-      if (typeof message === "string") {
-        task.status.message = {
-          kind: "message",
-          messageId: this.createMessageId(),
-          role: "agent",
-          parts: [{ kind: "text", text: message } as A2A.TextPart],
-          taskId: task.id,
-          contextId: task.contextId,
-        }
-      } else {
-        task.status.message = message
+      task.status.message = {
+        kind: "message",
+        messageId: this.createMessageId(),
+        role: "agent",
+        parts: [{ kind: "text", text: message }],
+        taskId: task.id,
+        contextId: task.contextId,
       }
     }
 
+    switch (newState) {
+      case "failed":
+      case "completed":
+        final = true
+        break
+      case "submitted":
+      case "working":
+      case "input-required":
+      case "canceled":
+      case "rejected":
+      case "auth-required":
+      case "unknown":
+    }
     this.taskStorage.setTask(task.id, task)
 
     return {
@@ -87,7 +95,7 @@ export class TaskService {
       taskId: task.id,
       contextId: task.contextId,
       status: task.status,
-      final: isFinal,
+      final,
     }
   }
 
@@ -103,7 +111,7 @@ export class TaskService {
       throw new Error("Task cannot be canceled")
     }
 
-    this.transitionState(task, "canceled", undefined, true)
+    this.transitionState(task, "canceled", undefined)
   }
 
   /**

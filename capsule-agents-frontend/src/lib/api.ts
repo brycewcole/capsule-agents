@@ -547,19 +547,6 @@ export function extractResponseText(
       }
     }
 
-    // Check status message
-    if (a2aTask.status && a2aTask.status.message) {
-      // Handle legacy Content type in status message
-      const statusMessage = a2aTask.status.message as {
-        parts?: Array<{ text?: string }>
-      }
-      if (statusMessage.parts) {
-        return statusMessage.parts
-          .map((part: { text?: string }) => part.text || "")
-          .join("")
-      }
-    }
-
     // Check latest message in history
     if (a2aTask.history && a2aTask.history.length > 0) {
       const lastMessage = a2aTask.history[a2aTask.history.length - 1]
@@ -572,28 +559,9 @@ export function extractResponseText(
     }
   }
 
-  // Handle status update events
+  // Skip status update events - these should not provide chat message text
   if ("kind" in taskOrEvent && taskOrEvent.kind === "status-update") {
-    const statusEvent = taskOrEvent as TaskStatusUpdateEvent
-    if (statusEvent.status.message) {
-      const statusMessage = statusEvent.status.message as {
-        kind?: string
-        parts?: Array<{ kind?: string; text?: string }>
-      }
-      // Handle A2A message format with kind and parts
-      if (statusMessage.kind === "message" && statusMessage.parts) {
-        return statusMessage.parts
-          .filter((part: { kind?: string }) => part.kind === "text")
-          .map((part: { text?: string }) => part.text || "")
-          .join("")
-      }
-      // Handle legacy Content type in status message
-      if (statusMessage.parts) {
-        return statusMessage.parts
-          .map((part: { text?: string }) => part.text || "")
-          .join("")
-      }
-    }
+    return ""
   }
 
   // Handle legacy Task type for backward compatibility

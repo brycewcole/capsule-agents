@@ -1,0 +1,37 @@
+services:
+  capsule-agents-dev:
+    build:
+      context: ../../
+      dockerfile: Dockerfile
+    container_name: capsule-agents-dev
+    ports:
+      - "8080:80"
+    env_file:
+      - ../../.env
+    environment:
+      - NODE_ENV=development
+      - AGENT_URL=http://localhost:8080
+    volumes:
+      # Backend source code and config for hot reload
+      - type: bind
+        source: ../../capsule-agents-backend/src
+        target: /app/src
+      - type: bind
+        source: ../../capsule-agents-backend/deno.json
+        target: /app/deno.json
+      # Frontend built output (updated by build watch)
+      - type: bind
+        source: ../../capsule-agents-frontend/dist
+        target: /app/static
+      # Anonymous volume to prevent node_modules conflicts
+      - /app/node_modules
+    command: [
+      "deno",
+      "run",
+      "--allow-all",
+      "--watch",
+      "--node-modules-dir",
+      "--no-lock",
+      "src/index.ts",
+    ]
+    restart: unless-stopped

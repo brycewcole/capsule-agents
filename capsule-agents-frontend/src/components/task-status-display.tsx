@@ -36,14 +36,12 @@ export function TaskStatusDisplay({ task, className }: TaskStatusDisplayProps) {
           icon: PlayCircle,
           color: "bg-blue-100 text-blue-800 border-blue-200",
           label: "Submitted",
-          description: "Task has been submitted and is queued for processing",
         }
       case "working":
         return {
           icon: Loader2,
           color: "bg-yellow-100 text-yellow-800 border-yellow-200",
           label: "Working",
-          description: "Agent is actively processing the task",
           animated: true,
         }
       case "input-required":
@@ -51,35 +49,30 @@ export function TaskStatusDisplay({ task, className }: TaskStatusDisplayProps) {
           icon: PauseCircle,
           color: "bg-orange-100 text-orange-800 border-orange-200",
           label: "Input Required",
-          description: "Task is waiting for additional input",
         }
       case "completed":
         return {
           icon: CheckCircle,
           color: "bg-green-100 text-green-800 border-green-200",
           label: "Completed",
-          description: "Task has been completed successfully",
         }
       case "canceled":
         return {
           icon: XCircle,
           color: "bg-gray-100 text-gray-800 border-gray-200",
           label: "Canceled",
-          description: "Task was canceled before completion",
         }
       case "failed":
         return {
           icon: AlertCircle,
           color: "bg-red-100 text-red-800 border-red-200",
           label: "Failed",
-          description: "Task encountered an error and could not complete",
         }
       default:
         return {
           icon: AlertCircle,
           color: "bg-gray-100 text-gray-800 border-gray-200",
           label: "Unknown",
-          description: "Task is in an unknown state",
         }
     }
   }
@@ -87,6 +80,26 @@ export function TaskStatusDisplay({ task, className }: TaskStatusDisplayProps) {
   const statusInfo = getStatusInfo()
   const StatusIcon = statusInfo.icon
   const taskId = task.id?.slice(-8) || "unknown"
+
+  // Extract text from status message to use as description
+  const getStatusMessageText = () => {
+    if (task.status?.message?.parts) {
+      const textParts = task.status.message.parts
+        .filter((part: unknown) =>
+          part && typeof part === "object" && "kind" in part &&
+          part.kind === "text"
+        )
+        .map((part: unknown) =>
+          part && typeof part === "object" && "text" in part ? part.text : ""
+        )
+        .filter(Boolean)
+      return textParts.join(" ").trim() || null
+    }
+    return null
+  }
+
+  const statusMessageText = getStatusMessageText()
+  const description = statusMessageText
 
   return (
     <Card className={cn("w-full mb-2", className)}>
@@ -122,7 +135,7 @@ export function TaskStatusDisplay({ task, className }: TaskStatusDisplayProps) {
         </div>
         {!isExpanded && (
           <p className="text-xs text-muted-foreground">
-            {statusInfo.description}
+            {description}
           </p>
         )}
       </CardHeader>
@@ -131,7 +144,7 @@ export function TaskStatusDisplay({ task, className }: TaskStatusDisplayProps) {
         <CardContent className="pt-0">
           <div className="space-y-3">
             <p className="text-sm text-muted-foreground">
-              {statusInfo.description}
+              {description}
             </p>
 
             <div className="grid grid-cols-2 gap-4 text-sm">
