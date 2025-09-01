@@ -330,8 +330,7 @@ export default function ChatInterface({
               const lastMessage = updated[updated.length - 1]
               if (lastMessage.role === "agent") {
                 lastMessage.content = currentResponseText
-                // For simple messages (no task), this is the final response
-                lastMessage.isLoading = currentTask !== null
+                lastMessage.isLoading = false // Mark as complete when we get the message
               }
               return updated
             })
@@ -394,10 +393,6 @@ export default function ChatInterface({
           })
 
           if (event.final && event.status.state === "completed") {
-            // Extract final response text from the completion status event
-            const finalResponseText = extractResponseText(event) ||
-              currentResponseText
-
             // Final completion - extract tool calls from current task and store final task state
             let completedTask: A2ATask | undefined
             setCurrentTask((prev: A2ATask | null) => {
@@ -412,17 +407,17 @@ export default function ChatInterface({
               return prev
             })
 
-            // Mark as complete and store the completed task
+            // Update the last agent message with final tool calls and task info
             setMessages((prev) => {
               const updated = [...prev]
               const lastMessage = updated[updated.length - 1]
               if (lastMessage.role === "agent") {
-                lastMessage.content = finalResponseText
+                // Keep existing content from the message event
                 lastMessage.toolCalls = finalToolCalls.length > 0
                   ? finalToolCalls
                   : undefined
-                lastMessage.isLoading = false
                 lastMessage.task = completedTask
+                // Message should already be marked as not loading from message handler
               }
               return updated
             })
@@ -436,7 +431,7 @@ export default function ChatInterface({
             )
             setCurrentTask(null)
             setIsLoading(false)
-            break
+            // Don't break here - continue processing in case final message comes after completion
           } else if (event.final && event.status.state === "failed") {
             // Clear task and handle failure
             setTasks((list) =>
