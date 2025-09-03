@@ -27,6 +27,13 @@ import {
 } from "./ui/select.tsx"
 import { Switch } from "./ui/switch.tsx"
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "./ui/dialog.tsx"
+import {
   type AgentInfo,
   getAgentInfo,
   getAvailableModels,
@@ -55,6 +62,7 @@ export default function AgentEditor() {
   const [isSaving, setIsSaving] = useState(false)
   const [availableModels, setAvailableModels] = useState<Model[]>([])
   const [providerInfo, setProviderInfo] = useState<ProvidersResponse | null>(null)
+  const [showNoModelsModal, setShowNoModelsModal] = useState(false)
   const [tools, setTools] = useState<Tool[]>([])
   const [showToolForm, setShowToolForm] = useState(false)
   const [editIndex, setEditIndex] = useState<number | null>(null)
@@ -153,6 +161,12 @@ export default function AgentEditor() {
         ])
         setAvailableModels(models)
         setProviderInfo(providers)
+        
+        // Check if no models are available and show modal
+        if (models.length === 0) {
+          setShowNoModelsModal(true)
+        }
+        
         setName(agentInfo.name)
         setNameError("") // Clear any validation errors
         setDescription(agentInfo.description)
@@ -760,6 +774,75 @@ export default function AgentEditor() {
             )}
         </Button>
       </CardFooter>
+
+      {/* No Models Available Modal */}
+      <Dialog open={showNoModelsModal} onOpenChange={setShowNoModelsModal}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <HelpCircle className="h-5 w-5 text-orange-500" />
+              No AI Models Available
+            </DialogTitle>
+            <DialogDescription>
+              To use this agent, you need to configure at least one AI provider by setting the appropriate environment variables.
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-4">
+            <div className="text-sm">
+              <p className="font-medium mb-3">Available Providers:</p>
+              {providerInfo?.providers.map((provider) => (
+                <div key={provider.id} className="mb-3 p-3 border rounded-lg">
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="font-medium">{provider.name}</span>
+                    {provider.available ? (
+                      <span className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded">
+                        ✓ Available
+                      </span>
+                    ) : (
+                      <span className="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded">
+                        Not Configured
+                      </span>
+                    )}
+                  </div>
+                  <div className="text-xs text-gray-600">
+                    <p className="mb-1">{provider.models.length} models available</p>
+                    <p>
+                      <strong>Required:</strong> Set one of these environment variables:
+                    </p>
+                    <ul className="list-disc list-inside ml-2 mt-1">
+                      {provider.requiredEnvVars.map((envVar) => (
+                        <li key={envVar} className="font-mono text-xs">
+                          {envVar}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                </div>
+              ))}
+            </div>
+            
+            <div className="bg-blue-50 p-3 rounded-lg text-sm">
+              <p className="font-medium text-blue-900 mb-2">💡 Quick Setup:</p>
+              <ol className="list-decimal list-inside text-blue-800 space-y-1">
+                <li>Get API keys from your preferred AI provider(s)</li>
+                <li>Set the environment variable(s) in your deployment</li>
+                <li>Restart the application</li>
+                <li>Refresh this page to see available models</li>
+              </ol>
+            </div>
+          </div>
+
+          <div className="flex justify-end mt-4">
+            <Button 
+              variant="outline" 
+              onClick={() => setShowNoModelsModal(false)}
+            >
+              Got it
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </Card>
   )
 }
