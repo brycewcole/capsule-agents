@@ -78,9 +78,17 @@ type TaskStatus = {
   timestamp: string
 }
 
-type Model = {
-  model_name: string
-  display_name: string
+// Vercel's GatewayModel format from gateway.getAvailableModels()
+export interface Model {
+  id: string
+  name: string
+  description?: string
+  pricing?: {
+    input: number
+    output: number
+    cachedInputTokens?: number
+    cacheCreationInputTokens?: number
+  }
 }
 
 type Part = {

@@ -19,7 +19,9 @@ import { toast } from "sonner"
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from "./ui/select.tsx"
@@ -28,6 +30,7 @@ import {
   type AgentInfo,
   getAgentInfo,
   getAvailableModels,
+  type Model,
   type Tool,
   updateAgentInfo,
 } from "../lib/api.ts"
@@ -41,11 +44,6 @@ import {
 } from "./ui/table.tsx"
 import { ToolDialog } from "./tool-dialog.tsx"
 
-export type Model = {
-  model_name: string // maps to model_name from backend
-  displayName: string // maps to display_name from backend
-}
-
 export default function AgentEditor() {
   const [name, setName] = useState("")
   const [nameError, setNameError] = useState("")
@@ -53,9 +51,7 @@ export default function AgentEditor() {
   const [selectedModel, setSelectedModel] = useState<Model | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
-  const [availableModels, setAvailableModels] = useState<
-    { id: string; name: string }[]
-  >([])
+  const [availableModels, setAvailableModels] = useState<Model[]>([])
   const [tools, setTools] = useState<Tool[]>([])
   const [showToolForm, setShowToolForm] = useState(false)
   const [editIndex, setEditIndex] = useState<number | null>(null)
@@ -91,7 +87,7 @@ export default function AgentEditor() {
     return (
       name !== originalState.name ||
       description !== originalState.description ||
-      selectedModel?.model_name !== originalState.modelName ||
+      selectedModel?.id !== originalState.modelName ||
       JSON.stringify(tools) !== JSON.stringify(originalState.tools)
     )
   }
@@ -111,7 +107,7 @@ export default function AgentEditor() {
       const agentInfo: AgentInfo = {
         name,
         description,
-        modelName: selectedModel?.model_name || "",
+        modelName: selectedModel?.id || "",
         modelParameters: {},
         tools: tools,
       }
@@ -121,7 +117,7 @@ export default function AgentEditor() {
       setOriginalState({
         name,
         description,
-        modelName: selectedModel?.model_name || "",
+        modelName: selectedModel?.id || "",
         tools: [...tools],
       })
 
@@ -151,19 +147,14 @@ export default function AgentEditor() {
           getAvailableModels(),
           getAgentInfo(),
         ])
-        setAvailableModels(
-          models.map((model) => ({
-            id: model.model_name,
-            name: model.display_name,
-          })),
-        )
+        setAvailableModels(models)
         setName(agentInfo.name)
         setNameError("") // Clear any validation errors
         setDescription(agentInfo.description)
-        setSelectedModel({
-          model_name: agentInfo.modelName,
-          displayName: agentInfo.modelName,
-        })
+        const selectedModelFromBackend = models.find((m) =>
+          m.id === agentInfo.modelName
+        )
+        setSelectedModel(selectedModelFromBackend || null)
         setTools(agentInfo.tools || [])
 
         // Set prebuilt tool states based on existing tools
@@ -209,7 +200,7 @@ export default function AgentEditor() {
   const handleModelSelect = (modelId: string) => {
     const model = availableModels.find((m) => m.id === modelId)
     if (model) {
-      handleModelChange({ model_name: model.id, displayName: model.name })
+      handleModelChange(model)
     }
   }
 
@@ -220,10 +211,10 @@ export default function AgentEditor() {
       setName(agentInfo.name)
       setNameError("") // Clear any validation errors
       setDescription(agentInfo.description)
-      setSelectedModel({
-        model_name: agentInfo.modelName,
-        displayName: agentInfo.modelName,
-      })
+      const selectedModelFromBackend = availableModels.find((m) =>
+        m.id === agentInfo.modelName
+      )
+      setSelectedModel(selectedModelFromBackend || null)
       setTools(agentInfo.tools || [])
 
       // Reset prebuilt tool states
@@ -540,18 +531,48 @@ export default function AgentEditor() {
         <div className="space-y-2">
           <Label htmlFor="model-select">Model</Label>
           <Select
-            value={selectedModel?.model_name || ""}
+            value={selectedModel?.id || ""}
             onValueChange={handleModelSelect}
           >
             <SelectTrigger id="model-select" className="w-full">
               <SelectValue placeholder="Select a model" />
             </SelectTrigger>
             <SelectContent>
-              {availableModels.map((model) => (
-                <SelectItem key={model.id} value={model.id}>
-                  {model.name}
-                </SelectItem>
-              ))}
+              {(() => {
+                // Group models by provider (extract provider from model.id like "openai/gpt-4o")
+                const modelsByProvider = availableModels.reduce(
+                  (acc, model) => {
+                    const provider = model.id.split('/')[0] // Extract provider from ID
+                    if (!acc[provider]) {
+                      acc[provider] = []
+                    }
+                    acc[provider].push(model)
+                    return acc
+                  },
+                  {} as Record<string, Model[]>,
+                )
+
+                // Capitalize provider names for display
+                const capitalizeProvider = (provider: string) => {
+                  return provider.charAt(0).toUpperCase() + provider.slice(1)
+                }
+
+                return Object.entries(modelsByProvider).map((
+                  [provider, models]: [string, Model[]],
+                ) => (
+                  <SelectGroup key={provider}>
+                    <SelectLabel>{capitalizeProvider(provider)}</SelectLabel>
+                    {models.map((model) => (
+                      <SelectItem
+                        key={model.id}
+                        value={model.id}
+                      >
+                        {model.name}
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
+                ))
+              })()}
             </SelectContent>
           </Select>
         </div>

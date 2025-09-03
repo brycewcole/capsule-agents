@@ -1,15 +1,14 @@
 import type * as A2A from "@a2a-js/sdk"
 import type { A2ARequestHandler } from "@a2a-js/sdk/server"
-import { openai } from "@ai-sdk/openai"
 import * as log from "@std/log"
 import * as Vercel from "ai"
-import process from "node:process"
 import { z } from "zod"
 import { executeA2ACall } from "../tools/a2a.ts"
 import { braveSearchSkill, braveSearchTool } from "../tools/brave-search.ts"
 import { fileAccessSkill, fileAccessTool } from "../tools/file-access.ts"
 import { memorySkill, memoryTool } from "../tools/memory.ts"
 import { AgentConfigService } from "./agent-config.ts"
+import { ModelRegistry } from "./model-registry.ts"
 import {
   createChatWithId as createChatIfNotExists,
   loadChat,
@@ -320,7 +319,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
 
       const combinedMessages = [...chatHistory, newMessage]
       const tools = await this.getAvailableTools()
-      const model = this.getConfiguredModel()
+      const model = await this.getConfiguredModel()
 
       let responseMessage: A2A.Message | null = null
       const agentInfo = this.agentConfigService.getAgentInfo()
@@ -518,22 +517,18 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
     yield task
   }
 
-  private getConfiguredModel() {
-    try {
-      const agentInfo = this.agentConfigService.getAgentInfo()
-      const modelName = agentInfo.model_name
+  private async getConfiguredModel() {
+    const agentInfo = this.agentConfigService.getAgentInfo()
+    const modelName = agentInfo.model_name
 
-      // Only support OpenAI models for now
-      if (modelName.startsWith("openai/")) {
-        const model = modelName.replace("openai/", "")
-        return openai(model)
-      } else {
-        log.warn(`Unsupported model ${modelName}, defaulting to gpt-4o`)
-        return openai("gpt-4o")
-      }
-    } catch (error) {
-      log.error("Error loading model configuration, using default:", error)
-      return openai(process.env.OPENAI_API_MODEL || "gpt-4o")
+    log.info(`Getting configured model: ${modelName}`)
+
+    const modelRegistry = ModelRegistry.getInstance()
+
+    if (!(await modelRegistry.isModelSupported(modelName))) {
+      throw new Error(`Model ${modelName} is not supported.`)
     }
+
+    return modelRegistry.getModel(modelName)
   }
 }

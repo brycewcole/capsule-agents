@@ -1,5 +1,6 @@
+import * as log from "@std/log"
 import { getDb } from "./db.ts"
-import * as log from "https://deno.land/std@0.203.0/log/mod.ts"
+import { ProviderService } from "./provider-service.ts"
 
 // Types for agent configuration
 interface AgentInfoRow {
@@ -23,18 +24,6 @@ export type AgentInfo = {
   model_parameters: Record<string, unknown>
   tools: Tool[]
 }
-
-export type Model = {
-  model_name: string
-  display_name: string
-}
-
-// Available models - OpenAI only for now
-const AVAILABLE_MODELS: Model[] = [
-  { model_name: "openai/gpt-4o", display_name: "GPT-4o" },
-  { model_name: "openai/gpt-4o-mini", display_name: "GPT-4o Mini" },
-  { model_name: "openai/gpt-3.5-turbo", display_name: "GPT-3.5 Turbo" },
-]
 
 export class AgentConfigService {
   private db = getDb()
@@ -135,7 +124,16 @@ export class AgentConfigService {
     }
   }
 
-  getAvailableModels(): Model[] {
-    return AVAILABLE_MODELS
+  async getAvailableModels() {
+    const providerService = ProviderService.getInstance()
+    return await providerService.getAllAvailableModels()
+  }
+
+  async getProviderInfo() {
+    const providerService = ProviderService.getInstance()
+    return {
+      providers: await providerService.getAvailableProviders(),
+      status: providerService.getProviderStatus(),
+    }
   }
 }

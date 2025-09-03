@@ -309,9 +309,9 @@ app.put("/api/agent", async (c) => {
   }
 })
 
-app.get("/api/models", (c) => {
+app.get("/api/models", async (c) => {
   try {
-    const models = agentConfigService.getAvailableModels()
+    const models = await agentConfigService.getAvailableModels()
     return c.json(models)
   } catch (error) {
     log.error("Error getting models:", error)
