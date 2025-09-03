@@ -41,6 +41,12 @@ import {
   type Model,
   type ProvidersResponse,
   type Tool,
+  type PrebuiltTool,
+  type A2ATool,
+  type MCPTool,
+  isPrebuiltTool,
+  isA2ATool,
+  isMCPTool,
   updateAgentInfo,
 } from "../lib/api.ts"
 import {
@@ -79,12 +85,10 @@ export default function AgentEditor() {
 
   // New state for tool form
   const [toolName, setToolName] = useState("")
-  const [toolType, setToolType] = useState("")
-  const [toolSchema, setToolSchema] = useState("")
-  const [agentUrl, setAgentUrl] = useState("") // New state for a2a_call agent URL
-
-  // MCP Server state
-  const [mcpServerUrl, setMcpServerUrl] = useState("")
+  const [toolType, setToolType] = useState<"a2a" | "mcp" | "">("")
+  const [toolEnabled, setToolEnabled] = useState(true)
+  const [agentUrl, setAgentUrl] = useState("") // For A2A tools
+  const [mcpServerUrl, setMcpServerUrl] = useState("") // For MCP tools
 
   // Prebuilt tools state
   const [fileAccessEnabled, setFileAccessEnabled] = useState(false)
@@ -180,18 +184,17 @@ export default function AgentEditor() {
         const currentTools = agentInfo.tools || []
         setFileAccessEnabled(
           currentTools.some((tool) =>
-            tool.type === "prebuilt" && tool.tool_schema?.type === "file_access"
+            isPrebuiltTool(tool) && tool.subtype === "file_access" && tool.enabled
           ),
         )
         setWebSearchEnabled(
           currentTools.some((tool) =>
-            tool.type === "prebuilt" &&
-            tool.tool_schema?.type === "brave_search"
+            isPrebuiltTool(tool) && tool.subtype === "brave_search" && tool.enabled
           ),
         )
         setMemoryEnabled(
           currentTools.some((tool) =>
-            tool.type === "prebuilt" && tool.tool_schema?.type === "memory"
+            isPrebuiltTool(tool) && tool.subtype === "memory" && tool.enabled
           ),
         )
 
@@ -240,17 +243,17 @@ export default function AgentEditor() {
       const currentTools = agentInfo.tools || []
       setFileAccessEnabled(
         currentTools.some((tool) =>
-          tool.type === "prebuilt" && tool.tool_schema?.type === "file_access"
+          isPrebuiltTool(tool) && tool.subtype === "file_access" && tool.enabled
         ),
       )
       setWebSearchEnabled(
         currentTools.some((tool) =>
-          tool.type === "prebuilt" && tool.tool_schema?.type === "brave_search"
+          isPrebuiltTool(tool) && tool.subtype === "brave_search" && tool.enabled
         ),
       )
       setMemoryEnabled(
         currentTools.some((tool) =>
-          tool.type === "prebuilt" && tool.tool_schema?.type === "memory"
+          isPrebuiltTool(tool) && tool.subtype === "memory" && tool.enabled
         ),
       )
 
@@ -284,12 +287,12 @@ export default function AgentEditor() {
         return
       }
 
-      let toolDataSchema: Record<string, unknown> = {}
+      let newTool: Tool
 
-      if (toolType === "a2a_call") {
+      if (toolType === "a2a") {
         if (!agentUrl) {
           toast.error("Invalid tool", {
-            description: "Agent URL is required for a2a_call tool.",
+            description: "Agent URL is required for A2A tool.",
           })
           return
         }
@@ -302,8 +305,13 @@ export default function AgentEditor() {
           })
           return
         }
-        toolDataSchema = { agent_url: agentUrl }
-      } else if (toolType === "mcp_server") {
+        newTool = {
+          name: toolName,
+          enabled: toolEnabled,
+          type: "a2a",
+          agentUrl: agentUrl,
+        }
+      } else if (toolType === "mcp") {
         if (!mcpServerUrl) {
           toast.error("Invalid tool", {
             description: "Server URL is required for MCP server tool.",
@@ -319,25 +327,17 @@ export default function AgentEditor() {
           })
           return
         }
-        toolDataSchema = {
-          server_url: mcpServerUrl,
+        newTool = {
+          name: toolName,
+          enabled: toolEnabled,
+          type: "mcp",
+          serverUrl: mcpServerUrl,
         }
       } else {
-        // Try to parse the schema as JSON for other tool types
-        try {
-          toolDataSchema = JSON.parse(toolSchema || "{}")
-        } catch (_error) {
-          toast.error("Invalid schema", {
-            description: "The tool schema must be valid JSON.",
-          })
-          return
-        }
-      }
-
-      const newTool: Tool = {
-        name: toolName,
-        type: toolType,
-        tool_schema: toolDataSchema,
+        toast.error("Invalid tool type", {
+          description: "Please select a valid tool type.",
+        })
+        return
       }
 
       if (editIndex !== null) {
@@ -370,7 +370,7 @@ export default function AgentEditor() {
     const tool = tools[index]
 
     // Don't allow editing prebuilt tools through the dialog
-    if (tool.type === "prebuilt") {
+    if (isPrebuiltTool(tool)) {
       toast.error("Cannot edit prebuilt tools", {
         description: "Use the toggles above to enable/disable prebuilt tools.",
       })
@@ -378,21 +378,15 @@ export default function AgentEditor() {
     }
 
     setToolName(tool.name)
+    setToolEnabled(tool.enabled)
 
-    if (
-      tool.type === "a2a_call" && tool.tool_schema &&
-      typeof tool.tool_schema.agent_url === "string"
-    ) {
-      setToolType(tool.type)
-      setAgentUrl(tool.tool_schema.agent_url)
-    } else if (tool.type === "mcp_server" && tool.tool_schema) {
-      setToolType(tool.type)
-      setMcpServerUrl(
-        String((tool.tool_schema as { server_url?: string }).server_url || ""),
-      )
-    } else {
-      setToolType(tool.type)
-      setToolSchema(JSON.stringify(tool.tool_schema || {}, null, 2))
+    if (isA2ATool(tool)) {
+      setToolType("a2a")
+      setAgentUrl(tool.agentUrl)
+      setMcpServerUrl("")
+    } else if (isMCPTool(tool)) {
+      setToolType("mcp")
+      setMcpServerUrl(tool.serverUrl)
       setAgentUrl("")
     }
 
@@ -404,7 +398,7 @@ export default function AgentEditor() {
     const tool = tools[index]
 
     // Don't allow deleting prebuilt tools through the table
-    if (tool.type === "prebuilt") {
+    if (isPrebuiltTool(tool)) {
       toast.error("Cannot delete prebuilt tools", {
         description: "Use the toggles above to enable/disable prebuilt tools.",
       })
@@ -423,10 +417,9 @@ export default function AgentEditor() {
   const resetToolForm = () => {
     setToolName("")
     setToolType("")
-    setToolSchema("")
+    setToolEnabled(true)
     setAgentUrl("") // Reset agentUrl
-    // Reset MCP fields
-    setMcpServerUrl("")
+    setMcpServerUrl("") // Reset MCP fields
     setEditIndex(null)
     setShowToolForm(false)
   }
@@ -437,26 +430,23 @@ export default function AgentEditor() {
   }
 
   // Handle prebuilt tool toggles
-  const handlePrebuiltToolToggle = (toolType: string, enabled: boolean) => {
+  const handlePrebuiltToolToggle = (subtype: "file_access" | "brave_search" | "memory", enabled: boolean) => {
     const toolConfig = {
       file_access: {
         name: "file_access",
         displayName: "File Access",
-        tool_schema: { type: "file_access" },
       },
       brave_search: {
         name: "brave_search",
         displayName: "Web Search",
-        tool_schema: { type: "brave_search" },
       },
       memory: {
         name: "memory",
         displayName: "Memory",
-        tool_schema: { type: "memory" },
       },
     }
 
-    const config = toolConfig[toolType as keyof typeof toolConfig]
+    const config = toolConfig[subtype]
     if (!config) return
 
     let newTools = [...tools]
@@ -464,28 +454,39 @@ export default function AgentEditor() {
     if (enabled) {
       // Add the prebuilt tool if it doesn't exist
       const exists = newTools.some((tool) =>
-        tool.type === "prebuilt" && tool.tool_schema?.type === toolType
+        isPrebuiltTool(tool) && tool.subtype === subtype
       )
       if (!exists) {
-        newTools.push({
+        const newTool: PrebuiltTool = {
           name: config.name,
+          enabled: true,
           type: "prebuilt",
-          tool_schema: config.tool_schema,
-        })
+          subtype: subtype,
+        }
+        newTools.push(newTool)
+      } else {
+        // Enable existing tool
+        newTools = newTools.map(tool => 
+          isPrebuiltTool(tool) && tool.subtype === subtype 
+            ? { ...tool, enabled: true }
+            : tool
+        )
       }
     } else {
-      // Remove the prebuilt tool
-      newTools = newTools.filter((tool) =>
-        !(tool.type === "prebuilt" && tool.tool_schema?.type === toolType)
+      // Disable the prebuilt tool
+      newTools = newTools.map(tool => 
+        isPrebuiltTool(tool) && tool.subtype === subtype 
+          ? { ...tool, enabled: false }
+          : tool
       )
     }
 
     setTools(newTools)
 
     // Update the toggle state
-    if (toolType === "file_access") setFileAccessEnabled(enabled)
-    else if (toolType === "brave_search") setWebSearchEnabled(enabled)
-    else if (toolType === "memory") setMemoryEnabled(enabled)
+    if (subtype === "file_access") setFileAccessEnabled(enabled)
+    else if (subtype === "brave_search") setWebSearchEnabled(enabled)
+    else if (subtype === "memory") setMemoryEnabled(enabled)
 
     toast.success(
       enabled ? "Tool enabled" : "Tool disabled",
@@ -670,8 +671,8 @@ export default function AgentEditor() {
             setToolName={setToolName}
             toolType={toolType}
             setToolType={setToolType}
-            toolSchema={toolSchema}
-            setToolSchema={setToolSchema}
+            toolEnabled={toolEnabled}
+            setToolEnabled={setToolEnabled}
             agentUrl={agentUrl}
             setAgentUrl={setAgentUrl}
             mcpServerUrl={mcpServerUrl}
@@ -682,7 +683,7 @@ export default function AgentEditor() {
           />
 
           {/* Custom Tools Table */}
-          {tools.filter((tool) => tool.type !== "prebuilt").length > 0
+          {tools.filter((tool) => !isPrebuiltTool(tool)).length > 0
             ? (
               <div className="space-y-2">
                 <Label className="text-sm font-medium">Custom Tools</Label>
@@ -691,22 +692,32 @@ export default function AgentEditor() {
                     <TableRow>
                       <TableHead>Name</TableHead>
                       <TableHead>Type</TableHead>
+                      <TableHead>Status</TableHead>
                       <TableHead className="w-20">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {tools.filter((tool) => tool.type !== "prebuilt").map(
+                    {tools.filter((tool) => !isPrebuiltTool(tool)).map(
                       (tool, _originalIndex) => {
                         const actualIndex = tools.findIndex((t) => t === tool)
                         return (
                           <TableRow key={actualIndex}>
                             <TableCell>{tool.name}</TableCell>
                             <TableCell>
-                              {tool.type === "a2a_call"
+                              {isA2ATool(tool)
                                 ? "Agent (A2A)"
-                                : tool.type === "mcp_server"
+                                : isMCPTool(tool)
                                 ? "MCP Server"
                                 : tool.type}
+                            </TableCell>
+                            <TableCell>
+                              <span className={`px-2 py-1 rounded-full text-xs ${
+                                tool.enabled 
+                                  ? "bg-green-100 text-green-800" 
+                                  : "bg-gray-100 text-gray-600"
+                              }`}>
+                                {tool.enabled ? "Enabled" : "Disabled"}
+                              </span>
                             </TableCell>
                             <TableCell className="flex gap-1">
                               <Button

@@ -48,6 +48,12 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
     throw new Error("Method not implemented.")
   }
 
+  private async getMCPServers() {
+    const agentInfo = this.agentConfigService.getAgentInfo()
+    for (const tool of agentInfo.tools.filter((t) => t.type === "mcp_server")) {
+    }
+  }
+
   private async getAvailableTools(): Promise<Record<string, Vercel.Tool>> {
     const tools: Record<string, Vercel.Tool> = {}
 
@@ -179,7 +185,6 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
           }
         }
       }
-      // TODO: Add support for other tool types like mcp_server
     }
 
     log.info("Tools loaded from agent config:", Object.keys(tools))

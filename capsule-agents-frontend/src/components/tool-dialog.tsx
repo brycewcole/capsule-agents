@@ -1,6 +1,7 @@
 import { Input } from "./ui/input.tsx"
 import { Label } from "./ui/label.tsx"
 import { Button } from "./ui/button.tsx"
+import { Switch } from "./ui/switch.tsx"
 import {
   Dialog,
   DialogContent,
@@ -22,13 +23,12 @@ interface ToolDialogProps {
   onOpenChange: (open: boolean) => void
   toolName: string
   setToolName: (name: string) => void
-  toolType: string
-  setToolType: (type: string) => void
-  toolSchema: string
-  setToolSchema: (schema: string) => void
+  toolType: "a2a" | "mcp" | ""
+  setToolType: (type: "a2a" | "mcp" | "") => void
+  toolEnabled: boolean
+  setToolEnabled: (enabled: boolean) => void
   agentUrl: string
   setAgentUrl: (url: string) => void
-  // MCP Server props
   mcpServerUrl: string
   setMcpServerUrl: (url: string) => void
   editIndex: number | null
@@ -43,6 +43,8 @@ export function ToolDialog({
   setToolName,
   toolType,
   setToolType,
+  toolEnabled,
+  setToolEnabled,
   agentUrl,
   setAgentUrl,
   mcpServerUrl,
@@ -51,14 +53,14 @@ export function ToolDialog({
   onSubmit,
   onCancel,
 }: ToolDialogProps) {
-  const handleToolTypeChange = (newType: string) => {
+  const handleToolTypeChange = (newType: "a2a" | "mcp") => {
     setToolType(newType)
 
-    if (newType !== "a2a_call") {
-      setAgentUrl("") // Clear agentUrl if type is not a2a_call
+    if (newType !== "a2a") {
+      setAgentUrl("") // Clear agentUrl if type is not a2a
     }
-    if (newType !== "mcp_server") {
-      setMcpServerUrl("") // Clear MCP URL if type is not mcp_server
+    if (newType !== "mcp") {
+      setMcpServerUrl("") // Clear MCP URL if type is not mcp
     }
   }
 
@@ -73,15 +75,15 @@ export function ToolDialog({
     }
   }
 
-  const isAgentUrlValid = toolType === "a2a_call" ? isValidUrl(agentUrl) : true
-  const isMcpUrlValid = toolType === "mcp_server"
+  const isAgentUrlValid = toolType === "a2a" ? isValidUrl(agentUrl) : true
+  const isMcpUrlValid = toolType === "mcp"
     ? isValidUrl(mcpServerUrl)
     : true
 
   // Check if form is valid
   const isFormValid = toolName && toolType &&
-    (toolType === "a2a_call" ? isAgentUrlValid : true) &&
-    (toolType === "mcp_server" ? isMcpUrlValid : true)
+    (toolType === "a2a" ? isAgentUrlValid : true) &&
+    (toolType === "mcp" ? isMcpUrlValid : true)
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -117,15 +119,27 @@ export function ToolDialog({
                   <SelectValue placeholder="Select tool type" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="a2a_call">
+                  <SelectItem value="a2a">
                     A2A Agent Communication
                   </SelectItem>
-                  <SelectItem value="mcp_server">MCP Server</SelectItem>
+                  <SelectItem value="mcp">MCP Server</SelectItem>
                 </SelectContent>
               </Select>
             </div>
           </div>
-          {toolType === "a2a_call" && (
+          <div className="flex items-center justify-between">
+            <div className="space-y-0.5">
+              <Label className="text-sm">Enabled</Label>
+              <p className="text-xs text-muted-foreground">
+                Whether this tool is active and available for use
+              </p>
+            </div>
+            <Switch
+              checked={toolEnabled}
+              onCheckedChange={setToolEnabled}
+            />
+          </div>
+          {toolType === "a2a" && (
             <div>
               <Label htmlFor="agent-url" className="pb-1">Agent URL</Label>
               <Input
@@ -145,7 +159,7 @@ export function ToolDialog({
               )}
             </div>
           )}
-          {toolType === "mcp_server" && (
+          {toolType === "mcp" && (
             <div>
               <Label htmlFor="mcp-server-url" className="pb-1">
                 Server URL

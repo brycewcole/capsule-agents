@@ -137,11 +137,41 @@ type Task = {
   metadata?: Record<string, unknown>
 }
 
-// Type for tool definition
-export type Tool = {
+// New tool type system
+export interface BaseTool {
   name: string
-  type: string
-  tool_schema: Record<string, unknown>
+  enabled: boolean
+  type: "prebuilt" | "a2a" | "mcp"
+}
+
+export interface PrebuiltTool extends BaseTool {
+  type: "prebuilt"
+  subtype: "file_access" | "brave_search" | "memory"
+}
+
+export interface A2ATool extends BaseTool {
+  type: "a2a"
+  agentUrl: string
+}
+
+export interface MCPTool extends BaseTool {
+  type: "mcp"
+  serverUrl: string
+}
+
+export type Tool = PrebuiltTool | A2ATool | MCPTool
+
+// Type guard functions
+export function isPrebuiltTool(tool: Tool): tool is PrebuiltTool {
+  return tool.type === "prebuilt"
+}
+
+export function isA2ATool(tool: Tool): tool is A2ATool {
+  return tool.type === "a2a"
+}
+
+export function isMCPTool(tool: Tool): tool is MCPTool {
+  return tool.type === "mcp"
 }
 
 // Type for tool calls

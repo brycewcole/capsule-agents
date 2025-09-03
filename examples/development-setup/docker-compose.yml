@@ -23,6 +23,10 @@ services:
       - type: bind
         source: ../../capsule-agents-frontend/dist
         target: /app/static
+      # Database persistence for easier inspection with DBeaver
+      - type: bind
+        source: ./dev-data
+        target: /app/data
       # Anonymous volume to prevent node_modules conflicts
       - /app/node_modules
     command: [

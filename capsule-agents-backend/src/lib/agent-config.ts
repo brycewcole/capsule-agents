@@ -2,6 +2,7 @@ import * as log from "@std/log"
 import { getDb } from "./db.ts"
 import { selectDefaultModel } from "./model-registry.ts"
 import { ProviderService } from "./provider-service.ts"
+import { Tool, isA2ATool, isMCPTool, isPrebuiltTool } from "./tool-types.ts"
 
 // Types for agent configuration
 interface AgentInfoRow {
@@ -12,7 +13,8 @@ interface AgentInfoRow {
   tools: string
 }
 
-export type Tool = {
+// Legacy tool type - keeping for backward compatibility during migration
+type LegacyToolConfig = {
   name: string
   type: string
   tool_schema: Record<string, unknown>
@@ -147,24 +149,8 @@ export class AgentConfigService {
 
   updateAgentInfo(info: AgentInfo): AgentInfo {
     try {
-      // Validate a2a_call tools
-      for (const tool of info.tools) {
-        if (tool.type === "a2a_call") {
-          log.info("Validating a2a_call tool:", tool.name)
-          if (!tool.tool_schema || typeof tool.tool_schema !== "object") {
-            const error =
-              `Tool '${tool.name}' of type 'a2a_call' has an invalid tool_schema (expected a dictionary).`
-            log.error("Tool validation error:", error)
-            throw new Error(error)
-          }
-          if (!tool.tool_schema.agent_url) {
-            const error =
-              `Tool '${tool.name}' of type 'a2a_call' is missing 'agent_url' in its tool_schema.`
-            log.error("Tool validation error:", error)
-            throw new Error(error)
-          }
-        }
-      }
+      // Validate tools using new type system
+      this.validateTools(info.tools)
 
       log.info("Preparing database update...")
       const stmt = this.db.prepare(`
@@ -201,4 +187,47 @@ export class AgentConfigService {
       status: providerService.getProviderStatus(),
     }
   }
+
+  // Validate tools using the new type system
+  private validateTools(tools: Tool[]): void {
+    for (const tool of tools) {
+      if (!tool.name || typeof tool.name !== "string") {
+        throw new Error(`Tool is missing a valid name`)
+      }
+
+      if (typeof tool.enabled !== "boolean") {
+        throw new Error(`Tool '${tool.name}' is missing enabled state`)
+      }
+
+      if (isA2ATool(tool)) {
+        log.info("Validating A2A tool:", tool.name)
+        if (!tool.agentUrl || typeof tool.agentUrl !== "string") {
+          throw new Error(`A2A tool '${tool.name}' is missing or has invalid agentUrl`)
+        }
+        try {
+          new URL(tool.agentUrl)
+        } catch {
+          throw new Error(`A2A tool '${tool.name}' has invalid URL: ${tool.agentUrl}`)
+        }
+      } else if (isMCPTool(tool)) {
+        log.info("Validating MCP tool:", tool.name)
+        if (!tool.serverUrl || typeof tool.serverUrl !== "string") {
+          throw new Error(`MCP tool '${tool.name}' is missing or has invalid serverUrl`)
+        }
+        try {
+          new URL(tool.serverUrl)
+        } catch {
+          throw new Error(`MCP tool '${tool.name}' has invalid URL: ${tool.serverUrl}`)
+        }
+      } else if (isPrebuiltTool(tool)) {
+        log.info("Validating prebuilt tool:", tool.name)
+        if (!tool.subtype || !["file_access", "brave_search", "memory"].includes(tool.subtype)) {
+          throw new Error(`Prebuilt tool '${tool.name}' has invalid subtype: ${tool.subtype}`)
+        }
+      } else {
+        throw new Error(`Tool '${tool.name}' has invalid type`)
+      }
+    }
+  }
+
 }
