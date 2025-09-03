@@ -90,7 +90,7 @@ function createTables(db: Database) {
         name: "capsule_agent",
         description:
           "You are a Capsule agent. You are a friendly and helpful assistant.",
-        model_name: "openai/gpt-4o",
+        model_name: "", // Will be auto-selected by AgentConfigService
         model_parameters: {},
         tools: [],
       }

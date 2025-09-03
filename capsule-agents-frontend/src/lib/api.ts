@@ -78,9 +78,30 @@ type TaskStatus = {
   timestamp: string
 }
 
-type Model = {
-  model_name: string
-  display_name: string
+// Vercel's GatewayModel format from gateway.getAvailableModels()
+export interface Model {
+  id: string
+  name: string
+  description?: string
+  pricing?: {
+    input: number
+    output: number
+    cachedInputTokens?: number
+    cacheCreationInputTokens?: number
+  }
+}
+
+export interface ProviderInfo {
+  id: string
+  name: string
+  available: boolean
+  models: Model[]
+  requiredEnvVars: string[]
+}
+
+export interface ProvidersResponse {
+  providers: ProviderInfo[]
+  status: Record<string, boolean>
 }
 
 type Part = {
@@ -391,6 +412,36 @@ export async function getAvailableModels(): Promise<Model[]> {
     return await response.json() as Model[]
   } catch (error) {
     console.error("Failed to fetch available models:", error)
+    throw error
+  }
+}
+
+// Function to get provider information including availability
+export async function getProviderInfo(): Promise<ProvidersResponse> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/providers`, {
+      headers: {
+        ...authStore.getAuthHeaders(),
+      },
+    })
+
+    if (!response.ok) {
+      throw {
+        code: response.status,
+        message: `Failed to fetch provider info: ${response.status}`,
+        user_message: response.status === 401
+          ? "Please log in to view provider information"
+          : "Could not load provider information",
+        recovery_action: response.status === 401
+          ? "Log in and try again"
+          : "Try again later",
+        isAPIError: true,
+      }
+    }
+
+    return await response.json() as ProvidersResponse
+  } catch (error) {
+    console.error("Failed to fetch provider info:", error)
     throw error
   }
 }

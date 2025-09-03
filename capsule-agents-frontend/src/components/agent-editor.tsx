@@ -13,21 +13,33 @@ import {
   CardTitle,
 } from "./ui/card.tsx"
 import { Button } from "./ui/button.tsx"
-import { Edit, Loader2, Plus, Save, Trash } from "lucide-react"
+import { Edit, HelpCircle, Loader2, Plus, Save, Trash } from "lucide-react"
 import { Separator } from "./ui/separator.tsx"
 import { toast } from "sonner"
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from "./ui/select.tsx"
 import { Switch } from "./ui/switch.tsx"
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "./ui/dialog.tsx"
+import {
   type AgentInfo,
   getAgentInfo,
   getAvailableModels,
+  getProviderInfo,
+  type Model,
+  type ProvidersResponse,
   type Tool,
   updateAgentInfo,
 } from "../lib/api.ts"
@@ -41,11 +53,6 @@ import {
 } from "./ui/table.tsx"
 import { ToolDialog } from "./tool-dialog.tsx"
 
-export type Model = {
-  model_name: string // maps to model_name from backend
-  displayName: string // maps to display_name from backend
-}
-
 export default function AgentEditor() {
   const [name, setName] = useState("")
   const [nameError, setNameError] = useState("")
@@ -53,9 +60,11 @@ export default function AgentEditor() {
   const [selectedModel, setSelectedModel] = useState<Model | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
-  const [availableModels, setAvailableModels] = useState<
-    { id: string; name: string }[]
-  >([])
+  const [availableModels, setAvailableModels] = useState<Model[]>([])
+  const [providerInfo, setProviderInfo] = useState<ProvidersResponse | null>(
+    null,
+  )
+  const [showNoModelsModal, setShowNoModelsModal] = useState(false)
   const [tools, setTools] = useState<Tool[]>([])
   const [showToolForm, setShowToolForm] = useState(false)
   const [editIndex, setEditIndex] = useState<number | null>(null)
@@ -91,7 +100,7 @@ export default function AgentEditor() {
     return (
       name !== originalState.name ||
       description !== originalState.description ||
-      selectedModel?.model_name !== originalState.modelName ||
+      selectedModel?.id !== originalState.modelName ||
       JSON.stringify(tools) !== JSON.stringify(originalState.tools)
     )
   }
@@ -111,7 +120,7 @@ export default function AgentEditor() {
       const agentInfo: AgentInfo = {
         name,
         description,
-        modelName: selectedModel?.model_name || "",
+        modelName: selectedModel?.id || "",
         modelParameters: {},
         tools: tools,
       }
@@ -121,7 +130,7 @@ export default function AgentEditor() {
       setOriginalState({
         name,
         description,
-        modelName: selectedModel?.model_name || "",
+        modelName: selectedModel?.id || "",
         tools: [...tools],
       })
 
@@ -146,24 +155,27 @@ export default function AgentEditor() {
     const fetchData = async () => {
       try {
         setIsLoading(true)
-        // Fetch models and agent info in parallel
-        const [models, agentInfo] = await Promise.all([
+        // Fetch models, provider info, and agent info in parallel
+        const [models, providers, agentInfo] = await Promise.all([
           getAvailableModels(),
+          getProviderInfo(),
           getAgentInfo(),
         ])
-        setAvailableModels(
-          models.map((model) => ({
-            id: model.model_name,
-            name: model.display_name,
-          })),
-        )
+        setAvailableModels(models)
+        setProviderInfo(providers)
+
+        // Check if no models are available and show modal
+        if (models.length === 0) {
+          setShowNoModelsModal(true)
+        }
+
         setName(agentInfo.name)
         setNameError("") // Clear any validation errors
         setDescription(agentInfo.description)
-        setSelectedModel({
-          model_name: agentInfo.modelName,
-          displayName: agentInfo.modelName,
-        })
+        const selectedModelFromBackend = models.find((m) =>
+          m.id === agentInfo.modelName
+        )
+        setSelectedModel(selectedModelFromBackend || null)
         setTools(agentInfo.tools || [])
 
         // Set prebuilt tool states based on existing tools
@@ -209,7 +221,7 @@ export default function AgentEditor() {
   const handleModelSelect = (modelId: string) => {
     const model = availableModels.find((m) => m.id === modelId)
     if (model) {
-      handleModelChange({ model_name: model.id, displayName: model.name })
+      handleModelChange(model)
     }
   }
 
@@ -220,10 +232,10 @@ export default function AgentEditor() {
       setName(agentInfo.name)
       setNameError("") // Clear any validation errors
       setDescription(agentInfo.description)
-      setSelectedModel({
-        model_name: agentInfo.modelName,
-        displayName: agentInfo.modelName,
-      })
+      const selectedModelFromBackend = availableModels.find((m) =>
+        m.id === agentInfo.modelName
+      )
+      setSelectedModel(selectedModelFromBackend || null)
       setTools(agentInfo.tools || [])
 
       // Reset prebuilt tool states
@@ -540,18 +552,61 @@ export default function AgentEditor() {
         <div className="space-y-2">
           <Label htmlFor="model-select">Model</Label>
           <Select
-            value={selectedModel?.model_name || ""}
+            value={selectedModel?.id || ""}
             onValueChange={handleModelSelect}
           >
             <SelectTrigger id="model-select" className="w-full">
               <SelectValue placeholder="Select a model" />
             </SelectTrigger>
             <SelectContent>
-              {availableModels.map((model) => (
-                <SelectItem key={model.id} value={model.id}>
-                  {model.name}
-                </SelectItem>
-              ))}
+              {(() => {
+                if (!providerInfo) return null
+
+                return providerInfo.providers.map((provider) => {
+                  const isAvailable = provider.available
+                  const requiredVars = provider.requiredEnvVars.join(" or ")
+
+                  return (
+                    <SelectGroup key={provider.id}>
+                      <SelectLabel
+                        className={`${
+                          isAvailable ? "" : "text-gray-400"
+                        } flex items-center gap-1`}
+                      >
+                        {provider.name}
+                        {!isAvailable && (
+                          <div className="relative group">
+                            <HelpCircle className="h-3 w-3 text-gray-400 cursor-help" />
+                            <div className="absolute left-0 top-full mt-1 px-2 py-1 text-xs bg-gray-800 text-white rounded shadow-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none whitespace-nowrap z-50">
+                              Required: {requiredVars}
+                            </div>
+                          </div>
+                        )}
+                      </SelectLabel>
+                      {provider.models.map((model) => (
+                        <SelectItem
+                          key={model.id}
+                          value={model.id}
+                          disabled={!isAvailable}
+                          className={!isAvailable ? "text-gray-400" : ""}
+                          title={!isAvailable
+                            ? `Set ${requiredVars} environment variable to enable this provider`
+                            : model.description || ""}
+                        >
+                          <div className="flex items-center justify-between w-full">
+                            <span>{model.name}</span>
+                            {!isAvailable && (
+                              <span className="text-xs text-gray-400 ml-2">
+                                Missing API key
+                              </span>
+                            )}
+                          </div>
+                        </SelectItem>
+                      ))}
+                    </SelectGroup>
+                  )
+                })
+              })()}
             </SelectContent>
           </Select>
         </div>
@@ -722,6 +777,81 @@ export default function AgentEditor() {
             )}
         </Button>
       </CardFooter>
+
+      {/* No Models Available Modal */}
+      <Dialog open={showNoModelsModal} onOpenChange={setShowNoModelsModal}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <HelpCircle className="h-5 w-5 text-orange-500" />
+              No AI Models Available
+            </DialogTitle>
+            <DialogDescription>
+              To use this agent, you need to configure at least one AI provider
+              by setting the appropriate environment variables.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div className="text-sm">
+              <p className="font-medium mb-3">Available Providers:</p>
+              {providerInfo?.providers.map((provider) => (
+                <div key={provider.id} className="mb-3 p-3 border rounded-lg">
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="font-medium">{provider.name}</span>
+                    {provider.available
+                      ? (
+                        <span className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded">
+                          ✓ Available
+                        </span>
+                      )
+                      : (
+                        <span className="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded">
+                          Not Configured
+                        </span>
+                      )}
+                  </div>
+                  <div className="text-xs text-gray-600">
+                    <p className="mb-1">
+                      {provider.models.length} models available
+                    </p>
+                    <p>
+                      <strong>Required:</strong>{" "}
+                      Set one of these environment variables:
+                    </p>
+                    <ul className="list-disc list-inside ml-2 mt-1">
+                      {provider.requiredEnvVars.map((envVar) => (
+                        <li key={envVar} className="font-mono text-xs">
+                          {envVar}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="bg-blue-50 p-3 rounded-lg text-sm">
+              <p className="font-medium text-blue-900 mb-2">💡 Quick Setup:</p>
+              <ol className="list-decimal list-inside text-blue-800 space-y-1">
+                <li>Get API keys from your preferred AI provider(s)</li>
+                <li>Set the environment variable(s) in your deployment</li>
+                <li>Restart the application</li>
+                <li>Refresh this page to see available models</li>
+              </ol>
+            </div>
+          </div>
+
+          <div className="flex justify-end mt-4">
+            <Button
+              variant="outline"
+              onClick={() => setShowNoModelsModal(false)}
+            >
+              Got it
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </Card>
   )
 }

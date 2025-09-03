@@ -319,6 +319,16 @@ app.get("/api/models", (c) => {
   }
 })
 
+app.get("/api/providers", (c) => {
+  try {
+    const providerInfo = agentConfigService.getProviderInfo()
+    return c.json(providerInfo)
+  } catch (error) {
+    log.error("Error getting provider info:", error)
+    return c.json({ error: "Failed to get provider information" }, 500)
+  }
+})
+
 // Chat management endpoints
 app.get("/api/chats", (c) => {
   log.info("GET /api/chats - Getting chat list")
