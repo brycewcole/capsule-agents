@@ -39,7 +39,7 @@ export const OPENAI_MODELS: ModelEntry[] = [
 // Anthropic Models
 export const ANTHROPIC_MODELS: ModelEntry[] = [
   {
-    id: "anthropic/claude-sonnet-4",
+    id: "anthropic/claude-sonnet-4-20250514",
     name: "Claude 4 Sonnet",
     description:
       "Hybrid model with instant responses and extended thinking, 1M context window",
@@ -72,22 +72,23 @@ export const PROVIDER_CONFIGS: ProviderConfig[] = [
     name: "OpenAI",
     models: OPENAI_MODELS,
     requiredEnvVars: ["OPENAI_API_KEY"],
-    description: "OpenAI's GPT models including GPT-5 and GPT-5 Mini"
+    description: "OpenAI's GPT models including GPT-5 and GPT-5 Mini",
   },
   {
-    id: "anthropic", 
+    id: "anthropic",
     name: "Anthropic",
     models: ANTHROPIC_MODELS,
     requiredEnvVars: ["ANTHROPIC_API_KEY"],
-    description: "Anthropic's Claude models with advanced reasoning capabilities"
+    description:
+      "Anthropic's Claude models with advanced reasoning capabilities",
   },
   {
     id: "google",
-    name: "Google", 
+    name: "Google",
     models: GOOGLE_MODELS,
-    requiredEnvVars: ["GOOGLE_API_KEY", "GOOGLE_GENERATIVE_AI_API_KEY"],
-    description: "Google's Gemini models with multimodal capabilities"
-  }
+    requiredEnvVars: ["GOOGLE_GENERATIVE_AI_API_KEY"],
+    description: "Google's Gemini models with multimodal capabilities",
+  },
 ]
 
 // Combined model registry (for backward compatibility)
@@ -111,11 +112,37 @@ export function findModelById(modelId: string): ModelEntry | undefined {
 }
 
 // New helper functions for centralized provider configs
-export function getProviderConfig(providerId: string): ProviderConfig | undefined {
-  return PROVIDER_CONFIGS.find(config => config.id === providerId)
+export function getProviderConfig(
+  providerId: string,
+): ProviderConfig | undefined {
+  return PROVIDER_CONFIGS.find((config) => config.id === providerId)
 }
 
 export function getAllProviderConfigs(): ProviderConfig[] {
   return PROVIDER_CONFIGS
 }
 
+// Smart default model selection function
+export function selectDefaultModel(
+  availableModels: ModelEntry[],
+): ModelEntry | null {
+  if (availableModels.length === 0) return null
+
+  const priorityOrder = [
+    "openai/gpt-5-mini",
+    "google/gemini-2.5-flash",
+    "anthropic/claude-sonnet-4-latest",
+    "openai/gpt-5",
+    "google/gemini-2.0-flash",
+  ]
+
+  for (const preferredId of priorityOrder) {
+    const preferredModel = availableModels.find((m) => m.id === preferredId)
+    if (preferredModel) {
+      return preferredModel
+    }
+  }
+
+  // Fallback to first available model
+  return availableModels[0]
+}
