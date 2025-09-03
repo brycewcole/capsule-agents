@@ -124,15 +124,15 @@ export class AgentConfigService {
     }
   }
 
-  async getAvailableModels() {
+  getAvailableModels() {
     const providerService = ProviderService.getInstance()
-    return await providerService.getAllAvailableModels()
+    return providerService.getAllAvailableModels()
   }
 
-  async getProviderInfo() {
+  getProviderInfo() {
     const providerService = ProviderService.getInstance()
     return {
-      providers: await providerService.getAvailableProviders(),
+      providers: providerService.getAvailableProviders(),
       status: providerService.getProviderStatus(),
     }
   }

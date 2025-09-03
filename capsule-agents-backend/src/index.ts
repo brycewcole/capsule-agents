@@ -309,13 +309,23 @@ app.put("/api/agent", async (c) => {
   }
 })
 
-app.get("/api/models", async (c) => {
+app.get("/api/models", (c) => {
   try {
-    const models = await agentConfigService.getAvailableModels()
+    const models = agentConfigService.getAvailableModels()
     return c.json(models)
   } catch (error) {
     log.error("Error getting models:", error)
     return c.json({ error: "Failed to get available models" }, 500)
+  }
+})
+
+app.get("/api/providers", (c) => {
+  try {
+    const providerInfo = agentConfigService.getProviderInfo()
+    return c.json(providerInfo)
+  } catch (error) {
+    log.error("Error getting provider info:", error)
+    return c.json({ error: "Failed to get provider information" }, 500)
   }
 })
 

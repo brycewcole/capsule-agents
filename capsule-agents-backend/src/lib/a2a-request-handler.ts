@@ -2,13 +2,14 @@ import type * as A2A from "@a2a-js/sdk"
 import type { A2ARequestHandler } from "@a2a-js/sdk/server"
 import * as log from "@std/log"
 import * as Vercel from "ai"
+import { createProviderRegistry } from "ai"
 import { z } from "zod"
 import { executeA2ACall } from "../tools/a2a.ts"
 import { braveSearchSkill, braveSearchTool } from "../tools/brave-search.ts"
 import { fileAccessSkill, fileAccessTool } from "../tools/file-access.ts"
 import { memorySkill, memoryTool } from "../tools/memory.ts"
 import { AgentConfigService } from "./agent-config.ts"
-import { ModelRegistry } from "./model-registry.ts"
+import { ProviderService } from "./provider-service.ts"
 import {
   createChatWithId as createChatIfNotExists,
   loadChat,
@@ -319,7 +320,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
 
       const combinedMessages = [...chatHistory, newMessage]
       const tools = await this.getAvailableTools()
-      const model = await this.getConfiguredModel()
+      const model = this.getConfiguredModel()
 
       let responseMessage: A2A.Message | null = null
       const agentInfo = this.agentConfigService.getAgentInfo()
@@ -517,18 +518,32 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
     yield task
   }
 
-  private async getConfiguredModel() {
+  private getConfiguredModel() {
     const agentInfo = this.agentConfigService.getAgentInfo()
     const modelName = agentInfo.model_name
 
     log.info(`Getting configured model: ${modelName}`)
 
-    const modelRegistry = ModelRegistry.getInstance()
+    const providerService = ProviderService.getInstance()
 
-    if (!(await modelRegistry.isModelSupported(modelName))) {
+    if (!providerService.isModelAvailable(modelName)) {
       throw new Error(`Model ${modelName} is not supported.`)
     }
 
-    return modelRegistry.getModel(modelName)
+    // Create provider instances and registry
+    const providers = providerService.createProviderInstances()
+    const registry = createProviderRegistry(providers)
+
+    // Parse the model name to extract provider and model
+    const [provider, ...modelParts] = modelName.split("/")
+    const model = modelParts.join("/")
+
+    if (!provider || !model) {
+      throw new Error(
+        `Invalid model name format: ${modelName}. Expected format: provider/model`,
+      )
+    }
+
+    return registry.languageModel(`${provider}:${model}`)
   }
 }

@@ -1,29 +1,20 @@
 import { anthropic } from "@ai-sdk/anthropic"
-import { gateway, GatewayModelEntry } from "@ai-sdk/gateway"
 import { google } from "@ai-sdk/google"
 import { openai } from "@ai-sdk/openai"
 import { loadApiKey } from "@ai-sdk/provider-utils"
 import * as log from "@std/log"
 import process from "node:process"
+import { getModelsForProvider, ModelEntry } from "./model-registry.ts"
 
-// Vercel's model format from gateway.getAvailableModels()
-export interface GatewayModel {
-  id: string
-  name: string
-  description?: string
-  pricing?: {
-    input: number
-    output: number
-    cachedInputTokens?: number
-    cacheCreationInputTokens?: number
-  }
-}
+// Export ModelEntry from model-registry for compatibility
+export type { ModelEntry } from "./model-registry.ts"
 
 export type ProviderInfo = {
   id: string
   name: string
   available: boolean
-  models: GatewayModelEntry[]
+  models: ModelEntry[]
+  requiredEnvVars: string[]
 }
 
 export class ProviderService {
@@ -43,7 +34,7 @@ export class ProviderService {
     try {
       log.info(
         `Checking availability of ${envVar} for ${description} with result ${
-          process.env[envVar]
+          process.env[envVar] ? "FOUND" : "NOT FOUND"
         }`,
       )
       loadApiKey({
@@ -58,7 +49,7 @@ export class ProviderService {
     }
   }
 
-  async getAvailableProviders(): Promise<ProviderInfo[]> {
+  getAvailableProviders(): ProviderInfo[] {
     const providers: ProviderInfo[] = []
 
     // OpenAI Provider
@@ -66,76 +57,55 @@ export class ProviderService {
       "OPENAI_API_KEY",
       "OpenAI API key",
     )
-    if (openaiAvailable) {
-      const models = await this.getModelsForProvider("openai")
-      providers.push({
-        id: "openai",
-        name: "OpenAI",
-        available: true,
-        models,
-      })
-    }
+    const models = openaiAvailable ? getModelsForProvider("openai") : []
+    providers.push({
+      id: "openai",
+      name: "OpenAI",
+      available: openaiAvailable,
+      models,
+      requiredEnvVars: ["OPENAI_API_KEY"],
+    })
 
     // Anthropic Provider
     const anthropicAvailable = this.checkProviderAvailability(
       "ANTHROPIC_API_KEY",
       "Anthropic API key",
     )
-    if (anthropicAvailable) {
-      const models = await this.getModelsForProvider("anthropic")
-      providers.push({
-        id: "anthropic",
-        name: "Anthropic",
-        available: true,
-        models,
-      })
-    }
+    const anthropicModels = anthropicAvailable
+      ? getModelsForProvider("anthropic")
+      : []
+    providers.push({
+      id: "anthropic",
+      name: "Anthropic",
+      available: anthropicAvailable,
+      models: anthropicModels,
+      requiredEnvVars: ["ANTHROPIC_API_KEY"],
+    })
 
-    // Google Provider
     const googleAvailable = this.checkProviderAvailability(
-      "GOOGLE_API_KEY",
-      "Google API key",
+      "GOOGLE_GENERATIVE_AI_API_KEY",
+      "Google Generative AI API key",
     )
-    if (googleAvailable) {
-      const models = await this.getModelsForProvider("google")
-      providers.push({
-        id: "google",
-        name: "Google",
-        available: true,
-        models,
-      })
-    }
+    const googleModels = googleAvailable ? getModelsForProvider("google") : []
+    providers.push({
+      id: "google",
+      name: "Google",
+      available: googleAvailable,
+      models: googleModels,
+      requiredEnvVars: ["GOOGLE_GENERATIVE_AI_API_KEY"],
+    })
 
+    const availableCount = providers.filter((p) => p.available).length
     log.info(
-      `Found ${providers.length} available providers: ${
-        providers.map((p) => p.name).join(", ")
+      `Found ${availableCount}/${providers.length} available providers: ${
+        providers.filter((p) => p.available).map((p) => p.name).join(", ")
       }`,
     )
     return providers
   }
 
-  private async getModelsForProvider(
-    providerId: string,
-  ): Promise<GatewayModelEntry[]> {
-    try {
-      const availableModels = await gateway.getAvailableModels()
-      const providerModels = availableModels.models.filter((
-        model: GatewayModelEntry,
-      ) => model.id.startsWith(`${providerId}/`))
-
-      return providerModels
-    } catch (error) {
-      log.error(
-        `Failed to fetch models for provider ${providerId}: ${
-          JSON.stringify(error)
-        }`,
-      )
-      throw error
-    }
-  }
-
-  async getAllAvailableModels(): Promise<GatewayModelEntry[]> {
-    const providers = await this.getAvailableProviders()
+  getAllAvailableModels(): ModelEntry[] {
+    const providers = this.getAvailableProviders()
     return providers
       .filter((provider) => provider.available)
       .flatMap((provider) => provider.models)
@@ -154,6 +124,9 @@ export class ProviderService {
       google: this.checkProviderAvailability(
         "GOOGLE_API_KEY",
         "Google API key",
+      ) || this.checkProviderAvailability(
+        "GOOGLE_GENERATIVE_AI_API_KEY",
+        "Google Generative AI API key",
       ),
     }
   }
@@ -188,10 +161,8 @@ export class ProviderService {
     return providers
   }
 
-  async isModelAvailable(modelName: string): Promise<boolean> {
-    const availableModels = await this.getAllAvailableModels()
-    return availableModels.some((model: GatewayModelEntry) =>
-      model.id === modelName
-    )
+  isModelAvailable(modelName: string): boolean {
+    const availableModels = this.getAllAvailableModels()
+    return availableModels.some((model: ModelEntry) => model.id === modelName)
   }
 }
