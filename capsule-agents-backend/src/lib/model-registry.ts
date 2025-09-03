@@ -10,6 +10,14 @@ export interface ModelEntry {
   }
 }
 
+export interface ProviderConfig {
+  id: string
+  name: string
+  models: ModelEntry[]
+  requiredEnvVars: string[]
+  description: string
+}
+
 // OpenAI Models
 export const OPENAI_MODELS: ModelEntry[] = [
   {
@@ -57,7 +65,32 @@ export const GOOGLE_MODELS: ModelEntry[] = [
   },
 ]
 
-// Combined model registry
+// Centralized provider configuration
+export const PROVIDER_CONFIGS: ProviderConfig[] = [
+  {
+    id: "openai",
+    name: "OpenAI",
+    models: OPENAI_MODELS,
+    requiredEnvVars: ["OPENAI_API_KEY"],
+    description: "OpenAI's GPT models including GPT-5 and GPT-5 Mini"
+  },
+  {
+    id: "anthropic", 
+    name: "Anthropic",
+    models: ANTHROPIC_MODELS,
+    requiredEnvVars: ["ANTHROPIC_API_KEY"],
+    description: "Anthropic's Claude models with advanced reasoning capabilities"
+  },
+  {
+    id: "google",
+    name: "Google", 
+    models: GOOGLE_MODELS,
+    requiredEnvVars: ["GOOGLE_API_KEY", "GOOGLE_GENERATIVE_AI_API_KEY"],
+    description: "Google's Gemini models with multimodal capabilities"
+  }
+]
+
+// Combined model registry (for backward compatibility)
 export const MODEL_REGISTRY: Record<string, ModelEntry[]> = {
   openai: OPENAI_MODELS,
   anthropic: ANTHROPIC_MODELS,
@@ -75,5 +108,14 @@ export function getAllModels(): ModelEntry[] {
 
 export function findModelById(modelId: string): ModelEntry | undefined {
   return getAllModels().find((model) => model.id === modelId)
+}
+
+// New helper functions for centralized provider configs
+export function getProviderConfig(providerId: string): ProviderConfig | undefined {
+  return PROVIDER_CONFIGS.find(config => config.id === providerId)
+}
+
+export function getAllProviderConfigs(): ProviderConfig[] {
+  return PROVIDER_CONFIGS
 }
 

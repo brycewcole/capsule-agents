@@ -4,10 +4,10 @@ import { openai } from "@ai-sdk/openai"
 import { loadApiKey } from "@ai-sdk/provider-utils"
 import * as log from "@std/log"
 import process from "node:process"
-import { getModelsForProvider, ModelEntry } from "./model-registry.ts"
+import { getAllProviderConfigs, ModelEntry } from "./model-registry.ts"
 
-// Export ModelEntry from model-registry for compatibility
-export type { ModelEntry } from "./model-registry.ts"
+// Export types from model-registry for compatibility
+export type { ModelEntry, ProviderConfig } from "./model-registry.ts"
 
 export type ProviderInfo = {
   id: string
@@ -51,49 +51,24 @@ export class ProviderService {
 
   getAvailableProviders(): ProviderInfo[] {
     const providers: ProviderInfo[] = []
+    const providerConfigs = getAllProviderConfigs()
 
-    // OpenAI Provider
-    const openaiAvailable = this.checkProviderAvailability(
-      "OPENAI_API_KEY",
-      "OpenAI API key",
-    )
-    const models = openaiAvailable ? getModelsForProvider("openai") : []
-    providers.push({
-      id: "openai",
-      name: "OpenAI",
-      available: openaiAvailable,
-      models,
-      requiredEnvVars: ["OPENAI_API_KEY"],
-    })
+    for (const config of providerConfigs) {
+      // Check if any of the required environment variables are available
+      const isAvailable = config.requiredEnvVars.some((envVar) =>
+        this.checkProviderAvailability(envVar, `${config.name} API key`)
+      )
 
-    // Anthropic Provider
-    const anthropicAvailable = this.checkProviderAvailability(
-      "ANTHROPIC_API_KEY",
-      "Anthropic API key",
-    )
-    const anthropicModels = anthropicAvailable
-      ? getModelsForProvider("anthropic")
-      : []
-    providers.push({
-      id: "anthropic",
-      name: "Anthropic",
-      available: anthropicAvailable,
-      models: anthropicModels,
-      requiredEnvVars: ["ANTHROPIC_API_KEY"],
-    })
+      const models = isAvailable ? config.models : []
 
-    const googleAvailable = this.checkProviderAvailability(
-      "GOOGLE_GENERATIVE_AI_API_KEY",
-      "Google Generative AI API key",
-    )
-    const googleModels = googleAvailable ? getModelsForProvider("google") : []
-    providers.push({
-      id: "google",
-      name: "Google",
-      available: googleAvailable,
-      models: googleModels,
-      requiredEnvVars: ["GOOGLE_GENERATIVE_AI_API_KEY"],
-    })
+      providers.push({
+        id: config.id,
+        name: config.name,
+        available: isAvailable,
+        models,
+        requiredEnvVars: config.requiredEnvVars,
+      })
+    }
 
     const availableCount = providers.filter((p) => p.available).length
     log.info(
@@ -112,23 +87,17 @@ export class ProviderService {
   }
 
   getProviderStatus(): Record<string, boolean> {
-    return {
-      openai: this.checkProviderAvailability(
-        "OPENAI_API_KEY",
-        "OpenAI API key",
-      ),
-      anthropic: this.checkProviderAvailability(
-        "ANTHROPIC_API_KEY",
-        "Anthropic API key",
-      ),
-      google: this.checkProviderAvailability(
-        "GOOGLE_API_KEY",
-        "Google API key",
-      ) || this.checkProviderAvailability(
-        "GOOGLE_GENERATIVE_AI_API_KEY",
-        "Google Generative AI API key",
-      ),
+    const status: Record<string, boolean> = {}
+    const providerConfigs = getAllProviderConfigs()
+
+    for (const config of providerConfigs) {
+      // Check if any of the required environment variables are available
+      status[config.id] = config.requiredEnvVars.some((envVar) =>
+        this.checkProviderAvailability(envVar, `${config.name} API key`)
+      )
     }
+
+    return status
   }
 
   // Create provider instances using AI SDK's direct provider imports
