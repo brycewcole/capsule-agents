@@ -1,5 +1,6 @@
 import * as log from "@std/log"
 import { getDb } from "./db.ts"
+import { selectDefaultModel } from "./model-registry.ts"
 import { ProviderService } from "./provider-service.ts"
 
 // Types for agent configuration
@@ -41,10 +42,74 @@ export class AgentConfigService {
         )
       }
     }
+
+    // Ensure a valid model is selected after initialization
+    this.ensureValidModel()
+  }
+
+  private ensureValidModel(): void {
+    try {
+      const providerService = ProviderService.getInstance()
+      const availableModels = providerService.getAllAvailableModels()
+
+      // Get current agent info to check model
+      const stmt = this.db.prepare(`
+        SELECT model_name FROM agent_info WHERE key = 1
+      `)
+      const row = stmt.get() as { model_name: string } | undefined
+
+      if (!row) {
+        log.error("No agent info found for model validation")
+        return
+      }
+
+      const currentModelName = row.model_name
+      const isCurrentModelAvailable = availableModels.some((model) =>
+        model.id === currentModelName
+      )
+
+      // If no model selected or current model is unavailable, auto-select best default
+      if (!currentModelName || !isCurrentModelAvailable) {
+        const defaultModel = selectDefaultModel(availableModels)
+
+        if (defaultModel) {
+          log.info(
+            `Auto-selecting default model: ${defaultModel.name} (${defaultModel.id})`,
+          )
+          log.info(
+            `Reason: ${
+              !currentModelName
+                ? "No model was selected"
+                : `Previous model '${currentModelName}' is no longer available`
+            }`,
+          )
+
+          // Update the database with the new model
+          const updateStmt = this.db.prepare(`
+            UPDATE agent_info 
+            SET model_name = ?
+            WHERE key = 1
+          `)
+          updateStmt.run(defaultModel.id)
+
+          log.info("Successfully updated agent with default model")
+        } else {
+          log.warn(
+            "No models are available for auto-selection. Please configure at least one AI provider.",
+          )
+        }
+      } else {
+        log.info(`Current model '${currentModelName}' is available and valid`)
+      }
+    } catch (error) {
+      log.error("Error in ensureValidModel():", error)
+    }
   }
 
   getAgentInfo(): AgentInfo {
     try {
+      this.ensureValidModel()
+
       const stmt = this.db.prepare(`
         SELECT name, description, model_name, model_parameters, tools 
         FROM agent_info WHERE key = 1
