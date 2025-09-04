@@ -40,13 +40,13 @@ import {
   getProviderInfo,
   type Model,
   type ProvidersResponse,
-  type Capability,
-  type PrebuiltCapability,
-  type A2ACapability,
-  type MCPCapability,
-  isPrebuiltCapability,
-  isA2ACapability,
-  isMCPCapability,
+  type Tool,
+  type PrebuiltTool,
+  type A2ATool,
+  type MCPTool,
+  isPrebuiltTool,
+  isA2ATool,
+  isMCPTool,
   updateAgentInfo,
 } from "../lib/api.ts"
 import {
@@ -57,7 +57,7 @@ import {
   TableHeader,
   TableRow,
 } from "./ui/table.tsx"
-import { CapabilityDialog } from "./capability-dialog.tsx"
+import { ToolDialog } from "./tool-dialog.tsx"
 
 export default function AgentEditor() {
   const [name, setName] = useState("")
@@ -69,8 +69,8 @@ export default function AgentEditor() {
   const [availableModels, setAvailableModels] = useState<Model[]>([])
   const [providerInfo, setProviderInfo] = useState<ProvidersResponse | null>(null)
   const [showNoModelsModal, setShowNoModelsModal] = useState(false)
-  const [capabilities, setCapabilities] = useState<Capability[]>([])
-  const [showCapabilityForm, setShowCapabilityForm] = useState(false)
+  const [tools, setTools] = useState<Tool[]>([])
+  const [showToolForm, setShowToolForm] = useState(false)
   const [editIndex, setEditIndex] = useState<number | null>(null)
 
   // State to track original values for change detection
@@ -79,18 +79,18 @@ export default function AgentEditor() {
       name: string
       description: string
       modelName: string
-      capabilities: Capability[]
+      tools: Tool[]
     } | null
   >(null)
 
-  // New state for capability form
-  const [capabilityName, setCapabilityName] = useState("")
-  const [capabilityType, setCapabilityType] = useState<"a2a" | "mcp" | "">("")
-  const [capabilityEnabled, setCapabilityEnabled] = useState(true)
-  const [agentUrl, setAgentUrl] = useState("") // For A2A capabilities
-  const [mcpServerUrl, setMcpServerUrl] = useState("") // For MCP capabilities
+  // New state for tool form
+  const [toolName, setToolName] = useState("")
+  const [toolType, setToolType] = useState<"a2a" | "mcp" | "">("")
+  const [toolEnabled, setToolEnabled] = useState(true)
+  const [agentUrl, setAgentUrl] = useState("") // For A2A tools
+  const [mcpServerUrl, setMcpServerUrl] = useState("") // For MCP tools
 
-  // Prebuilt capabilities state
+  // Prebuilt tools state
   const [fileAccessEnabled, setFileAccessEnabled] = useState(false)
   const [webSearchEnabled, setWebSearchEnabled] = useState(false)
   const [memoryEnabled, setMemoryEnabled] = useState(false)
@@ -103,7 +103,7 @@ export default function AgentEditor() {
       name !== originalState.name ||
       description !== originalState.description ||
       selectedModel?.id !== originalState.modelName ||
-      JSON.stringify(capabilities) !== JSON.stringify(originalState.capabilities)
+      JSON.stringify(tools) !== JSON.stringify(originalState.tools)
     )
   }
 
@@ -124,7 +124,7 @@ export default function AgentEditor() {
         description,
         modelName: selectedModel?.id || "",
         modelParameters: {},
-        capabilities: capabilities,
+        tools: tools,
       }
       await updateAgentInfo(agentInfo)
 
@@ -133,7 +133,7 @@ export default function AgentEditor() {
         name,
         description,
         modelName: selectedModel?.id || "",
-        capabilities: [...capabilities],
+        tools: [...tools],
       })
 
       toast.success("Agent saved", {
@@ -165,12 +165,28 @@ export default function AgentEditor() {
         ])
         setAvailableModels(models)
         setProviderInfo(providers)
+<<<<<<< HEAD
         
         // Check if no models are available and show modal
         if (models.length === 0) {
           setShowNoModelsModal(true)
         }
         
+||||||| 7aef63e
+        setAvailableModels(
+          models.map((model) => ({
+            id: model.model_name,
+            name: model.display_name,
+          })),
+        )
+=======
+
+        // Check if no models are available and show modal
+        if (models.length === 0) {
+          setShowNoModelsModal(true)
+        }
+
+>>>>>>> main
         setName(agentInfo.name)
         setNameError("") // Clear any validation errors
         setDescription(agentInfo.description)
@@ -178,23 +194,23 @@ export default function AgentEditor() {
           m.id === agentInfo.modelName
         )
         setSelectedModel(selectedModelFromBackend || null)
-        setCapabilities(agentInfo.capabilities || [])
+        setTools(agentInfo.tools || [])
 
-        // Set prebuilt capability states based on existing capabilities
-        const currentCapabilities = agentInfo.capabilities || []
+        // Set prebuilt tool states based on existing tools
+        const currentTools = agentInfo.tools || []
         setFileAccessEnabled(
-          currentCapabilities.some((capability) =>
-            isPrebuiltCapability(capability) && capability.subtype === "file_access" && capability.enabled
+          currentTools.some((tool) =>
+            isPrebuiltTool(tool) && tool.subtype === "file_access" && tool.enabled
           ),
         )
         setWebSearchEnabled(
-          currentCapabilities.some((capability) =>
-            isPrebuiltCapability(capability) && capability.subtype === "brave_search" && capability.enabled
+          currentTools.some((tool) =>
+            isPrebuiltTool(tool) && tool.subtype === "brave_search" && tool.enabled
           ),
         )
         setMemoryEnabled(
-          currentCapabilities.some((capability) =>
-            isPrebuiltCapability(capability) && capability.subtype === "memory" && capability.enabled
+          currentTools.some((tool) =>
+            isPrebuiltTool(tool) && tool.subtype === "memory" && tool.enabled
           ),
         )
 
@@ -203,7 +219,7 @@ export default function AgentEditor() {
           name: agentInfo.name,
           description: agentInfo.description,
           modelName: agentInfo.modelName,
-          capabilities: currentCapabilities,
+          tools: currentTools,
         })
       } catch (error) {
         console.error("Failed to fetch data:", error)
@@ -237,23 +253,23 @@ export default function AgentEditor() {
         m.id === agentInfo.modelName
       )
       setSelectedModel(selectedModelFromBackend || null)
-      setCapabilities(agentInfo.capabilities || [])
+      setTools(agentInfo.tools || [])
 
-      // Reset prebuilt capability states
-      const currentCapabilities = agentInfo.capabilities || []
+      // Reset prebuilt tool states
+      const currentTools = agentInfo.tools || []
       setFileAccessEnabled(
-        currentCapabilities.some((capability) =>
-          isPrebuiltCapability(capability) && capability.subtype === "file_access" && capability.enabled
+        currentTools.some((tool) =>
+          isPrebuiltTool(tool) && tool.subtype === "file_access" && tool.enabled
         ),
       )
       setWebSearchEnabled(
-        currentCapabilities.some((capability) =>
-          isPrebuiltCapability(capability) && capability.subtype === "brave_search" && capability.enabled
+        currentTools.some((tool) =>
+          isPrebuiltTool(tool) && tool.subtype === "brave_search" && tool.enabled
         ),
       )
       setMemoryEnabled(
-        currentCapabilities.some((capability) =>
-          isPrebuiltCapability(capability) && capability.subtype === "memory" && capability.enabled
+        currentTools.some((tool) =>
+          isPrebuiltTool(tool) && tool.subtype === "memory" && tool.enabled
         ),
       )
 
@@ -262,7 +278,7 @@ export default function AgentEditor() {
         name: agentInfo.name,
         description: agentInfo.description,
         modelName: agentInfo.modelName,
-        capabilities: currentCapabilities,
+        tools: currentTools,
       })
 
       toast.success("Reset successful", {
@@ -278,21 +294,21 @@ export default function AgentEditor() {
     }
   }
 
-  const addCapability = () => {
+  const addTool = () => {
     try {
-      if (!capabilityName || !capabilityType) {
-        toast.error("Invalid capability", {
-          description: "Capability name and type are required.",
+      if (!toolName || !toolType) {
+        toast.error("Invalid tool", {
+          description: "Tool name and type are required.",
         })
         return
       }
 
-      let newCapability: Capability
+      let newTool: Tool
 
-      if (capabilityType === "a2a") {
+      if (toolType === "a2a") {
         if (!agentUrl) {
-          toast.error("Invalid capability", {
-            description: "Agent URL is required for A2A capability.",
+          toast.error("Invalid tool", {
+            description: "Agent URL is required for A2A tool.",
           })
           return
         }
@@ -305,16 +321,16 @@ export default function AgentEditor() {
           })
           return
         }
-        newCapability = {
-          name: capabilityName,
-          enabled: capabilityEnabled,
+        newTool = {
+          name: toolName,
+          enabled: toolEnabled,
           type: "a2a",
           agentUrl: agentUrl,
         }
-      } else if (capabilityType === "mcp") {
+      } else if (toolType === "mcp") {
         if (!mcpServerUrl) {
-          toast.error("Invalid capability", {
-            description: "Server URL is required for MCP server capability.",
+          toast.error("Invalid tool", {
+            description: "Server URL is required for MCP server tool.",
           })
           return
         }
@@ -327,111 +343,111 @@ export default function AgentEditor() {
           })
           return
         }
-        newCapability = {
-          name: capabilityName,
-          enabled: capabilityEnabled,
+        newTool = {
+          name: toolName,
+          enabled: toolEnabled,
           type: "mcp",
           serverUrl: mcpServerUrl,
         }
       } else {
-        toast.error("Invalid capability type", {
-          description: "Please select a valid capability type.",
+        toast.error("Invalid tool type", {
+          description: "Please select a valid tool type.",
         })
         return
       }
 
       if (editIndex !== null) {
-        // Update existing capability
-        const newCapabilities = [...capabilities]
-        newCapabilities[editIndex] = newCapability
-        setCapabilities(newCapabilities)
-        toast.success("Capability updated", {
-          description: `Capability "${capabilityName}" has been updated.`,
+        // Update existing tool
+        const newTools = [...tools]
+        newTools[editIndex] = newTool
+        setTools(newTools)
+        toast.success("Tool updated", {
+          description: `Tool "${toolName}" has been updated.`,
         })
       } else {
-        // Add new capability
-        setCapabilities([...capabilities, newCapability])
-        toast.success("Capability added", {
-          description: `Capability "${capabilityName}" has been added.`,
+        // Add new tool
+        setTools([...tools, newTool])
+        toast.success("Tool added", {
+          description: `Tool "${toolName}" has been added.`,
         })
       }
 
       // Reset form
-      resetCapabilityForm()
+      resetToolForm()
     } catch (error) {
-      console.error("Error adding capability:", error)
-      toast.error("Error adding capability", {
-        description: "An error occurred while adding the capability.",
+      console.error("Error adding tool:", error)
+      toast.error("Error adding tool", {
+        description: "An error occurred while adding the tool.",
       })
     }
   }
 
-  const editCapability = (index: number) => {
-    const capability = capabilities[index]
+  const editTool = (index: number) => {
+    const tool = tools[index]
 
-    // Don't allow editing prebuilt capabilities through the dialog
-    if (isPrebuiltCapability(capability)) {
-      toast.error("Cannot edit prebuilt capabilities", {
-        description: "Use the toggles above to enable/disable prebuilt capabilities.",
+    // Don't allow editing prebuilt tools through the dialog
+    if (isPrebuiltTool(tool)) {
+      toast.error("Cannot edit prebuilt tools", {
+        description: "Use the toggles above to enable/disable prebuilt tools.",
       })
       return
     }
 
-    setCapabilityName(capability.name)
-    setCapabilityEnabled(capability.enabled)
+    setToolName(tool.name)
+    setToolEnabled(tool.enabled)
 
-    if (isA2ACapability(capability)) {
-      setCapabilityType("a2a")
-      setAgentUrl(capability.agentUrl)
+    if (isA2ATool(tool)) {
+      setToolType("a2a")
+      setAgentUrl(tool.agentUrl)
       setMcpServerUrl("")
-    } else if (isMCPCapability(capability)) {
-      setCapabilityType("mcp")
-      setMcpServerUrl(capability.serverUrl)
+    } else if (isMCPTool(tool)) {
+      setToolType("mcp")
+      setMcpServerUrl(tool.serverUrl)
       setAgentUrl("")
     }
 
     setEditIndex(index)
-    setShowCapabilityForm(true)
+    setShowToolForm(true)
   }
 
-  const deleteCapability = (index: number) => {
-    const capability = capabilities[index]
+  const deleteTool = (index: number) => {
+    const tool = tools[index]
 
-    // Don't allow deleting prebuilt capabilities through the table
-    if (isPrebuiltCapability(capability)) {
-      toast.error("Cannot delete prebuilt capabilities", {
-        description: "Use the toggles above to enable/disable prebuilt capabilities.",
+    // Don't allow deleting prebuilt tools through the table
+    if (isPrebuiltTool(tool)) {
+      toast.error("Cannot delete prebuilt tools", {
+        description: "Use the toggles above to enable/disable prebuilt tools.",
       })
       return
     }
 
-    const newCapabilities = [...capabilities]
-    const capabilityName = capabilities[index].name
-    newCapabilities.splice(index, 1)
-    setCapabilities(newCapabilities)
-    toast.success("Capability removed", {
-      description: `Capability "${capabilityName}" has been removed.`,
+    const newTools = [...tools]
+    const toolName = tools[index].name
+    newTools.splice(index, 1)
+    setTools(newTools)
+    toast.success("Tool removed", {
+      description: `Tool "${toolName}" has been removed.`,
     })
   }
 
-  const resetCapabilityForm = () => {
-    setCapabilityName("")
-    setCapabilityType("")
-    setCapabilityEnabled(true)
+  const resetToolForm = () => {
+    setToolName("")
+    setToolType("")
+    setToolEnabled(true)
     setAgentUrl("") // Reset agentUrl
     setMcpServerUrl("") // Reset MCP fields
     setEditIndex(null)
-    setShowCapabilityForm(false)
+    setShowToolForm(false)
   }
 
-  const handleAddNewCapabilityClick = () => {
-    resetCapabilityForm() // Clears form state, sets editIndex to null, and calls setShowCapabilityForm(false)
-    setShowCapabilityForm(true) // Opens the dialog for a new capability
+  const handleAddNewToolClick = () => {
+    resetToolForm() // Clears form state, sets editIndex to null, and calls setShowToolForm(false)
+    setShowToolForm(true) // Opens the dialog for a new tool
   }
 
-  // Handle prebuilt capability toggles
-  const handlePrebuiltCapabilityToggle = (subtype: "file_access" | "brave_search" | "memory", enabled: boolean) => {
-    const capabilityConfig = {
+  // Handle prebuilt tool toggles
+  const handlePrebuiltToolToggle = (subtype: "file_access" | "brave_search" | "memory", enabled: boolean) => {
+    const toolConfig = {
       file_access: {
         name: "file_access",
         displayName: "File Access",
@@ -446,42 +462,42 @@ export default function AgentEditor() {
       },
     }
 
-    const config = capabilityConfig[subtype]
+    const config = toolConfig[subtype]
     if (!config) return
 
-    let newCapabilities = [...capabilities]
+    let newTools = [...tools]
 
     if (enabled) {
-      // Add the prebuilt capability if it doesn't exist
-      const exists = newCapabilities.some((capability) =>
-        isPrebuiltCapability(capability) && capability.subtype === subtype
+      // Add the prebuilt tool if it doesn't exist
+      const exists = newTools.some((tool) =>
+        isPrebuiltTool(tool) && tool.subtype === subtype
       )
       if (!exists) {
-        const newCapability: PrebuiltCapability = {
+        const newTool: PrebuiltTool = {
           name: config.name,
           enabled: true,
           type: "prebuilt",
           subtype: subtype,
         }
-        newCapabilities.push(newCapability)
+        newTools.push(newTool)
       } else {
-        // Enable existing capability
-        newCapabilities = newCapabilities.map(capability => 
-          isPrebuiltCapability(capability) && capability.subtype === subtype 
-            ? { ...capability, enabled: true }
-            : capability
+        // Enable existing tool
+        newTools = newTools.map(tool => 
+          isPrebuiltTool(tool) && tool.subtype === subtype 
+            ? { ...tool, enabled: true }
+            : tool
         )
       }
     } else {
-      // Disable the prebuilt capability
-      newCapabilities = newCapabilities.map(capability => 
-        isPrebuiltCapability(capability) && capability.subtype === subtype 
-          ? { ...capability, enabled: false }
-          : capability
+      // Disable the prebuilt tool
+      newTools = newTools.map(tool => 
+        isPrebuiltTool(tool) && tool.subtype === subtype 
+          ? { ...tool, enabled: false }
+          : tool
       )
     }
 
-    setCapabilities(newCapabilities)
+    setTools(newTools)
 
     // Update the toggle state
     if (subtype === "file_access") setFileAccessEnabled(enabled)
@@ -489,7 +505,7 @@ export default function AgentEditor() {
     else if (subtype === "memory") setMemoryEnabled(enabled)
 
     toast.success(
-      enabled ? "Capability enabled" : "Capability disabled",
+      enabled ? "Tool enabled" : "Tool disabled",
       {
         description: `${config.displayName} has been ${
           enabled ? "enabled" : "disabled"
@@ -564,6 +580,7 @@ export default function AgentEditor() {
                 return providerInfo.providers.map((provider) => {
                   const isAvailable = provider.available
                   const requiredVars = provider.requiredEnvVars.join(" or ")
+<<<<<<< HEAD
                   
                   return (
                     <SelectGroup key={provider.id}>
@@ -590,6 +607,41 @@ export default function AgentEditor() {
                             ? `Set ${requiredVars} environment variable to enable this provider`
                             : model.description || ""
                           }
+||||||| 7aef63e
+              {availableModels.map((model) => (
+                <SelectItem key={model.id} value={model.id}>
+                  {model.name}
+                </SelectItem>
+              ))}
+=======
+
+                  return (
+                    <SelectGroup key={provider.id}>
+                      <SelectLabel
+                        className={`${
+                          isAvailable ? "" : "text-gray-400"
+                        } flex items-center gap-1`}
+                      >
+                        {provider.name}
+                        {!isAvailable && (
+                          <div className="relative group">
+                            <HelpCircle className="h-3 w-3 text-gray-400 cursor-help" />
+                            <div className="absolute left-0 top-full mt-1 px-2 py-1 text-xs bg-gray-800 text-white rounded shadow-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none whitespace-nowrap z-50">
+                              Required: {requiredVars}
+                            </div>
+                          </div>
+                        )}
+                      </SelectLabel>
+                      {provider.models.map((model) => (
+                        <SelectItem
+                          key={model.id}
+                          value={model.id}
+                          disabled={!isAvailable}
+                          className={!isAvailable ? "text-gray-400" : ""}
+                          title={!isAvailable
+                            ? `Set ${requiredVars} environment variable to enable this provider`
+                            : model.description || ""}
+>>>>>>> main
                         >
                           <div className="flex items-center justify-between w-full">
                             <span>{model.name}</span>
@@ -609,15 +661,15 @@ export default function AgentEditor() {
           </Select>
         </div>
 
-        {/* Capabilities Section */}
+        {/* Tools Section */}
         <div className="space-y-4">
           <div className="flex justify-between items-center">
-            <Label>Capabilities</Label>
+            <Label>Tools</Label>
           </div>
 
-          {/* Prebuilt Capabilities Toggles */}
+          {/* Prebuilt Tools Toggles */}
           <div className="space-y-3 p-4 bg-muted/50 rounded-lg">
-            <Label className="text-sm font-medium">Prebuilt Capabilities</Label>
+            <Label className="text-sm font-medium">Prebuilt Tools</Label>
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <div className="space-y-0.5">
@@ -629,7 +681,7 @@ export default function AgentEditor() {
                 <Switch
                   checked={fileAccessEnabled}
                   onCheckedChange={(checked) =>
-                    handlePrebuiltCapabilityToggle("file_access", checked)}
+                    handlePrebuiltToolToggle("file_access", checked)}
                 />
               </div>
               <div className="flex items-center justify-between">
@@ -642,7 +694,7 @@ export default function AgentEditor() {
                 <Switch
                   checked={webSearchEnabled}
                   onCheckedChange={(checked) =>
-                    handlePrebuiltCapabilityToggle("brave_search", checked)}
+                    handlePrebuiltToolToggle("brave_search", checked)}
                 />
               </div>
               <div className="flex items-center justify-between">
@@ -655,38 +707,38 @@ export default function AgentEditor() {
                 <Switch
                   checked={memoryEnabled}
                   onCheckedChange={(checked) =>
-                    handlePrebuiltCapabilityToggle("memory", checked)}
+                    handlePrebuiltToolToggle("memory", checked)}
                 />
               </div>
             </div>
           </div>
 
-          <CapabilityDialog
-            open={showCapabilityForm}
+          <ToolDialog
+            open={showToolForm}
             onOpenChange={(open) => {
-              setShowCapabilityForm(open)
-              if (!open) resetCapabilityForm()
+              setShowToolForm(open)
+              if (!open) resetToolForm()
             }}
-            capabilityName={capabilityName}
-            setCapabilityName={setCapabilityName}
-            capabilityType={capabilityType}
-            setCapabilityType={setCapabilityType}
-            capabilityEnabled={capabilityEnabled}
-            setCapabilityEnabled={setCapabilityEnabled}
+            toolName={toolName}
+            setToolName={setToolName}
+            toolType={toolType}
+            setToolType={setToolType}
+            toolEnabled={toolEnabled}
+            setToolEnabled={setToolEnabled}
             agentUrl={agentUrl}
             setAgentUrl={setAgentUrl}
             mcpServerUrl={mcpServerUrl}
             setMcpServerUrl={setMcpServerUrl}
             editIndex={editIndex}
-            onSubmit={addCapability}
-            onCancel={() => setShowCapabilityForm(false)}
+            onSubmit={addTool}
+            onCancel={() => setShowToolForm(false)}
           />
 
-          {/* Custom Capabilities Table */}
-          {capabilities.filter((capability) => !isPrebuiltCapability(capability)).length > 0
+          {/* Custom Tools Table */}
+          {tools.filter((tool) => !isPrebuiltTool(tool)).length > 0
             ? (
               <div className="space-y-2">
-                <Label className="text-sm font-medium">Custom Capabilities</Label>
+                <Label className="text-sm font-medium">Custom Tools</Label>
                 <Table>
                   <TableHeader>
                     <TableRow>
@@ -697,42 +749,42 @@ export default function AgentEditor() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {capabilities.filter((capability) => !isPrebuiltCapability(capability)).map(
-                      (capability, _originalIndex) => {
-                        const actualIndex = capabilities.findIndex((t) => t === capability)
+                    {tools.filter((tool) => !isPrebuiltTool(tool)).map(
+                      (tool, _originalIndex) => {
+                        const actualIndex = tools.findIndex((t) => t === tool)
                         return (
                           <TableRow key={actualIndex}>
-                            <TableCell>{capability.name}</TableCell>
+                            <TableCell>{tool.name}</TableCell>
                             <TableCell>
-                              {isA2ACapability(capability)
+                              {isA2ATool(tool)
                                 ? "Agent (A2A)"
-                                : isMCPCapability(capability)
+                                : isMCPTool(tool)
                                 ? "MCP Server"
-                                : capability.type}
+                                : tool.type}
                             </TableCell>
                             <TableCell>
                               <span className={`px-2 py-1 rounded-full text-xs ${
-                                capability.enabled 
+                                tool.enabled 
                                   ? "bg-green-100 text-green-800" 
                                   : "bg-gray-100 text-gray-600"
                               }`}>
-                                {capability.enabled ? "Enabled" : "Disabled"}
+                                {tool.enabled ? "Enabled" : "Disabled"}
                               </span>
                             </TableCell>
                             <TableCell className="flex gap-1">
                               <Button
                                 variant="ghost"
                                 size="sm"
-                                onClick={() => editCapability(actualIndex)}
-                                title="Edit capability"
+                                onClick={() => editTool(actualIndex)}
+                                title="Edit tool"
                               >
                                 <Edit className="h-4 w-4" />
                               </Button>
                               <Button
                                 variant="ghost"
                                 size="sm"
-                                onClick={() => deleteCapability(actualIndex)}
-                                title="Remove capability"
+                                onClick={() => deleteTool(actualIndex)}
+                                title="Remove tool"
                               >
                                 <Trash className="h-4 w-4" />
                               </Button>
@@ -747,19 +799,19 @@ export default function AgentEditor() {
             )
             : (
               <div className="space-y-2">
-                <Label className="text-sm font-medium">Custom Capabilities</Label>
+                <Label className="text-sm font-medium">Custom Tools</Label>
                 <div className="text-center p-4 text-muted-foreground border border-dashed rounded-md">
-                  No custom capabilities configured. Add custom capabilities like Agent (A2A)
+                  No custom tools configured. Add custom tools like Agent (A2A)
                   connections and remote MCP servers.
                 </div>
               </div>
             )}
 
-          {/* Add Custom Capability Button */}
+          {/* Add Custom Tool Button */}
           <div className="flex justify-end">
-            <Button size="sm" variant="outline" onClick={handleAddNewCapabilityClick}>
+            <Button size="sm" variant="outline" onClick={handleAddNewToolClick}>
               <Plus className="mr-2 h-4 w-4" />
-              Add Custom Capability
+              Add Custom Tool
             </Button>
           </div>
         </div>
@@ -795,6 +847,7 @@ export default function AgentEditor() {
               No AI Models Available
             </DialogTitle>
             <DialogDescription>
+<<<<<<< HEAD
               To use this agent, you need to configure at least one AI provider by setting the appropriate environment variables.
             </DialogDescription>
           </DialogHeader>
@@ -847,6 +900,67 @@ export default function AgentEditor() {
           <div className="flex justify-end mt-4">
             <Button 
               variant="outline" 
+||||||| 7aef63e
+=======
+              To use this agent, you need to configure at least one AI provider
+              by setting the appropriate environment variables.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div className="text-sm">
+              <p className="font-medium mb-3">Available Providers:</p>
+              {providerInfo?.providers.map((provider) => (
+                <div key={provider.id} className="mb-3 p-3 border rounded-lg">
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="font-medium">{provider.name}</span>
+                    {provider.available
+                      ? (
+                        <span className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded">
+                          ✓ Available
+                        </span>
+                      )
+                      : (
+                        <span className="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded">
+                          Not Configured
+                        </span>
+                      )}
+                  </div>
+                  <div className="text-xs text-gray-600">
+                    <p className="mb-1">
+                      {provider.models.length} models available
+                    </p>
+                    <p>
+                      <strong>Required:</strong>{" "}
+                      Set one of these environment variables:
+                    </p>
+                    <ul className="list-disc list-inside ml-2 mt-1">
+                      {provider.requiredEnvVars.map((envVar) => (
+                        <li key={envVar} className="font-mono text-xs">
+                          {envVar}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="bg-blue-50 p-3 rounded-lg text-sm">
+              <p className="font-medium text-blue-900 mb-2">💡 Quick Setup:</p>
+              <ol className="list-decimal list-inside text-blue-800 space-y-1">
+                <li>Get API keys from your preferred AI provider(s)</li>
+                <li>Set the environment variable(s) in your deployment</li>
+                <li>Restart the application</li>
+                <li>Refresh this page to see available models</li>
+              </ol>
+            </div>
+          </div>
+
+          <div className="flex justify-end mt-4">
+            <Button
+              variant="outline"
+>>>>>>> main
               onClick={() => setShowNoModelsModal(false)}
             >
               Got it

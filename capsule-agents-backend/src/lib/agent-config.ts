@@ -2,7 +2,7 @@ import * as log from "@std/log"
 import { getDb } from "./db.ts"
 import { selectDefaultModel } from "./model-registry.ts"
 import { ProviderService } from "./provider-service.ts"
-import { Tool, isA2ATool, isMCPTool, isPrebuiltTool } from "./tool-types.ts"
+import { Capability, isA2ACapability, isMCPCapability, isPrebuiltCapability } from "./capability-types.ts"
 
 // Types for agent configuration
 interface AgentInfoRow {
@@ -10,7 +10,7 @@ interface AgentInfoRow {
   description: string
   model_name: string
   model_parameters: string
-  tools: string
+  capabilities: string
 }
 
 // Legacy tool type - keeping for backward compatibility during migration
@@ -25,7 +25,7 @@ export type AgentInfo = {
   description: string
   model_name: string
   model_parameters: Record<string, unknown>
-  tools: Tool[]
+  capabilities: Capability[]
 }
 
 export class AgentConfigService {
@@ -106,6 +106,9 @@ export class AgentConfigService {
     } catch (error) {
       log.error("Error in ensureValidModel():", error)
     }
+
+    // Ensure a valid model is selected after initialization
+    this.ensureValidModel()
   }
 
   getAgentInfo(): AgentInfo {
@@ -113,7 +116,7 @@ export class AgentConfigService {
       this.ensureValidModel()
 
       const stmt = this.db.prepare(`
-        SELECT name, description, model_name, model_parameters, tools 
+        SELECT name, description, model_name, model_parameters, tools as capabilities 
         FROM agent_info WHERE key = 1
       `)
 
@@ -123,7 +126,7 @@ export class AgentConfigService {
         throw new Error("Agent info not found")
       }
 
-      const tools = JSON.parse(row.tools || "[]")
+      const capabilities = JSON.parse(row.capabilities || "[]")
       const modelParameters = JSON.parse(row.model_parameters || "{}")
 
       const result = {
@@ -131,13 +134,13 @@ export class AgentConfigService {
         description: row.description,
         model_name: row.model_name,
         model_parameters: modelParameters,
-        tools: tools,
+        capabilities: capabilities,
       }
 
       log.debug("AgentConfigService.getAgentInfo() returning:", {
         name: result.name,
         model_name: result.model_name,
-        toolCount: result.tools.length,
+        capabilityCount: result.capabilities.length,
       })
 
       return result
@@ -149,8 +152,8 @@ export class AgentConfigService {
 
   updateAgentInfo(info: AgentInfo): AgentInfo {
     try {
-      // Validate tools using new type system
-      this.validateTools(info.tools)
+      // Validate capabilities using new type system
+      this.validateCapabilities(info.capabilities)
 
       log.info("Preparing database update...")
       const stmt = this.db.prepare(`
@@ -164,7 +167,7 @@ export class AgentConfigService {
         info.description,
         info.model_name,
         JSON.stringify(info.model_parameters),
-        JSON.stringify(info.tools),
+        JSON.stringify(info.capabilities),
       )
 
       log.info("Database update completed successfully")
@@ -188,46 +191,58 @@ export class AgentConfigService {
     }
   }
 
-  // Validate tools using the new type system
-  private validateTools(tools: Tool[]): void {
-    for (const tool of tools) {
-      if (!tool.name || typeof tool.name !== "string") {
-        throw new Error(`Tool is missing a valid name`)
+  // Validate capabilities using the new type system
+  private validateCapabilities(capabilities: Capability[]): void {
+    for (const capability of capabilities) {
+      if (!capability.name || typeof capability.name !== "string") {
+        throw new Error(`Capability is missing a valid name`)
       }
 
-      if (typeof tool.enabled !== "boolean") {
-        throw new Error(`Tool '${tool.name}' is missing enabled state`)
+      if (typeof capability.enabled !== "boolean") {
+        throw new Error(`Capability '${capability.name}' is missing enabled state`)
       }
 
-      if (isA2ATool(tool)) {
-        log.info("Validating A2A tool:", tool.name)
-        if (!tool.agentUrl || typeof tool.agentUrl !== "string") {
-          throw new Error(`A2A tool '${tool.name}' is missing or has invalid agentUrl`)
+      if (isA2ACapability(capability)) {
+        log.info("Validating A2A capability:", capability.name)
+        if (!capability.agentUrl || typeof capability.agentUrl !== "string") {
+          throw new Error(
+            `A2A capability '${capability.name}' is missing or has invalid agentUrl`,
+          )
         }
         try {
-          new URL(tool.agentUrl)
+          new URL(capability.agentUrl)
         } catch {
-          throw new Error(`A2A tool '${tool.name}' has invalid URL: ${tool.agentUrl}`)
+          throw new Error(
+            `A2A capability '${capability.name}' has invalid URL: ${capability.agentUrl}`,
+          )
         }
-      } else if (isMCPTool(tool)) {
-        log.info("Validating MCP tool:", tool.name)
-        if (!tool.serverUrl || typeof tool.serverUrl !== "string") {
-          throw new Error(`MCP tool '${tool.name}' is missing or has invalid serverUrl`)
+      } else if (isMCPCapability(capability)) {
+        log.info("Validating MCP capability:", capability.name)
+        if (!capability.serverUrl || typeof capability.serverUrl !== "string") {
+          throw new Error(
+            `MCP capability '${capability.name}' is missing or has invalid serverUrl`,
+          )
         }
         try {
-          new URL(tool.serverUrl)
+          new URL(capability.serverUrl)
         } catch {
-          throw new Error(`MCP tool '${tool.name}' has invalid URL: ${tool.serverUrl}`)
+          throw new Error(
+            `MCP capability '${capability.name}' has invalid URL: ${capability.serverUrl}`,
+          )
         }
-      } else if (isPrebuiltTool(tool)) {
-        log.info("Validating prebuilt tool:", tool.name)
-        if (!tool.subtype || !["file_access", "brave_search", "memory"].includes(tool.subtype)) {
-          throw new Error(`Prebuilt tool '${tool.name}' has invalid subtype: ${tool.subtype}`)
+      } else if (isPrebuiltCapability(capability)) {
+        log.info("Validating prebuilt capability:", capability.name)
+        if (
+          !capability.subtype ||
+          !["file_access", "brave_search", "memory"].includes(capability.subtype)
+        ) {
+          throw new Error(
+            `Prebuilt capability '${capability.name}' has invalid subtype: ${capability.subtype}`,
+          )
         }
       } else {
-        throw new Error(`Tool '${tool.name}' has invalid type`)
+        throw new Error(`Capability '${capability.name}' has invalid type`)
       }
     }
   }
-
 }
