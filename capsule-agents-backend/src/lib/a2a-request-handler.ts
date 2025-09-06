@@ -2,13 +2,15 @@ import type * as A2A from "@a2a-js/sdk"
 import type { A2ARequestHandler } from "@a2a-js/sdk/server"
 import * as log from "@std/log"
 import * as Vercel from "ai"
-import { createProviderRegistry } from "ai"
+import { createProviderRegistry, experimental_createMCPClient } from "ai"
+import { StreamableHTTPClientTransport } from "mcp/client/streamableHttp.js"
 import { z } from "zod"
-import { webSearchSkill } from "../capabilities/brave-search.ts"
-import { executeA2ACall } from "../tools/a2a.ts"
-import { fileAccessSkill, fileAccessTool } from "../tools/file-access.ts"
-import { memorySkill, memoryTool } from "../tools/memory.ts"
+import { executeA2ACall } from "../capabilities/a2a.ts"
+import { webSearchSkill, webSearchTool } from "../capabilities/brave-search.ts"
+import { fileAccessSkill, fileAccessTool } from "../capabilities/file-access.ts"
+import { memorySkill, memoryTool } from "../capabilities/memory.ts"
 import { AgentConfigService } from "./agent-config.ts"
+import { isMCPCapability } from "./capability-types.ts"
 import { ProviderService } from "./provider-service.ts"
 import {
   createChatWithId as createChatIfNotExists,
@@ -18,6 +20,11 @@ import {
 import { TaskService } from "./task-service.ts"
 import { TaskStorage } from "./task-storage.ts"
 import { VercelService } from "./vercel-service.ts"
+
+interface MCPToolsDisposable {
+  tools: Record<string, Vercel.Tool>
+  [Symbol.asyncDispose](): Promise<void>
+}
 
 export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
   private taskStorage = new TaskStorage()
@@ -48,32 +55,63 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
     throw new Error("Method not implemented.")
   }
 
-  private async getMCPServers() {
+  private async getMCPServers(): Promise<MCPToolsDisposable> {
     const agentInfo = this.agentConfigService.getAgentInfo()
-    for (const tool of agentInfo.tools.filter((t) => t.type === "mcp_server")) {
+    const clients: Array<{ close: () => Promise<void> }> = []
+    const urls: string[] = agentInfo.capabilities.filter(isMCPCapability).map((
+      c,
+    ) => c.serverUrl)
+
+    try {
+      const connectedClients = await Promise.all(
+        urls.map(async (url) => {
+          const client = await experimental_createMCPClient({
+            transport: new StreamableHTTPClientTransport(new URL(url)),
+          })
+          clients.push(client)
+          return client
+        }),
+      )
+
+      const toolSets = await Promise.all(
+        connectedClients.map((client) => client.tools()),
+      )
+
+      const tools = Object.assign({}, ...toolSets)
+
+      return {
+        tools: tools,
+        [Symbol.asyncDispose]: async () => {
+          await Promise.all(clients.map((client) => client.close()))
+        },
+      }
+    } catch (error) {
+      await Promise.all(clients.map((client) => client.close()))
+      throw error
     }
   }
 
-  private async getAvailableTools(): Promise<Record<string, Vercel.Tool>> {
-    const tools: Record<string, Vercel.Tool> = {}
+  private async getAvailableTools(): Promise<
+    Record<string, Vercel.Tool>
+  > {
+    const capabilities: Record<string, Vercel.Tool> = {}
 
     const agentInfo = this.agentConfigService.getAgentInfo()
-    for (const tool of agentInfo.capabilities) {
-      if (tool.type === "prebuilt") {
-        const toolType = tool.tool_schema?.type
-        switch (toolType) {
+    for (const capability of agentInfo.capabilities) {
+      if (capability.type === "prebuilt") {
+        switch (capability.subtype) {
           case "file_access":
-            tools.fileAccess = fileAccessTool
+            capabilities.fileAccess = fileAccessTool
             break
           case "web_search":
-            tools.webSearch = braveSearchTool
+            capabilities.webSearch = webSearchTool
             break
           case "memory":
-            tools.memory = memoryTool
+            capabilities.memory = memoryTool
             break
         }
-      } else if (tool.type === "a2a_call") {
-        const agentUrl = tool.tool_schema?.agent_url
+      } else if (capability.type === "a2a") {
+        const agentUrl = capability.agentUrl
         if (agentUrl && typeof agentUrl === "string") {
           try {
             // Fetch agent card to get agent name and description
@@ -86,7 +124,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
                 signal: AbortSignal.timeout(5000), // 5 second timeout
               },
             )
-            let agentName = tool.name
+            let agentName = capability.name
             let description = `Communicate with agent at ${agentUrl}`
 
             log.info(
@@ -106,7 +144,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
               )
             }
 
-            tools[tool.name] = {
+            capabilities[capability.name] = {
               description,
               inputSchema: z.object({
                 message: z.string().describe(`Message to send to ${agentName}`),
@@ -122,7 +160,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
                   message: params.message,
                   contextId: params.contextId,
                 })
-                // Convert result to string for tool return
+                // Convert result to string for capability return
                 if (result.error) {
                   return `Error: ${result.error}`
                 } else if (result.response) {
@@ -137,7 +175,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
               },
             }
           } catch (error) {
-            log.error(`Error setting up A2A tool for ${agentUrl}:`, error)
+            log.error(`Error setting up A2A capability for ${agentUrl}:`, error)
             if (error instanceof Error) {
               log.error(`Error message: ${error.message}`)
               log.error(`Error type: ${error.constructor.name}`)
@@ -155,8 +193,8 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
                 `This appears to be a network/fetch error - agent at ${agentUrl} may not be running`,
               )
             }
-            // Create fallback tool
-            tools[tool.name] = {
+            // Create fallback capability
+            capabilities[capability.name] = {
               description:
                 `Communicate with agent at ${agentUrl} (agent unavailable)`,
               inputSchema: z.object({
@@ -187,9 +225,12 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
       }
     }
 
-    log.info("Tools loaded from agent config:", Object.keys(tools))
+    log.info(
+      "Capabilities loaded from agent config:",
+      Object.keys(capabilities),
+    )
 
-    return tools
+    return capabilities
   }
 
   async getAgentCard(): Promise<A2A.AgentCard> {
@@ -206,17 +247,17 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
     log.info("Agent config loaded for card:", { name: agentName })
 
     // Get enabled skills based on available tools
-    const availableTools = await this.getAvailableTools()
+    const availableCapabilities = await this.getAvailableTools()
     const skills: A2A.AgentSkill[] = []
 
     // TODO add A2A and MCP server skills
-    if ("fileAccess" in availableTools) {
+    if ("fileAccess" in availableCapabilities) {
       skills.push(fileAccessSkill)
     }
-    if ("webSearch" in availableTools) {
+    if ("webSearch" in availableCapabilities) {
       skills.push(webSearchSkill)
     }
-    if ("memory" in availableTools) {
+    if ("memory" in availableCapabilities) {
       skills.push(memorySkill)
     }
 
@@ -309,7 +350,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
     }
 
     let task: A2A.Task | null = null
-    let hasToolCalls = false
+    let hasCapabilityCalls = false
 
     // Queue for status updates that need to be yielded
     const statusUpdateQueue: A2A.TaskStatusUpdateEvent[] = []
@@ -324,7 +365,9 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
       )
 
       const combinedMessages = [...chatHistory, newMessage]
-      const tools = await this.getAvailableTools()
+      let tools = await this.getAvailableTools()
+      await using mcpTools = await this.getMCPServers()
+      tools = Object.assign(tools, mcpTools.tools)
       const model = this.getConfiguredModel()
 
       let responseMessage: A2A.Message | null = null
@@ -338,7 +381,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
         system: agentInfo.description,
         model,
         messages: Vercel.convertToModelMessages(combinedMessages),
-        tools,
+        tools: tools,
         stopWhen: Vercel.stepCountIs(10),
         onStepFinish: (
           { text, toolCalls, toolResults, finishReason, usage },
@@ -357,10 +400,10 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
             (toolCalls && toolCalls.length > 0) ||
             (toolResults && toolResults.length > 0)
           ) {
-            hasToolCalls = true
+            hasCapabilityCalls = true
           }
 
-          if (hasToolCalls) {
+          if (hasCapabilityCalls) {
             if (!task) {
               throw new Error(
                 "Task should have been created on tool call start",
@@ -411,13 +454,13 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
             }`,
           )
           log.info(
-            `onFinish debug - hasToolCalls: ${hasToolCalls}, task: ${
+            `onFinish debug - hasCapabilityCalls: ${hasCapabilityCalls}, task: ${
               task ? "exists" : "null"
             }`,
           )
 
-          // Queue completion status update with the final full text if we have tool calls
-          if (hasToolCalls && task) {
+          // Queue completion status update with the final full text if we have capability calls
+          if (hasCapabilityCalls && task) {
             // Update the response message with the final text
             responseMessage = this.taskService
               .addVercelResultToHistory(task, text, toolCalls, toolResults)
@@ -429,7 +472,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
             log.info("Task completed")
           } else {
             log.info(
-              `Skipping completion status - hasToolCalls: ${hasToolCalls}, task: ${
+              `Skipping completion status - hasCapabilityCalls: ${hasCapabilityCalls}, task: ${
                 task ? "exists" : "null"
               }`,
             )

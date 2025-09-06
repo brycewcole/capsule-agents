@@ -60,7 +60,7 @@ export const GOOGLE_MODELS: ModelEntry[] = [
     id: "google/gemini-2.0-flash",
     name: "Gemini 2.0 Flash",
     description:
-      "Next-gen model with superior speed, native tool use, and 1M token context",
+      "Next-gen model with superior speed, native capability use, and 1M token context",
     pricing: { input: 0.00015, output: 0.0006 },
   },
 ]

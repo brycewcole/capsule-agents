@@ -170,7 +170,7 @@ function App() {
                 Agent Configuration
               </h2>
               <p className="text-sm text-muted-foreground">
-                Configure your agent's settings and tools
+                Configure your agent's settings and capabilities
               </p>
             </div>
             <div className="flex-1 overflow-y-auto min-h-0">

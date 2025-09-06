@@ -1,6 +1,6 @@
+import type { AgentSkill } from "@a2a-js/sdk"
 import { tool } from "ai"
 import { z } from "zod"
-import type { AgentSkill } from "@a2a-js/sdk"
 
 const memoryStore: Record<string, string> = {}
 

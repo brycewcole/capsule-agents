@@ -6,6 +6,7 @@
   },
   "imports": {
     "@ai-sdk/provider-utils": "npm:@ai-sdk/provider-utils@^3.0.7",
+    "mcp": "npm:@modelcontextprotocol/sdk@^1.17.5",
     "hono": "jsr:@hono/hono@^4.8.10",
     "hono/cors": "jsr:@hono/hono/cors",
     "hono/streaming": "jsr:@hono/hono/streaming",

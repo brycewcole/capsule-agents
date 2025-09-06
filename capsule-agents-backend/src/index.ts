@@ -247,7 +247,7 @@ app.get("/api/agent", (c) => {
     log.info("Agent info retrieved:", {
       name: agentInfo.name,
       modelName: agentInfo.model_name,
-      toolCount: agentInfo.capabilities.length,
+      capabilityCount: agentInfo.capabilities.length,
     })
 
     // Transform to match frontend expectations
@@ -273,7 +273,7 @@ app.put("/api/agent", async (c) => {
     log.info("Update request received:", {
       name: body.name,
       modelName: body.modelName,
-      toolCount: body.tools?.length || 0,
+      capabilityCount: body.capabilities?.length || 0,
     })
 
     // Transform from frontend format to backend format

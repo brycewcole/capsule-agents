@@ -22,12 +22,12 @@ import {
   type ChatWithHistory,
   checkHealth,
   extractResponseText,
-  extractToolCalls,
+  extractCapabilityCalls,
   streamMessage,
-  type ToolCall as ApiToolCall,
+  type CapabilityCall as ApiCapabilityCall,
 } from "../lib/api.ts"
 import Markdown from "react-markdown"
-import { ToolCallDisplay } from "./tool-call-display.tsx"
+import { CapabilityCallDisplay } from "./capability-call-display.tsx"
 import { TaskStatusDisplay } from "./task-status-display.tsx"
 import {
   getErrorMessage,
@@ -38,13 +38,13 @@ import {
 import { ErrorDisplay } from "./ui/error-display.tsx"
 import { ChatSidebar } from "./chat-sidebar.tsx"
 
-type ToolCall = ApiToolCall
+type CapabilityCall = ApiCapabilityCall
 
 type Message = {
   role: "user" | "agent"
   content: string
   isLoading?: boolean
-  toolCalls?: ToolCall[]
+  capabilityCalls?: CapabilityCall[]
   task?: A2ATask
   timestamp?: number
 }
@@ -188,7 +188,7 @@ export default function ChatInterface({
           role?: string
           content?: string
           parts?: Array<{ text?: string }>
-          toolCalls?: unknown
+          capabilityCalls?: unknown
           timestamp?: number
         }
       >).map(
@@ -208,7 +208,7 @@ export default function ChatInterface({
           return {
             role,
             content,
-            toolCalls: msg.toolCalls || undefined,
+            capabilityCalls: msg.capabilityCalls || undefined,
             timestamp: typeof msg.timestamp === "number"
               ? msg.timestamp
               : undefined,
@@ -280,7 +280,7 @@ export default function ChatInterface({
     try {
       // Use A2A streaming
       let currentResponseText = ""
-      let finalToolCalls: ToolCall[] = []
+      let finalCapabilityCalls: CapabilityCall[] = []
 
       for await (const event of streamMessage(userMessage, contextId)) {
         console.log("Received A2A event:", event)
@@ -393,11 +393,11 @@ export default function ChatInterface({
           })
 
           if (event.final && event.status.state === "completed") {
-            // Final completion - extract tool calls from current task and store final task state
+            // Final completion - extract capability calls from current task and store final task state
             let completedTask: A2ATask | undefined
             setCurrentTask((prev: A2ATask | null) => {
               if (prev && prev.id === event.taskId) {
-                finalToolCalls = extractToolCalls(prev)
+                finalCapabilityCalls = extractCapabilityCalls(prev)
                 // Create final task state with completed status
                 completedTask = {
                   ...prev,
@@ -407,14 +407,14 @@ export default function ChatInterface({
               return prev
             })
 
-            // Update the last agent message with final tool calls and task info
+            // Update the last agent message with final capability calls and task info
             setMessages((prev) => {
               const updated = [...prev]
               const lastMessage = updated[updated.length - 1]
               if (lastMessage.role === "agent") {
                 // Keep existing content from the message event
-                lastMessage.toolCalls = finalToolCalls.length > 0
-                  ? finalToolCalls
+                lastMessage.capabilityCalls = finalCapabilityCalls.length > 0
+                  ? finalCapabilityCalls
                   : undefined
                 lastMessage.task = completedTask
                 // Message should already be marked as not loading from message handler
@@ -604,9 +604,9 @@ export default function ChatInterface({
                               {message.role === "agent"
                                 ? (
                                   <div className="space-y-2">
-                                    {message.toolCalls && (
-                                      <ToolCallDisplay
-                                        toolCalls={message.toolCalls}
+                                    {message.capabilityCalls && (
+                                      <CapabilityCallDisplay
+                                        capabilityCalls={message.capabilityCalls}
                                       />
                                     )}
                                     <div className="markdown">

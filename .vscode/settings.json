@@ -9,7 +9,8 @@
   },
   "deno.enable": true,
   "cSpell.words": [
-    "uuidv",
-    "denoland"
+    "denoland",
+    "Streamable",
+    "uuidv"
   ]
 }

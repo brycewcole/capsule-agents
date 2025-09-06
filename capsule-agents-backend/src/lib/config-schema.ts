@@ -7,14 +7,18 @@ export const ModelConfigSchema = z.object({
   parameters: z.record(z.unknown()).optional().default({}),
 })
 
-export const BuiltInToolConfigSchema = z.object({
+export const BuiltInCapabilityConfigSchema = z.object({
   enabled: z.boolean().default(false),
 }).default({ enabled: false })
 
-export const ToolsConfigSchema = z.object({
-  web_search: BuiltInToolConfigSchema.optional().default({ enabled: false }),
-  memory: BuiltInToolConfigSchema.optional().default({ enabled: false }),
-  file_access: BuiltInToolConfigSchema.optional().default({ enabled: false }),
+export const CapabilitiesConfigSchema = z.object({
+  web_search: BuiltInCapabilityConfigSchema.optional().default({
+    enabled: false,
+  }),
+  memory: BuiltInCapabilityConfigSchema.optional().default({ enabled: false }),
+  file_access: BuiltInCapabilityConfigSchema.optional().default({
+    enabled: false,
+  }),
 })
 
 export const McpServerConfigSchema = z.object({
@@ -38,7 +42,7 @@ export const AgentConfigSchema = z.object({
     name: "openai/gpt-4o-mini",
     parameters: {},
   }),
-  tools: ToolsConfigSchema.optional().default({}),
+  capabilities: CapabilitiesConfigSchema.optional().default({}),
   mcp: McpConfigSchema.optional().default({ servers: [] }),
   a2a: z.array(A2AAgentConfigSchema).optional().default([]),
 })
@@ -48,7 +52,7 @@ export const ConfigFileSchema = z.object({
     name: "Capsule Agent",
     description: "",
     model: { name: "openai/gpt-4o-mini", parameters: {} },
-    tools: {
+    capabilities: {
       web_search: { enabled: false },
       memory: { enabled: false },
       file_access: { enabled: false },
@@ -60,25 +64,31 @@ export const ConfigFileSchema = z.object({
 
 // TypeScript types derived from schemas
 export type ModelConfig = z.infer<typeof ModelConfigSchema>
-export type BuiltInToolConfig = z.infer<typeof BuiltInToolConfigSchema>
-export type ToolsConfig = z.infer<typeof ToolsConfigSchema>
+export type BuiltInCapabilityConfig = z.infer<
+  typeof BuiltInCapabilityConfigSchema
+>
+export type CapabilitiesConfig = z.infer<typeof CapabilitiesConfigSchema>
 export type McpServerConfig = z.infer<typeof McpServerConfigSchema>
 export type McpConfig = z.infer<typeof McpConfigSchema>
 export type A2AAgentConfig = z.infer<typeof A2AAgentConfigSchema>
 export type AgentConfig = z.infer<typeof AgentConfigSchema>
 export type ConfigFile = z.infer<typeof ConfigFileSchema>
 
-export const BUILTIN_TOOLS = ["web_search", "memory", "file_access"] as const
-export type BuiltInToolName = typeof BUILTIN_TOOLS[number]
+export const BUILTIN_CAPABILITIES = [
+  "web_search",
+  "memory",
+  "file_access",
+] as const
+export type BuiltInCapabilityName = typeof BUILTIN_CAPABILITIES[number]
 
 // Utility function to transform config file format to internal AgentInfo format
 export function transformConfigToAgentInfo(config: AgentConfig): AgentInfo {
   const capabilities: Capability[] = []
 
-  if (config.tools) {
-    for (const name of BUILTIN_TOOLS) {
-      const toolConfig = config.tools[name]
-      if (toolConfig?.enabled) {
+  if (config.capabilities) {
+    for (const name of BUILTIN_CAPABILITIES) {
+      const capabilityConfig = config.capabilities[name]
+      if (capabilityConfig?.enabled) {
         capabilities.push({
           type: "prebuilt",
           subtype: name,
@@ -92,7 +102,7 @@ export function transformConfigToAgentInfo(config: AgentConfig): AgentInfo {
       capabilities.push({
         name: server.name,
         type: "mcp_server",
-        tool_schema: { url: server.url },
+        capability_schema: { url: server.url },
       })
     }
   }
@@ -102,7 +112,7 @@ export function transformConfigToAgentInfo(config: AgentConfig): AgentInfo {
       capabilities.push({
         name: agent.name,
         type: "a2a_call",
-        tool_schema: { agent_url: agent.agent_url },
+        capability_schema: { agent_url: agent.agent_url },
       })
     }
   }
@@ -112,13 +122,13 @@ export function transformConfigToAgentInfo(config: AgentConfig): AgentInfo {
     description: config.description,
     model_name: config.model.name,
     model_parameters: config.model.parameters,
-    tools: capabilities,
+    capabilities: capabilities,
   }
 }
 
 // Utility function to transform internal AgentInfo format back to config file format
 export function transformAgentInfoToConfig(agentInfo: AgentInfo): AgentConfig {
-  const tools: ToolsConfig = {
+  const capabilities: CapabilitiesConfig = {
     web_search: { enabled: false },
     memory: { enabled: false },
     file_access: { enabled: false },
@@ -126,21 +136,21 @@ export function transformAgentInfoToConfig(agentInfo: AgentInfo): AgentConfig {
   const mcpServers: McpServerConfig[] = []
   const a2aAgents: A2AAgentConfig[] = []
 
-  for (const tool of agentInfo.tools) {
+  for (const capability of agentInfo.capabilities) {
     if (
-      tool.type === "prebuilt" &&
-      BUILTIN_TOOLS.includes(tool.name as BuiltInToolName)
+      capability.type === "prebuilt" &&
+      BUILTIN_CAPABILITIES.includes(capability.name as BuiltInCapabilityName)
     ) {
-      tools[tool.name as BuiltInToolName] = { enabled: true }
-    } else if (tool.type === "mcp_server") {
+      capabilities[capability.name as BuiltInCapabilityName] = { enabled: true }
+    } else if (capability.type === "mcp_server") {
       mcpServers.push({
-        name: tool.name,
-        url: tool.tool_schema.url as string,
+        name: capability.name,
+        url: capability.capability_schema.url as string,
       })
-    } else if (tool.type === "a2a_call") {
+    } else if (capability.type === "a2a_call") {
       a2aAgents.push({
-        name: tool.name,
-        agent_url: tool.tool_schema.agent_url as string,
+        name: capability.name,
+        agent_url: capability.capability_schema.agent_url as string,
       })
     }
   }
@@ -152,7 +162,7 @@ export function transformAgentInfoToConfig(agentInfo: AgentInfo): AgentConfig {
       name: agentInfo.model_name,
       parameters: agentInfo.model_parameters,
     },
-    tools,
+    capabilities,
     mcp: { servers: mcpServers },
     a2a: a2aAgents,
   }
