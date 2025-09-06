@@ -142,10 +142,11 @@ export function transformAgentInfoToConfig(agentInfo: AgentInfo): AgentConfig {
       BUILTIN_CAPABILITIES.includes(capability.name as BuiltInCapabilityName)
     ) {
       capabilities[capability.name as BuiltInCapabilityName] = { enabled: true }
-    } else if (capability.type === "mcp_server") {
+    } else if (capability.type === "mcp") {
       mcpServers.push({
         name: capability.name,
-        url: capability.capability_schema.url as string,
+        url: capability.serverUrl as string,
+        enabled: true,
       })
     } else if (capability.type === "a2a_call") {
       a2aAgents.push({

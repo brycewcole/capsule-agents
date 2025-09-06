@@ -63,6 +63,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
     ) => c.serverUrl)
 
     try {
+      log.info("Connecting to MCP servers:", urls)
       const connectedClients = await Promise.all(
         urls.map(async (url) => {
           const client = await experimental_createMCPClient({
@@ -78,11 +79,14 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
       )
 
       const tools = Object.assign({}, ...toolSets)
+      log.info("MCP tools loaded:", Object.keys(tools))
 
       return {
         tools: tools,
         [Symbol.asyncDispose]: async () => {
+          log.info("Disposing MCP clients...")
           await Promise.all(clients.map((client) => client.close()))
+          log.info("MCP clients disposed")
         },
       }
     } catch (error) {
