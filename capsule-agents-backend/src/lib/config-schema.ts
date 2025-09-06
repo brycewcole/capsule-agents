@@ -1,6 +1,6 @@
 import { z } from "zod"
 import type { AgentInfo } from "./agent-config.ts"
-import { Capability } from "./capability-types.ts"
+import { Capability as AgentCapability } from "./capability-types.ts"
 
 export const ModelConfigSchema = z.object({
   name: z.string().min(1, "Model name is required"),
@@ -24,6 +24,7 @@ export const CapabilitiesConfigSchema = z.object({
 export const McpServerConfigSchema = z.object({
   url: z.string().url("Invalid MCP server URL"),
   name: z.string().min(1, "MCP server name is required"),
+  enabled: z.boolean().default(true),
 })
 
 export const McpConfigSchema = z.object({
@@ -33,16 +34,14 @@ export const McpConfigSchema = z.object({
 export const A2AAgentConfigSchema = z.object({
   name: z.string().min(1, "A2A agent name is required"),
   agent_url: z.string().url("Invalid A2A agent URL"),
+  enabled: z.boolean().default(true),
 })
 
 export const AgentConfigSchema = z.object({
   name: z.string().min(1, "Agent name is required").default("Capsule Agent"),
   description: z.string().default(""),
-  model: ModelConfigSchema.optional().default({
-    name: "openai/gpt-4o-mini",
-    parameters: {},
-  }),
-  capabilities: CapabilitiesConfigSchema.optional().default({}),
+  model: ModelConfigSchema.optional(),
+  tools: CapabilitiesConfigSchema.optional().default({}),
   mcp: McpConfigSchema.optional().default({ servers: [] }),
   a2a: z.array(A2AAgentConfigSchema).optional().default([]),
 })
@@ -51,8 +50,7 @@ export const ConfigFileSchema = z.object({
   agent: AgentConfigSchema.optional().default({
     name: "Capsule Agent",
     description: "",
-    model: { name: "openai/gpt-4o-mini", parameters: {} },
-    capabilities: {
+    tools: {
       web_search: { enabled: false },
       memory: { enabled: false },
       file_access: { enabled: false },
@@ -83,13 +81,15 @@ export type BuiltInCapabilityName = typeof BUILTIN_CAPABILITIES[number]
 
 // Utility function to transform config file format to internal AgentInfo format
 export function transformConfigToAgentInfo(config: AgentConfig): AgentInfo {
-  const capabilities: Capability[] = []
+  const capabilities: AgentCapability[] = []
 
-  if (config.capabilities) {
+  if (config.tools) {
     for (const name of BUILTIN_CAPABILITIES) {
-      const capabilityConfig = config.capabilities[name]
+      const capabilityConfig = config.tools[name]
       if (capabilityConfig?.enabled) {
         capabilities.push({
+          name: name,
+          enabled: true,
           type: "prebuilt",
           subtype: name,
         })
@@ -101,8 +101,9 @@ export function transformConfigToAgentInfo(config: AgentConfig): AgentInfo {
     for (const server of config.mcp.servers) {
       capabilities.push({
         name: server.name,
-        type: "mcp_server",
-        capability_schema: { url: server.url },
+        enabled: server.enabled,
+        type: "mcp",
+        serverUrl: server.url,
       })
     }
   }
@@ -111,8 +112,9 @@ export function transformConfigToAgentInfo(config: AgentConfig): AgentInfo {
     for (const agent of config.a2a) {
       capabilities.push({
         name: agent.name,
-        type: "a2a_call",
-        capability_schema: { agent_url: agent.agent_url },
+        enabled: agent.enabled,
+        type: "a2a",
+        agentUrl: agent.agent_url,
       })
     }
   }
@@ -120,15 +122,15 @@ export function transformConfigToAgentInfo(config: AgentConfig): AgentInfo {
   return {
     name: config.name,
     description: config.description,
-    model_name: config.model.name,
-    model_parameters: config.model.parameters,
+    model_name: config.model?.name,
+    model_parameters: config.model?.parameters,
     capabilities: capabilities,
   }
 }
 
 // Utility function to transform internal AgentInfo format back to config file format
 export function transformAgentInfoToConfig(agentInfo: AgentInfo): AgentConfig {
-  const capabilities: CapabilitiesConfig = {
+  const tools: CapabilitiesConfig = {
     web_search: { enabled: false },
     memory: { enabled: false },
     file_access: { enabled: false },
@@ -139,32 +141,40 @@ export function transformAgentInfoToConfig(agentInfo: AgentInfo): AgentConfig {
   for (const capability of agentInfo.capabilities) {
     if (
       capability.type === "prebuilt" &&
-      BUILTIN_CAPABILITIES.includes(capability.name as BuiltInCapabilityName)
+      BUILTIN_CAPABILITIES.includes(capability.subtype as BuiltInCapabilityName)
     ) {
-      capabilities[capability.name as BuiltInCapabilityName] = { enabled: true }
+      tools[capability.subtype as BuiltInCapabilityName] = {
+        enabled: capability.enabled,
+      }
     } else if (capability.type === "mcp") {
       mcpServers.push({
         name: capability.name,
-        url: capability.serverUrl as string,
-        enabled: true,
+        url: capability.serverUrl,
+        enabled: capability.enabled,
       })
-    } else if (capability.type === "a2a_call") {
+    } else if (capability.type === "a2a") {
       a2aAgents.push({
         name: capability.name,
-        agent_url: capability.capability_schema.agent_url as string,
+        agent_url: capability.agentUrl,
+        enabled: capability.enabled,
       })
     }
   }
 
-  return {
+  const result = {
     name: agentInfo.name,
     description: agentInfo.description,
-    model: {
-      name: agentInfo.model_name,
-      parameters: agentInfo.model_parameters,
-    },
-    capabilities,
+    tools,
     mcp: { servers: mcpServers },
     a2a: a2aAgents,
   }
+
+  if (agentInfo.model_name) {
+    result["model"] = {
+      name: agentInfo.model_name,
+      parameters: agentInfo.model_parameters || {},
+    }
+  }
+
+  return result
 }

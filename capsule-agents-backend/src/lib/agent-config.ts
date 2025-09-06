@@ -21,8 +21,8 @@ interface AgentInfoRow {
 export type AgentInfo = {
   name: string
   description: string
-  model_name: string
-  model_parameters: Record<string, unknown>
+  model_name?: string
+  model_parameters?: Record<string, unknown>
   capabilities: Capability[]
 }
 
