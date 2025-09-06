@@ -1,11 +1,11 @@
-import { v4 as uuidv4 } from "uuid"
-import { A2AClient } from "@a2a-js/sdk/client"
 import type {
   Message as A2AMessage,
   Task as A2ATask,
   TaskArtifactUpdateEvent,
   TaskStatusUpdateEvent,
 } from "@a2a-js/sdk"
+import { A2AClient } from "@a2a-js/sdk/client"
+import { v4 as uuidv4 } from "uuid"
 
 const API_BASE_URL = globalThis.location.origin
 const a2aClient = new A2AClient(API_BASE_URL, {
@@ -146,7 +146,7 @@ export interface BaseCapability {
 
 export interface PrebuiltCapability extends BaseCapability {
   type: "prebuilt"
-  subtype: "file_access" | "brave_search" | "memory"
+  subtype: "file_access" | "web_search" | "memory"
 }
 
 export interface A2ACapability extends BaseCapability {
@@ -162,15 +162,21 @@ export interface MCPCapability extends BaseCapability {
 export type Capability = PrebuiltCapability | A2ACapability | MCPCapability
 
 // Type guard functions
-export function isPrebuiltCapability(capability: Capability): capability is PrebuiltCapability {
+export function isPrebuiltCapability(
+  capability: Capability,
+): capability is PrebuiltCapability {
   return capability.type === "prebuilt"
 }
 
-export function isA2ACapability(capability: Capability): capability is A2ACapability {
+export function isA2ACapability(
+  capability: Capability,
+): capability is A2ACapability {
   return capability.type === "a2a"
 }
 
-export function isMCPCapability(capability: Capability): capability is MCPCapability {
+export function isMCPCapability(
+  capability: Capability,
+): capability is MCPCapability {
   return capability.type === "mcp"
 }
 
@@ -194,8 +200,6 @@ export type AgentInfo = {
   modelName: string
   modelParameters: Record<string, unknown>
   capabilities?: Capability[]
-  // Legacy alias for backward compatibility
-  tools?: Tool[]
 }
 
 // Function to send a message to the agent using A2A SDK
@@ -607,9 +611,6 @@ export function extractCapabilityCalls(
   console.log("Final extracted capability calls:", capabilityCalls)
   return capabilityCalls
 }
-
-// Legacy alias for backward compatibility
-export const extractToolCalls = extractCapabilityCalls
 
 // Helper function to extract text from A2A response
 export function extractResponseText(

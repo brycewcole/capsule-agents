@@ -189,7 +189,7 @@ export default function AgentEditor() {
         )
         setWebSearchEnabled(
           currentCapabilities.some((capability) =>
-            isPrebuiltCapability(capability) && capability.subtype === "brave_search" && capability.enabled
+            isPrebuiltCapability(capability) && capability.subtype === "web_search" && capability.enabled
           ),
         )
         setMemoryEnabled(
@@ -248,7 +248,7 @@ export default function AgentEditor() {
       )
       setWebSearchEnabled(
         currentCapabilities.some((capability) =>
-          isPrebuiltCapability(capability) && capability.subtype === "brave_search" && capability.enabled
+          isPrebuiltCapability(capability) && capability.subtype === "web_search" && capability.enabled
         ),
       )
       setMemoryEnabled(
@@ -430,14 +430,14 @@ export default function AgentEditor() {
   }
 
   // Handle prebuilt capability toggles
-  const handlePrebuiltCapabilityToggle = (subtype: "file_access" | "brave_search" | "memory", enabled: boolean) => {
+  const handlePrebuiltCapabilityToggle = (subtype: "file_access" | "web_search" | "memory", enabled: boolean) => {
     const capabilityConfig = {
       file_access: {
         name: "file_access",
         displayName: "File Access",
       },
-      brave_search: {
-        name: "brave_search",
+      web_search: {
+        name: "web_search",
         displayName: "Web Search",
       },
       memory: {
@@ -485,7 +485,7 @@ export default function AgentEditor() {
 
     // Update the toggle state
     if (subtype === "file_access") setFileAccessEnabled(enabled)
-    else if (subtype === "brave_search") setWebSearchEnabled(enabled)
+    else if (subtype === "web_search") setWebSearchEnabled(enabled)
     else if (subtype === "memory") setMemoryEnabled(enabled)
 
     toast.success(
@@ -642,7 +642,7 @@ export default function AgentEditor() {
                 <Switch
                   checked={webSearchEnabled}
                   onCheckedChange={(checked) =>
-                    handlePrebuiltCapabilityToggle("brave_search", checked)}
+                    handlePrebuiltCapabilityToggle("web_search", checked)}
                 />
               </div>
               <div className="flex items-center justify-between">

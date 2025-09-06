@@ -4,8 +4,8 @@ import * as log from "@std/log"
 import * as Vercel from "ai"
 import { createProviderRegistry } from "ai"
 import { z } from "zod"
+import { webSearchSkill } from "../capabilities/brave-search.ts"
 import { executeA2ACall } from "../tools/a2a.ts"
-import { braveSearchSkill, braveSearchTool } from "../tools/brave-search.ts"
 import { fileAccessSkill, fileAccessTool } from "../tools/file-access.ts"
 import { memorySkill, memoryTool } from "../tools/memory.ts"
 import { AgentConfigService } from "./agent-config.ts"
@@ -58,15 +58,15 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
     const tools: Record<string, Vercel.Tool> = {}
 
     const agentInfo = this.agentConfigService.getAgentInfo()
-    for (const tool of agentInfo.tools) {
+    for (const tool of agentInfo.capabilities) {
       if (tool.type === "prebuilt") {
         const toolType = tool.tool_schema?.type
         switch (toolType) {
           case "file_access":
             tools.fileAccess = fileAccessTool
             break
-          case "brave_search":
-            tools.braveSearch = braveSearchTool
+          case "web_search":
+            tools.webSearch = braveSearchTool
             break
           case "memory":
             tools.memory = memoryTool
@@ -213,8 +213,8 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
     if ("fileAccess" in availableTools) {
       skills.push(fileAccessSkill)
     }
-    if ("braveSearch" in availableTools) {
-      skills.push(braveSearchSkill)
+    if ("webSearch" in availableTools) {
+      skills.push(webSearchSkill)
     }
     if ("memory" in availableTools) {
       skills.push(memorySkill)

@@ -1,9 +1,9 @@
-import { tool } from "ai"
-import { z } from "zod"
-import process from "node:process"
 import type { AgentSkill } from "@a2a-js/sdk"
+import { tool } from "ai"
+import process from "node:process"
+import { z } from "zod"
 
-export const braveSearchTool = tool({
+export const webSearchTool = tool({
   description: "Perform a web search using the Brave Search API.",
   inputSchema: z.object({
     query: z.string().describe("The search query."),
@@ -35,8 +35,8 @@ export const braveSearchTool = tool({
   },
 })
 
-export const braveSearchSkill: AgentSkill = {
-  id: "brave-search",
+export const webSearchSkill: AgentSkill = {
+  id: "web-search",
   name: "Web Search",
   description:
     "Perform web searches using the Brave Search API to find current information",

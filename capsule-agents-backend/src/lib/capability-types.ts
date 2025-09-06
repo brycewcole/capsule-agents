@@ -8,7 +8,7 @@ export interface BaseCapability {
 // Prebuilt capabilities - these are capabilities that have code inside the app
 export interface PrebuiltCapability extends BaseCapability {
   type: "prebuilt"
-  subtype: "file_access" | "brave_search" | "memory"
+  subtype: "file_access" | "web_search" | "memory"
 }
 
 // A2A capabilities - these represent connections to other AI agents via the a2a protocol
@@ -27,15 +27,20 @@ export interface MCPCapability extends BaseCapability {
 export type Capability = PrebuiltCapability | A2ACapability | MCPCapability
 
 // Type guard functions
-export function isPrebuiltCapability(capability: Capability): capability is PrebuiltCapability {
+export function isPrebuiltCapability(
+  capability: Capability,
+): capability is PrebuiltCapability {
   return capability.type === "prebuilt"
 }
 
-export function isA2ACapability(capability: Capability): capability is A2ACapability {
+export function isA2ACapability(
+  capability: Capability,
+): capability is A2ACapability {
   return capability.type === "a2a"
 }
 
-export function isMCPCapability(capability: Capability): capability is MCPCapability {
+export function isMCPCapability(
+  capability: Capability,
+): capability is MCPCapability {
   return capability.type === "mcp"
 }
-

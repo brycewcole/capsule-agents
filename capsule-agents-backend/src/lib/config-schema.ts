@@ -1,5 +1,6 @@
 import { z } from "zod"
-import type { AgentInfo, Tool } from "./agent-config.ts"
+import type { AgentInfo } from "./agent-config.ts"
+import { Capability } from "./capability-types.ts"
 
 export const ModelConfigSchema = z.object({
   name: z.string().min(1, "Model name is required"),
@@ -72,16 +73,15 @@ export type BuiltInToolName = typeof BUILTIN_TOOLS[number]
 
 // Utility function to transform config file format to internal AgentInfo format
 export function transformConfigToAgentInfo(config: AgentConfig): AgentInfo {
-  const tools: Tool[] = []
+  const capabilities: Capability[] = []
 
   if (config.tools) {
-    for (const toolName of BUILTIN_TOOLS) {
-      const toolConfig = config.tools[toolName]
+    for (const name of BUILTIN_TOOLS) {
+      const toolConfig = config.tools[name]
       if (toolConfig?.enabled) {
-        tools.push({
-          name: toolName,
+        capabilities.push({
           type: "prebuilt",
-          tool_schema: { type: toolName },
+          subtype: name,
         })
       }
     }
@@ -89,7 +89,7 @@ export function transformConfigToAgentInfo(config: AgentConfig): AgentInfo {
 
   if (config.mcp?.servers) {
     for (const server of config.mcp.servers) {
-      tools.push({
+      capabilities.push({
         name: server.name,
         type: "mcp_server",
         tool_schema: { url: server.url },
@@ -99,7 +99,7 @@ export function transformConfigToAgentInfo(config: AgentConfig): AgentInfo {
 
   if (config.a2a) {
     for (const agent of config.a2a) {
-      tools.push({
+      capabilities.push({
         name: agent.name,
         type: "a2a_call",
         tool_schema: { agent_url: agent.agent_url },
@@ -112,7 +112,7 @@ export function transformConfigToAgentInfo(config: AgentConfig): AgentInfo {
     description: config.description,
     model_name: config.model.name,
     model_parameters: config.model.parameters,
-    tools,
+    tools: capabilities,
   }
 }
 

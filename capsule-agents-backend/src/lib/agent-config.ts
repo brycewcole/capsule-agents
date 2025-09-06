@@ -1,8 +1,13 @@
 import * as log from "@std/log"
+import {
+  Capability,
+  isA2ACapability,
+  isMCPCapability,
+  isPrebuiltCapability,
+} from "./capability-types.ts"
 import { getDb } from "./db.ts"
 import { selectDefaultModel } from "./model-registry.ts"
 import { ProviderService } from "./provider-service.ts"
-import { Capability, isA2ACapability, isMCPCapability, isPrebuiltCapability } from "./capability-types.ts"
 
 // Types for agent configuration
 interface AgentInfoRow {
@@ -11,13 +16,6 @@ interface AgentInfoRow {
   model_name: string
   model_parameters: string
   capabilities: string
-}
-
-// Legacy tool type - keeping for backward compatibility during migration
-type LegacyToolConfig = {
-  name: string
-  type: string
-  tool_schema: Record<string, unknown>
 }
 
 export type AgentInfo = {
@@ -106,9 +104,6 @@ export class AgentConfigService {
     } catch (error) {
       log.error("Error in ensureValidModel():", error)
     }
-
-    // Ensure a valid model is selected after initialization
-    this.ensureValidModel()
   }
 
   getAgentInfo(): AgentInfo {
@@ -199,7 +194,9 @@ export class AgentConfigService {
       }
 
       if (typeof capability.enabled !== "boolean") {
-        throw new Error(`Capability '${capability.name}' is missing enabled state`)
+        throw new Error(
+          `Capability '${capability.name}' is missing enabled state`,
+        )
       }
 
       if (isA2ACapability(capability)) {
@@ -234,14 +231,16 @@ export class AgentConfigService {
         log.info("Validating prebuilt capability:", capability.name)
         if (
           !capability.subtype ||
-          !["file_access", "brave_search", "memory"].includes(capability.subtype)
+          !["file_access", "web_search", "memory"].includes(
+            capability.subtype,
+          )
         ) {
           throw new Error(
             `Prebuilt capability '${capability.name}' has invalid subtype: ${capability.subtype}`,
           )
         }
       } else {
-        throw new Error(`Capability '${capability.name}' has invalid type`)
+        throw new Error(`Capability '${capability}' has invalid type`)
       }
     }
   }
