@@ -13,7 +13,7 @@ import {
 } from "./ui/select.tsx"
 import { Badge } from "./ui/badge.tsx"
 import type { Model, ProviderInfo, ProvidersResponse } from "@/lib/api.ts"
-import { HelpCircle } from "lucide-react"
+// no icon imports needed
 
 type ModelPickerProps = {
   providers: ProvidersResponse | null
@@ -31,6 +31,18 @@ export function ModelPicker({
   disabled = false,
 }: ModelPickerProps) {
   const [search, setSearch] = useState("")
+
+  const providerColors = (id: string) => {
+    const key = id.toLowerCase()
+    if (key.includes("openai")) return "bg-sky-100 text-sky-800 dark:bg-sky-900/30 dark:text-sky-200"
+    if (key.includes("anthropic")) return "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-200"
+    if (key.includes("google") || key.includes("gemini")) return "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-200"
+    if (key.includes("groq")) return "bg-fuchsia-100 text-fuchsia-800 dark:bg-fuchsia-900/30 dark:text-fuchsia-200"
+    if (key.includes("mistral")) return "bg-slate-100 text-slate-800 dark:bg-slate-900/30 dark:text-slate-200"
+    if (key.includes("cohere")) return "bg-indigo-100 text-indigo-800 dark:bg-indigo-900/30 dark:text-indigo-200"
+    if (key.includes("xai") || key.includes("x.ai")) return "bg-neutral-100 text-neutral-800 dark:bg-neutral-900/30 dark:text-neutral-200"
+    return "bg-muted text-foreground/80"
+  }
 
   const index = useMemo(() => {
     const byId = new Map<string, { model: Model; provider: ProviderInfo }>()
@@ -83,7 +95,10 @@ export function ModelPicker({
                 <span className="truncate max-w-[16rem] md:max-w-[24rem]">
                   {selected.model.name}
                 </span>
-                <Badge variant="secondary" className="shrink-0">
+                <Badge
+                  variant="secondary"
+                  className={`shrink-0 ${providerColors(selected.provider.id)}`}
+                >
                   {selected.provider.name}
                 </Badge>
               </span>
@@ -111,29 +126,17 @@ export function ModelPicker({
               <SelectGroup key={provider.id}>
                 <SelectLabel className={isAvailable ? undefined : "text-muted-foreground"}>
                   <span className="inline-flex items-center gap-2">
-                    <span>{provider.name}</span>
-                    <Badge
-                      variant={isAvailable ? "secondary" : "outline"}
-                      className="text-[10px]"
-                    >
-                      {isAvailable ? "Available" : "Not configured"}
-                    </Badge>
-                    {!isAvailable ? (
-                      <span className="relative group inline-flex items-center">
-                        <HelpCircle className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
-                        <div className="absolute left-0 top-full mt-1 px-2 py-1 text-xs bg-gray-800 text-white rounded shadow-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none whitespace-nowrap z-50">
-                          <span className="opacity-80">Required:</span>
-                          <span className="ml-1 font-mono">{requiredVars}</span>
-                        </div>
-                      </span>
-                    ) : null}
+                    <span className="inline-flex items-center gap-1">
+                      <span className={`inline-block h-2 w-2 rounded-full ${isAvailable ? "bg-emerald-500" : "bg-gray-400"}`} aria-hidden />
+                      <span>{provider.name}</span>
+                    </span>
                   </span>
                 </SelectLabel>
                 {models.length === 0 ? (
                   <SelectItem value={`__unavailable_${provider.id}`} disabled title={!isAvailable ? `Set ${requiredVars} to enable this provider` : undefined}>
                     <div className="flex items-center justify-between w-full">
                       <span className="text-muted-foreground">
-                        {isAvailable ? "No models available" : "Unavailable — set required env vars"}
+                        {isAvailable ? "No models available" : `Required: ${requiredVars}`}
                       </span>
                     </div>
                   </SelectItem>
