@@ -57,6 +57,7 @@
     "npm:tailwindcss@4": "4.1.12",
     "npm:tw-animate-css@^1.3.7": "1.3.7",
     "npm:uuid@^11.1.0": "11.1.0",
+    "npm:vite@*": "6.3.5_@types+node@24.3.0_picomatch@4.0.3_@types+node@24.2.0",
     "npm:vite@6": "6.3.5_@types+node@24.3.0_picomatch@4.0.3_@types+node@24.2.0",
     "npm:zod@^3.25.0": "3.25.76",
     "npm:zod@^3.25.76": "3.25.76"

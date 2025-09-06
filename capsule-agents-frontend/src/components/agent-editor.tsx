@@ -16,15 +16,7 @@ import { Button } from "./ui/button.tsx"
 import { Edit, HelpCircle, Loader2, Plus, Save, Trash } from "lucide-react"
 import { Separator } from "./ui/separator.tsx"
 import { toast } from "sonner"
-import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectLabel,
-  SelectTrigger,
-  SelectValue,
-} from "./ui/select.tsx"
+import { ModelPicker } from "./model-picker.tsx"
 import { Switch } from "./ui/switch.tsx"
 import {
   Dialog,
@@ -564,64 +556,12 @@ export default function AgentEditor() {
         </div>
         <div className="space-y-2">
           <Label htmlFor="model-select">Model</Label>
-          <Select
+          <ModelPicker
+            providers={providerInfo}
             value={selectedModel?.id || ""}
-            onValueChange={handleModelSelect}
-          >
-            <SelectTrigger id="model-select" className="w-full">
-              <SelectValue placeholder="Select a model" />
-            </SelectTrigger>
-            <SelectContent>
-              {(() => {
-                if (!providerInfo) return null
-
-                return providerInfo.providers.map((provider) => {
-                  const isAvailable = provider.available
-                  const requiredVars = provider.requiredEnvVars.join(" or ")
-
-                  return (
-                    <SelectGroup key={provider.id}>
-                      <SelectLabel
-                        className={`${
-                          isAvailable ? "" : "text-gray-400"
-                        } flex items-center gap-1`}
-                      >
-                        {provider.name}
-                        {!isAvailable && (
-                          <div className="relative group">
-                            <HelpCircle className="h-3 w-3 text-gray-400 cursor-help" />
-                            <div className="absolute left-0 top-full mt-1 px-2 py-1 text-xs bg-gray-800 text-white rounded shadow-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none whitespace-nowrap z-50">
-                              Required: {requiredVars}
-                            </div>
-                          </div>
-                        )}
-                      </SelectLabel>
-                      {provider.models.map((model) => (
-                        <SelectItem
-                          key={model.id}
-                          value={model.id}
-                          disabled={!isAvailable}
-                          className={!isAvailable ? "text-gray-400" : ""}
-                          title={!isAvailable
-                            ? `Set ${requiredVars} environment variable to enable this provider`
-                            : model.description || ""}
-                        >
-                          <div className="flex items-center justify-between w-full">
-                            <span>{model.name}</span>
-                            {!isAvailable && (
-                              <span className="text-xs text-gray-400 ml-2">
-                                Missing API key
-                              </span>
-                            )}
-                          </div>
-                        </SelectItem>
-                      ))}
-                    </SelectGroup>
-                  )
-                })
-              })()}
-            </SelectContent>
-          </Select>
+            onChange={handleModelSelect}
+            placeholder="Select a model"
+          />
         </div>
 
         {/* Capabilities Section */}
