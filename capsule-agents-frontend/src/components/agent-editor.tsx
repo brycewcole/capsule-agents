@@ -26,7 +26,6 @@ import {
   DialogTitle,
 } from "./ui/dialog.tsx"
 import {
-  type A2ACapability,
   type AgentInfo,
   type Capability,
   getAgentInfo,
@@ -35,7 +34,6 @@ import {
   isA2ACapability,
   isMCPCapability,
   isPrebuiltCapability,
-  type MCPCapability,
   type Model,
   type PrebuiltCapability,
   type ProvidersResponse,
