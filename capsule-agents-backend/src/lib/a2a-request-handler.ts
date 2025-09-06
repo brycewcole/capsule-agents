@@ -573,6 +573,9 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
   private getConfiguredModel() {
     const agentInfo = this.agentConfigService.getAgentInfo()
     const modelName = agentInfo.model_name
+    if (!modelName) {
+      throw new Error("No model configured for the agent")
+    }
 
     log.info(`Getting configured model: ${modelName}`)
 
