@@ -203,7 +203,7 @@ export function getMCPErrorGuidance(error: unknown): string | undefined {
     case -32016:
       return "Check if the MCP server is running and the URL is correct"
     case -32017:
-      return "Verify the tool exists and has proper permissions"
+      return "Verify the capability exists and has proper permissions"
     case -32018:
       return "Review MCP server configuration and restart if needed"
     default:
@@ -230,7 +230,8 @@ export function createUserFriendlyErrorMessage(error: unknown): string {
     [-32015]: "Connection failed. Please check your internet connection.",
     [-32016]:
       "MCP server is not running or unreachable. Start the MCP server and try again.",
-    [-32017]: "The requested tool operation failed. Check tool configuration.",
+    [-32017]:
+      "The requested capability operation failed. Check capability configuration.",
     [-32018]:
       "MCP server configuration is invalid. Check settings and server URL.",
     [-32019]:

@@ -1,6 +1,7 @@
 import { Input } from "./ui/input.tsx"
 import { Label } from "./ui/label.tsx"
 import { Button } from "./ui/button.tsx"
+import { Switch } from "./ui/switch.tsx"
 import {
   Dialog,
   DialogContent,
@@ -17,18 +18,17 @@ import {
   SelectValue,
 } from "./ui/select.tsx"
 
-interface ToolDialogProps {
+interface CapabilityDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
-  toolName: string
-  setToolName: (name: string) => void
-  toolType: string
-  setToolType: (type: string) => void
-  toolSchema: string
-  setToolSchema: (schema: string) => void
+  capabilityName: string
+  setCapabilityName: (name: string) => void
+  capabilityType: "a2a" | "mcp" | ""
+  setCapabilityType: (type: "a2a" | "mcp" | "") => void
+  capabilityEnabled: boolean
+  setCapabilityEnabled: (enabled: boolean) => void
   agentUrl: string
   setAgentUrl: (url: string) => void
-  // MCP Server props
   mcpServerUrl: string
   setMcpServerUrl: (url: string) => void
   editIndex: number | null
@@ -36,13 +36,15 @@ interface ToolDialogProps {
   onCancel: () => void
 }
 
-export function ToolDialog({
+export function CapabilityDialog({
   open,
   onOpenChange,
-  toolName,
-  setToolName,
-  toolType,
-  setToolType,
+  capabilityName,
+  setCapabilityName,
+  capabilityType,
+  setCapabilityType,
+  capabilityEnabled,
+  setCapabilityEnabled,
   agentUrl,
   setAgentUrl,
   mcpServerUrl,
@@ -50,15 +52,15 @@ export function ToolDialog({
   editIndex,
   onSubmit,
   onCancel,
-}: ToolDialogProps) {
-  const handleToolTypeChange = (newType: string) => {
-    setToolType(newType)
+}: CapabilityDialogProps) {
+  const handleCapabilityTypeChange = (newType: "a2a" | "mcp") => {
+    setCapabilityType(newType)
 
-    if (newType !== "a2a_call") {
-      setAgentUrl("") // Clear agentUrl if type is not a2a_call
+    if (newType !== "a2a") {
+      setAgentUrl("") // Clear agentUrl if type is not a2a
     }
-    if (newType !== "mcp_server") {
-      setMcpServerUrl("") // Clear MCP URL if type is not mcp_server
+    if (newType !== "mcp") {
+      setMcpServerUrl("") // Clear MCP URL if type is not mcp
     }
   }
 
@@ -73,59 +75,76 @@ export function ToolDialog({
     }
   }
 
-  const isAgentUrlValid = toolType === "a2a_call" ? isValidUrl(agentUrl) : true
-  const isMcpUrlValid = toolType === "mcp_server"
+  const isAgentUrlValid = capabilityType === "a2a" ? isValidUrl(agentUrl) : true
+  const isMcpUrlValid = capabilityType === "mcp"
     ? isValidUrl(mcpServerUrl)
     : true
 
   // Check if form is valid
-  const isFormValid = toolName && toolType &&
-    (toolType === "a2a_call" ? isAgentUrlValid : true) &&
-    (toolType === "mcp_server" ? isMcpUrlValid : true)
+  const isFormValid = capabilityName && capabilityType &&
+    (capabilityType === "a2a" ? isAgentUrlValid : true) &&
+    (capabilityType === "mcp" ? isMcpUrlValid : true)
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-lg">
         <DialogHeader>
           <DialogTitle>
-            {editIndex !== null ? "Edit Custom Tool" : "Add Custom Tool"}
+            {editIndex !== null
+              ? "Edit Custom Capability"
+              : "Add Custom Capability"}
           </DialogTitle>
           <DialogDescription>
             {editIndex !== null
-              ? "Update the custom tool details below."
-              : "Enter the details of the new custom tool you want to add."}
+              ? "Update the custom capability details below."
+              : "Enter the details of the new custom capability you want to add."}
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <Label htmlFor="tool-name" className="pb-1">Name</Label>
+              <Label htmlFor="capability-name" className="pb-1">Name</Label>
               <Input
-                id="tool-name"
-                value={toolName}
+                id="capability-name"
+                value={capabilityName}
                 onChange={(e) =>
-                  setToolName(
+                  setCapabilityName(
                     (e.target as HTMLInputElement | HTMLTextAreaElement).value,
                   )}
                 placeholder="weather_forecast"
               />
             </div>
             <div>
-              <Label htmlFor="tool-type" className="pb-1">Type</Label>
-              <Select value={toolType} onValueChange={handleToolTypeChange}>
-                <SelectTrigger id="tool-type">
-                  <SelectValue placeholder="Select tool type" />
+              <Label htmlFor="capability-type" className="pb-1">Type</Label>
+              <Select
+                value={capabilityType}
+                onValueChange={handleCapabilityTypeChange}
+              >
+                <SelectTrigger id="capability-type">
+                  <SelectValue placeholder="Select capability type" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="a2a_call">
+                  <SelectItem value="a2a">
                     A2A Agent Communication
                   </SelectItem>
-                  <SelectItem value="mcp_server">MCP Server</SelectItem>
+                  <SelectItem value="mcp">MCP Server</SelectItem>
                 </SelectContent>
               </Select>
             </div>
           </div>
-          {toolType === "a2a_call" && (
+          <div className="flex items-center justify-between">
+            <div className="space-y-0.5">
+              <Label className="text-sm">Enabled</Label>
+              <p className="text-xs text-muted-foreground">
+                Whether this capability is active and available for use
+              </p>
+            </div>
+            <Switch
+              checked={capabilityEnabled}
+              onCheckedChange={setCapabilityEnabled}
+            />
+          </div>
+          {capabilityType === "a2a" && (
             <div>
               <Label htmlFor="agent-url" className="pb-1">Agent URL</Label>
               <Input
@@ -145,7 +164,7 @@ export function ToolDialog({
               )}
             </div>
           )}
-          {toolType === "mcp_server" && (
+          {capabilityType === "mcp" && (
             <div>
               <Label htmlFor="mcp-server-url" className="pb-1">
                 Server URL
@@ -178,7 +197,7 @@ export function ToolDialog({
             onClick={onSubmit}
             disabled={!isFormValid}
           >
-            {editIndex !== null ? "Update Tool" : "Add Tool"}
+            {editIndex !== null ? "Update Capability" : "Add Capability"}
           </Button>
         </DialogFooter>
       </DialogContent>

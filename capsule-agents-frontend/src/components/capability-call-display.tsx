@@ -5,14 +5,14 @@ import { Button } from "./ui/button.tsx"
 import { Separator } from "./ui/separator.tsx"
 import { ArrowRight, ChevronDown, ChevronRight, Settings } from "lucide-react"
 
-type ToolCall = {
+type CapabilityCall = {
   name: string
   args: Record<string, unknown>
   result?: unknown
 }
 
-interface ToolCallDisplayProps {
-  toolCalls: ToolCall[]
+interface CapabilityCallDisplayProps {
+  capabilityCalls: CapabilityCall[]
 }
 
 function formatJson(obj: unknown): string {
@@ -23,7 +23,9 @@ function formatJson(obj: unknown): string {
   }
 }
 
-function ToolCallItem({ toolCall }: { toolCall: ToolCall }) {
+function CapabilityCallItem(
+  { capabilityCall }: { capabilityCall: CapabilityCall },
+) {
   const [isExpanded, setIsExpanded] = useState(false)
 
   return (
@@ -34,11 +36,11 @@ function ToolCallItem({ toolCall }: { toolCall: ToolCall }) {
             <div className="flex items-center gap-2 bg-muted/50 px-2 py-1 rounded-md">
               <Settings className="h-3 w-3 text-muted-foreground flex-shrink-0" />
               <span className="text-xs font-mono font-medium truncate">
-                {toolCall.name}
+                {capabilityCall.name}
               </span>
             </div>
             <Badge variant="secondary" className="text-xs">
-              Tool
+              Capability
             </Badge>
           </div>
           <Button
@@ -66,12 +68,12 @@ function ToolCallItem({ toolCall }: { toolCall: ToolCall }) {
             </div>
             <div className="bg-muted/50 rounded-md p-2 border">
               <pre className="text-xs font-mono text-foreground whitespace-pre-wrap break-all overflow-hidden">
-                {formatJson(toolCall.args)}
+                {formatJson(capabilityCall.args)}
               </pre>
             </div>
           </div>
 
-          {toolCall.result !== undefined && (
+          {capabilityCall.result !== undefined && (
             <>
               <Separator />
               {/* Result Section */}
@@ -84,7 +86,7 @@ function ToolCallItem({ toolCall }: { toolCall: ToolCall }) {
                 </div>
                 <div className="bg-muted/30 rounded-md p-2 border">
                   <pre className="text-xs font-mono text-foreground whitespace-pre-wrap break-all overflow-hidden">
-                    {formatJson(toolCall.result)}
+                    {formatJson(capabilityCall.result)}
                   </pre>
                 </div>
               </div>
@@ -96,8 +98,10 @@ function ToolCallItem({ toolCall }: { toolCall: ToolCall }) {
   )
 }
 
-export function ToolCallDisplay({ toolCalls }: ToolCallDisplayProps) {
-  if (!toolCalls || toolCalls.length === 0) {
+export function CapabilityCallDisplay(
+  { capabilityCalls }: CapabilityCallDisplayProps,
+) {
+  if (!capabilityCalls || capabilityCalls.length === 0) {
     return null
   }
 
@@ -105,10 +109,11 @@ export function ToolCallDisplay({ toolCalls }: ToolCallDisplayProps) {
     <div className="my-2 space-y-1">
       <div className="text-xs font-medium text-muted-foreground mb-1 flex items-center gap-1">
         <Settings className="h-3 w-3" />
-        Tool {toolCalls.length === 1 ? "Call" : "Calls"} ({toolCalls.length})
+        Capability {capabilityCalls.length === 1 ? "Call" : "Calls"}{" "}
+        ({capabilityCalls.length})
       </div>
-      {toolCalls.map((toolCall, index) => (
-        <ToolCallItem key={index} toolCall={toolCall} />
+      {capabilityCalls.map((capabilityCall, index) => (
+        <CapabilityCallItem key={index} capabilityCall={capabilityCall} />
       ))}
     </div>
   )

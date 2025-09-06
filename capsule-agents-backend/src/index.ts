@@ -1,7 +1,13 @@
+import { JsonRpcTransportHandler } from "@a2a-js/sdk/server"
+import * as log from "@std/log"
 import { Hono } from "hono"
-import { serveStatic } from "hono/deno"
 import { cors } from "hono/cors"
+import { serveStatic } from "hono/deno"
 import { streamSSE } from "hono/streaming"
+import { CapsuleAgentA2ARequestHandler } from "./lib/a2a-request-handler.ts"
+import { AgentConfigService, AgentInfo } from "./lib/agent-config.ts"
+import { ConfigFileService } from "./lib/config-file.ts"
+import { getDb } from "./lib/db.ts"
 import {
   createChat,
   deleteChatById,
@@ -9,12 +15,6 @@ import {
   getChatWithHistory,
   updateChatMetadata,
 } from "./lib/storage.ts"
-import { getDb } from "./lib/db.ts"
-import { CapsuleAgentA2ARequestHandler } from "./lib/a2a-request-handler.ts"
-import { JsonRpcTransportHandler } from "@a2a-js/sdk/server"
-import { AgentConfigService, AgentInfo } from "./lib/agent-config.ts"
-import { ConfigFileService } from "./lib/config-file.ts"
-import * as log from "@std/log"
 
 // Type guard to check if result is an AsyncGenerator (streaming response)
 function isAsyncGenerator(
@@ -247,7 +247,7 @@ app.get("/api/agent", (c) => {
     log.info("Agent info retrieved:", {
       name: agentInfo.name,
       modelName: agentInfo.model_name,
-      toolCount: agentInfo.tools.length,
+      capabilityCount: agentInfo.capabilities.length,
     })
 
     // Transform to match frontend expectations
@@ -256,7 +256,7 @@ app.get("/api/agent", (c) => {
       description: agentInfo.description,
       modelName: agentInfo.model_name, // Transform model_name to modelName
       modelParameters: agentInfo.model_parameters,
-      tools: agentInfo.tools,
+      capabilities: agentInfo.capabilities,
     }
 
     return c.json(response)
@@ -273,7 +273,7 @@ app.put("/api/agent", async (c) => {
     log.info("Update request received:", {
       name: body.name,
       modelName: body.modelName,
-      toolCount: body.tools?.length || 0,
+      capabilityCount: body.capabilities?.length || 0,
     })
 
     // Transform from frontend format to backend format
@@ -282,7 +282,7 @@ app.put("/api/agent", async (c) => {
       description: body.description,
       model_name: body.modelName, // Transform modelName back to model_name
       model_parameters: body.modelParameters || {},
-      tools: body.tools || [],
+      capabilities: body.capabilities || [],
     }
 
     log.info("Calling agentConfigService.updateAgentInfo...")
@@ -295,7 +295,7 @@ app.put("/api/agent", async (c) => {
       description: updatedInfo.description,
       modelName: updatedInfo.model_name,
       modelParameters: updatedInfo.model_parameters,
-      tools: updatedInfo.tools,
+      capabilities: updatedInfo.capabilities,
     }
 
     return c.json(response)

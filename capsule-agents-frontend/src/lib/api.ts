@@ -1,11 +1,11 @@
-import { v4 as uuidv4 } from "uuid"
-import { A2AClient } from "@a2a-js/sdk/client"
 import type {
   Message as A2AMessage,
   Task as A2ATask,
   TaskArtifactUpdateEvent,
   TaskStatusUpdateEvent,
 } from "@a2a-js/sdk"
+import { A2AClient } from "@a2a-js/sdk/client"
+import { v4 as uuidv4 } from "uuid"
 
 const API_BASE_URL = globalThis.location.origin
 const a2aClient = new A2AClient(API_BASE_URL, {
@@ -137,19 +137,61 @@ type Task = {
   metadata?: Record<string, unknown>
 }
 
-// Type for tool definition
-export type Tool = {
+// New capability type system
+export interface BaseCapability {
   name: string
-  type: string
-  tool_schema: Record<string, unknown>
+  enabled: boolean
+  type: "prebuilt" | "a2a" | "mcp"
 }
 
-// Type for tool calls
-export type ToolCall = {
+export interface PrebuiltCapability extends BaseCapability {
+  type: "prebuilt"
+  subtype: "file_access" | "web_search" | "memory"
+}
+
+export interface A2ACapability extends BaseCapability {
+  type: "a2a"
+  agentUrl: string
+}
+
+export interface MCPCapability extends BaseCapability {
+  type: "mcp"
+  serverUrl: string
+}
+
+export type Capability = PrebuiltCapability | A2ACapability | MCPCapability
+
+// Type guard functions
+export function isPrebuiltCapability(
+  capability: Capability,
+): capability is PrebuiltCapability {
+  return capability.type === "prebuilt"
+}
+
+export function isA2ACapability(
+  capability: Capability,
+): capability is A2ACapability {
+  return capability.type === "a2a"
+}
+
+export function isMCPCapability(
+  capability: Capability,
+): capability is MCPCapability {
+  return capability.type === "mcp"
+}
+
+// Legacy Tool type for backward compatibility
+export type Tool = Capability
+
+// Type for capability calls (tool calls)
+export type CapabilityCall = {
   name: string
   args: Record<string, unknown>
   result?: unknown
 }
+
+// Legacy alias for backward compatibility
+export type ToolCall = CapabilityCall
 
 // Types for agent configuration
 export type AgentInfo = {
@@ -157,7 +199,7 @@ export type AgentInfo = {
   description: string
   modelName: string
   modelParameters: Record<string, unknown>
-  tools?: Tool[]
+  capabilities?: Capability[]
 }
 
 // Function to send a message to the agent using A2A SDK
@@ -446,14 +488,14 @@ export async function getProviderInfo(): Promise<ProvidersResponse> {
   }
 }
 
-// Helper function to extract tool calls from A2A task or message
-export function extractToolCalls(
+// Helper function to extract capability calls from A2A task or message
+export function extractCapabilityCalls(
   taskOrEvent: A2ATask | A2AMessage | unknown,
-): ToolCall[] {
-  const toolCalls: ToolCall[] = []
+): CapabilityCall[] {
+  const capabilityCalls: CapabilityCall[] = []
 
   if (!taskOrEvent || typeof taskOrEvent !== "object") {
-    return toolCalls
+    return capabilityCalls
   }
 
   // Handle A2A Task type
@@ -502,12 +544,12 @@ export function extractToolCalls(
             const call = functionCalls.get(callId)
 
             if (call) {
-              toolCalls.push({
+              capabilityCalls.push({
                 name: call.name,
                 args: call.args,
                 result: functionResponse.response,
               })
-              console.log("Created tool call:", {
+              console.log("Created capability call:", {
                 name: call.name,
                 args: call.args,
                 result: functionResponse.response,
@@ -554,7 +596,7 @@ export function extractToolCalls(
             const call = functionCalls.get(callId)
 
             if (call) {
-              toolCalls.push({
+              capabilityCalls.push({
                 name: call.name,
                 args: call.args,
                 result: typedPart.function_response.response,
@@ -566,8 +608,8 @@ export function extractToolCalls(
     }
   }
 
-  console.log("Final extracted tool calls:", toolCalls)
-  return toolCalls
+  console.log("Final extracted capability calls:", capabilityCalls)
+  return capabilityCalls
 }
 
 // Helper function to extract text from A2A response
