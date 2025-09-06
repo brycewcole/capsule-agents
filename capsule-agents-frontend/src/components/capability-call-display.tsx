@@ -23,7 +23,9 @@ function formatJson(obj: unknown): string {
   }
 }
 
-function CapabilityCallItem({ capabilityCall }: { capabilityCall: CapabilityCall }) {
+function CapabilityCallItem(
+  { capabilityCall }: { capabilityCall: CapabilityCall },
+) {
   const [isExpanded, setIsExpanded] = useState(false)
 
   return (
@@ -96,7 +98,9 @@ function CapabilityCallItem({ capabilityCall }: { capabilityCall: CapabilityCall
   )
 }
 
-export function CapabilityCallDisplay({ capabilityCalls }: CapabilityCallDisplayProps) {
+export function CapabilityCallDisplay(
+  { capabilityCalls }: CapabilityCallDisplayProps,
+) {
   if (!capabilityCalls || capabilityCalls.length === 0) {
     return null
   }
@@ -105,7 +109,8 @@ export function CapabilityCallDisplay({ capabilityCalls }: CapabilityCallDisplay
     <div className="my-2 space-y-1">
       <div className="text-xs font-medium text-muted-foreground mb-1 flex items-center gap-1">
         <Settings className="h-3 w-3" />
-        Capability {capabilityCalls.length === 1 ? "Call" : "Calls"} ({capabilityCalls.length})
+        Capability {capabilityCalls.length === 1 ? "Call" : "Calls"}{" "}
+        ({capabilityCalls.length})
       </div>
       {capabilityCalls.map((capabilityCall, index) => (
         <CapabilityCallItem key={index} capabilityCall={capabilityCall} />

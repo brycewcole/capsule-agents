@@ -19,12 +19,12 @@ import {
 } from "./ui/card.tsx"
 import {
   type A2ATask,
+  type CapabilityCall as ApiCapabilityCall,
   type ChatWithHistory,
   checkHealth,
-  extractResponseText,
   extractCapabilityCalls,
+  extractResponseText,
   streamMessage,
-  type CapabilityCall as ApiCapabilityCall,
 } from "../lib/api.ts"
 import Markdown from "react-markdown"
 import { CapabilityCallDisplay } from "./capability-call-display.tsx"
@@ -606,7 +606,8 @@ export default function ChatInterface({
                                   <div className="space-y-2">
                                     {message.capabilityCalls && (
                                       <CapabilityCallDisplay
-                                        capabilityCalls={message.capabilityCalls}
+                                        capabilityCalls={message
+                                          .capabilityCalls}
                                       />
                                     )}
                                     <div className="markdown">

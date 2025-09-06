@@ -34,19 +34,19 @@ import {
   DialogTitle,
 } from "./ui/dialog.tsx"
 import {
+  type A2ACapability,
   type AgentInfo,
+  type Capability,
   getAgentInfo,
   getAvailableModels,
   getProviderInfo,
-  type Model,
-  type ProvidersResponse,
-  type Capability,
-  type PrebuiltCapability,
-  type A2ACapability,
-  type MCPCapability,
-  isPrebuiltCapability,
   isA2ACapability,
   isMCPCapability,
+  isPrebuiltCapability,
+  type MCPCapability,
+  type Model,
+  type PrebuiltCapability,
+  type ProvidersResponse,
   updateAgentInfo,
 } from "../lib/api.ts"
 import {
@@ -67,7 +67,9 @@ export default function AgentEditor() {
   const [isLoading, setIsLoading] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
   const [availableModels, setAvailableModels] = useState<Model[]>([])
-  const [providerInfo, setProviderInfo] = useState<ProvidersResponse | null>(null)
+  const [providerInfo, setProviderInfo] = useState<ProvidersResponse | null>(
+    null,
+  )
   const [showNoModelsModal, setShowNoModelsModal] = useState(false)
   const [capabilities, setCapabilities] = useState<Capability[]>([])
   const [showCapabilityForm, setShowCapabilityForm] = useState(false)
@@ -103,7 +105,8 @@ export default function AgentEditor() {
       name !== originalState.name ||
       description !== originalState.description ||
       selectedModel?.id !== originalState.modelName ||
-      JSON.stringify(capabilities) !== JSON.stringify(originalState.capabilities)
+      JSON.stringify(capabilities) !==
+        JSON.stringify(originalState.capabilities)
     )
   }
 
@@ -165,12 +168,12 @@ export default function AgentEditor() {
         ])
         setAvailableModels(models)
         setProviderInfo(providers)
-        
+
         // Check if no models are available and show modal
         if (models.length === 0) {
           setShowNoModelsModal(true)
         }
-        
+
         setName(agentInfo.name)
         setNameError("") // Clear any validation errors
         setDescription(agentInfo.description)
@@ -184,17 +187,20 @@ export default function AgentEditor() {
         const currentCapabilities = agentInfo.capabilities || []
         setFileAccessEnabled(
           currentCapabilities.some((capability) =>
-            isPrebuiltCapability(capability) && capability.subtype === "file_access" && capability.enabled
+            isPrebuiltCapability(capability) &&
+            capability.subtype === "file_access" && capability.enabled
           ),
         )
         setWebSearchEnabled(
           currentCapabilities.some((capability) =>
-            isPrebuiltCapability(capability) && capability.subtype === "web_search" && capability.enabled
+            isPrebuiltCapability(capability) &&
+            capability.subtype === "web_search" && capability.enabled
           ),
         )
         setMemoryEnabled(
           currentCapabilities.some((capability) =>
-            isPrebuiltCapability(capability) && capability.subtype === "memory" && capability.enabled
+            isPrebuiltCapability(capability) &&
+            capability.subtype === "memory" && capability.enabled
           ),
         )
 
@@ -243,17 +249,20 @@ export default function AgentEditor() {
       const currentCapabilities = agentInfo.capabilities || []
       setFileAccessEnabled(
         currentCapabilities.some((capability) =>
-          isPrebuiltCapability(capability) && capability.subtype === "file_access" && capability.enabled
+          isPrebuiltCapability(capability) &&
+          capability.subtype === "file_access" && capability.enabled
         ),
       )
       setWebSearchEnabled(
         currentCapabilities.some((capability) =>
-          isPrebuiltCapability(capability) && capability.subtype === "web_search" && capability.enabled
+          isPrebuiltCapability(capability) &&
+          capability.subtype === "web_search" && capability.enabled
         ),
       )
       setMemoryEnabled(
         currentCapabilities.some((capability) =>
-          isPrebuiltCapability(capability) && capability.subtype === "memory" && capability.enabled
+          isPrebuiltCapability(capability) && capability.subtype === "memory" &&
+          capability.enabled
         ),
       )
 
@@ -372,7 +381,8 @@ export default function AgentEditor() {
     // Don't allow editing prebuilt capabilities through the dialog
     if (isPrebuiltCapability(capability)) {
       toast.error("Cannot edit prebuilt capabilities", {
-        description: "Use the toggles above to enable/disable prebuilt capabilities.",
+        description:
+          "Use the toggles above to enable/disable prebuilt capabilities.",
       })
       return
     }
@@ -400,7 +410,8 @@ export default function AgentEditor() {
     // Don't allow deleting prebuilt capabilities through the table
     if (isPrebuiltCapability(capability)) {
       toast.error("Cannot delete prebuilt capabilities", {
-        description: "Use the toggles above to enable/disable prebuilt capabilities.",
+        description:
+          "Use the toggles above to enable/disable prebuilt capabilities.",
       })
       return
     }
@@ -430,7 +441,10 @@ export default function AgentEditor() {
   }
 
   // Handle prebuilt capability toggles
-  const handlePrebuiltCapabilityToggle = (subtype: "file_access" | "web_search" | "memory", enabled: boolean) => {
+  const handlePrebuiltCapabilityToggle = (
+    subtype: "file_access" | "web_search" | "memory",
+    enabled: boolean,
+  ) => {
     const capabilityConfig = {
       file_access: {
         name: "file_access",
@@ -466,16 +480,16 @@ export default function AgentEditor() {
         newCapabilities.push(newCapability)
       } else {
         // Enable existing capability
-        newCapabilities = newCapabilities.map(capability => 
-          isPrebuiltCapability(capability) && capability.subtype === subtype 
+        newCapabilities = newCapabilities.map((capability) =>
+          isPrebuiltCapability(capability) && capability.subtype === subtype
             ? { ...capability, enabled: true }
             : capability
         )
       }
     } else {
       // Disable the prebuilt capability
-      newCapabilities = newCapabilities.map(capability => 
-        isPrebuiltCapability(capability) && capability.subtype === subtype 
+      newCapabilities = newCapabilities.map((capability) =>
+        isPrebuiltCapability(capability) && capability.subtype === subtype
           ? { ...capability, enabled: false }
           : capability
       )
@@ -564,11 +578,13 @@ export default function AgentEditor() {
                 return providerInfo.providers.map((provider) => {
                   const isAvailable = provider.available
                   const requiredVars = provider.requiredEnvVars.join(" or ")
-                  
+
                   return (
                     <SelectGroup key={provider.id}>
                       <SelectLabel
-                        className={`${isAvailable ? "" : "text-gray-400"} flex items-center gap-1`}
+                        className={`${
+                          isAvailable ? "" : "text-gray-400"
+                        } flex items-center gap-1`}
                       >
                         {provider.name}
                         {!isAvailable && (
@@ -586,10 +602,9 @@ export default function AgentEditor() {
                           value={model.id}
                           disabled={!isAvailable}
                           className={!isAvailable ? "text-gray-400" : ""}
-                          title={!isAvailable 
+                          title={!isAvailable
                             ? `Set ${requiredVars} environment variable to enable this provider`
-                            : model.description || ""
-                          }
+                            : model.description || ""}
                         >
                           <div className="flex items-center justify-between w-full">
                             <span>{model.name}</span>
@@ -683,10 +698,14 @@ export default function AgentEditor() {
           />
 
           {/* Custom Capabilities Table */}
-          {capabilities.filter((capability) => !isPrebuiltCapability(capability)).length > 0
+          {capabilities.filter((capability) =>
+              !isPrebuiltCapability(capability)
+            ).length > 0
             ? (
               <div className="space-y-2">
-                <Label className="text-sm font-medium">Custom Capabilities</Label>
+                <Label className="text-sm font-medium">
+                  Custom Capabilities
+                </Label>
                 <Table>
                   <TableHeader>
                     <TableRow>
@@ -697,9 +716,13 @@ export default function AgentEditor() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {capabilities.filter((capability) => !isPrebuiltCapability(capability)).map(
+                    {capabilities.filter((capability) =>
+                      !isPrebuiltCapability(capability)
+                    ).map(
                       (capability, _originalIndex) => {
-                        const actualIndex = capabilities.findIndex((t) => t === capability)
+                        const actualIndex = capabilities.findIndex((t) =>
+                          t === capability
+                        )
                         return (
                           <TableRow key={actualIndex}>
                             <TableCell>{capability.name}</TableCell>
@@ -711,11 +734,13 @@ export default function AgentEditor() {
                                 : capability.type}
                             </TableCell>
                             <TableCell>
-                              <span className={`px-2 py-1 rounded-full text-xs ${
-                                capability.enabled 
-                                  ? "bg-green-100 text-green-800" 
-                                  : "bg-gray-100 text-gray-600"
-                              }`}>
+                              <span
+                                className={`px-2 py-1 rounded-full text-xs ${
+                                  capability.enabled
+                                    ? "bg-green-100 text-green-800"
+                                    : "bg-gray-100 text-gray-600"
+                                }`}
+                              >
                                 {capability.enabled ? "Enabled" : "Disabled"}
                               </span>
                             </TableCell>
@@ -747,17 +772,23 @@ export default function AgentEditor() {
             )
             : (
               <div className="space-y-2">
-                <Label className="text-sm font-medium">Custom Capabilities</Label>
+                <Label className="text-sm font-medium">
+                  Custom Capabilities
+                </Label>
                 <div className="text-center p-4 text-muted-foreground border border-dashed rounded-md">
-                  No custom capabilities configured. Add custom capabilities like Agent (A2A)
-                  connections and remote MCP servers.
+                  No custom capabilities configured. Add custom capabilities
+                  like Agent (A2A) connections and remote MCP servers.
                 </div>
               </div>
             )}
 
           {/* Add Custom Capability Button */}
           <div className="flex justify-end">
-            <Button size="sm" variant="outline" onClick={handleAddNewCapabilityClick}>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={handleAddNewCapabilityClick}
+            >
               <Plus className="mr-2 h-4 w-4" />
               Add Custom Capability
             </Button>
@@ -795,10 +826,11 @@ export default function AgentEditor() {
               No AI Models Available
             </DialogTitle>
             <DialogDescription>
-              To use this agent, you need to configure at least one AI provider by setting the appropriate environment variables.
+              To use this agent, you need to configure at least one AI provider
+              by setting the appropriate environment variables.
             </DialogDescription>
           </DialogHeader>
-          
+
           <div className="space-y-4">
             <div className="text-sm">
               <p className="font-medium mb-3">Available Providers:</p>
@@ -806,20 +838,25 @@ export default function AgentEditor() {
                 <div key={provider.id} className="mb-3 p-3 border rounded-lg">
                   <div className="flex items-center gap-2 mb-2">
                     <span className="font-medium">{provider.name}</span>
-                    {provider.available ? (
-                      <span className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded">
-                        ✓ Available
-                      </span>
-                    ) : (
-                      <span className="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded">
-                        Not Configured
-                      </span>
-                    )}
+                    {provider.available
+                      ? (
+                        <span className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded">
+                          ✓ Available
+                        </span>
+                      )
+                      : (
+                        <span className="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded">
+                          Not Configured
+                        </span>
+                      )}
                   </div>
                   <div className="text-xs text-gray-600">
-                    <p className="mb-1">{provider.models.length} models available</p>
+                    <p className="mb-1">
+                      {provider.models.length} models available
+                    </p>
                     <p>
-                      <strong>Required:</strong> Set one of these environment variables:
+                      <strong>Required:</strong>{" "}
+                      Set one of these environment variables:
                     </p>
                     <ul className="list-disc list-inside ml-2 mt-1">
                       {provider.requiredEnvVars.map((envVar) => (
@@ -832,7 +869,7 @@ export default function AgentEditor() {
                 </div>
               ))}
             </div>
-            
+
             <div className="bg-blue-50 p-3 rounded-lg text-sm">
               <p className="font-medium text-blue-900 mb-2">💡 Quick Setup:</p>
               <ol className="list-decimal list-inside text-blue-800 space-y-1">
@@ -845,8 +882,8 @@ export default function AgentEditor() {
           </div>
 
           <div className="flex justify-end mt-4">
-            <Button 
-              variant="outline" 
+            <Button
+              variant="outline"
               onClick={() => setShowNoModelsModal(false)}
             >
               Got it

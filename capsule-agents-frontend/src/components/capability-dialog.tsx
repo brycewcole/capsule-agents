@@ -90,7 +90,9 @@ export function CapabilityDialog({
       <DialogContent className="max-w-lg">
         <DialogHeader>
           <DialogTitle>
-            {editIndex !== null ? "Edit Custom Capability" : "Add Custom Capability"}
+            {editIndex !== null
+              ? "Edit Custom Capability"
+              : "Add Custom Capability"}
           </DialogTitle>
           <DialogDescription>
             {editIndex !== null
@@ -114,7 +116,10 @@ export function CapabilityDialog({
             </div>
             <div>
               <Label htmlFor="capability-type" className="pb-1">Type</Label>
-              <Select value={capabilityType} onValueChange={handleCapabilityTypeChange}>
+              <Select
+                value={capabilityType}
+                onValueChange={handleCapabilityTypeChange}
+              >
                 <SelectTrigger id="capability-type">
                   <SelectValue placeholder="Select capability type" />
                 </SelectTrigger>

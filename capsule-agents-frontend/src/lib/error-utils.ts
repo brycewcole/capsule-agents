@@ -230,7 +230,8 @@ export function createUserFriendlyErrorMessage(error: unknown): string {
     [-32015]: "Connection failed. Please check your internet connection.",
     [-32016]:
       "MCP server is not running or unreachable. Start the MCP server and try again.",
-    [-32017]: "The requested capability operation failed. Check capability configuration.",
+    [-32017]:
+      "The requested capability operation failed. Check capability configuration.",
     [-32018]:
       "MCP server configuration is invalid. Check settings and server URL.",
     [-32019]:
