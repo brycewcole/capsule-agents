@@ -1,8 +1,9 @@
 // deno-lint-ignore-file require-await
 import type * as A2A from "@a2a-js/sdk"
 import type { TaskStore } from "@a2a-js/sdk/server"
-import { ArtifactStorage } from "./artifact-storage.ts"
+import { ArtifactRepository } from "./artifact-storage.ts"
 import { getDb } from "./db.ts"
+import { getRepository, type DbTaskRow } from "./repository.ts"
 
 export interface StoredTask {
   id: string
@@ -15,9 +16,9 @@ export interface StoredTask {
   updatedAt: number
 }
 
-export class TaskStorage implements TaskStore {
+export class TaskRepository implements TaskStore {
   private taskCounter = 0
-  private artifactStorage = new ArtifactStorage()
+  private artifactStorage = new ArtifactRepository()
 
   createTaskId(): string {
     return `task_${++this.taskCounter}_${Date.now()}`
@@ -32,29 +33,21 @@ export class TaskStorage implements TaskStore {
   }
 
   setTask(id: string, task: A2A.Task): void {
-    const db = getDb()
+    const repo = getRepository()
     const now = Date.now() / 1000
-
-    // Check if task already exists to preserve created_at
     const existing = this.getStoredTask(id)
     const createdAt = existing ? existing.createdAt : now
-
-    const stmt = db.prepare(`
-      INSERT OR REPLACE INTO tasks 
-      (id, context_id, status_state, status_timestamp, status_message_id, metadata, created_at, updated_at) 
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `)
-
-    stmt.run(
+    const row: DbTaskRow = {
       id,
-      task.contextId,
-      task.status.state,
-      task.status.timestamp,
-      task.status.message?.messageId || null,
-      JSON.stringify(task.metadata || {}),
-      createdAt,
-      now,
-    )
+      context_id: task.contextId,
+      status_state: task.status.state,
+      status_timestamp: task.status.timestamp,
+      status_message_id: task.status.message?.messageId || null,
+      metadata: JSON.stringify(task.metadata || {}),
+      created_at: createdAt,
+      updated_at: now,
+    }
+    repo.upsertTask(row)
   }
 
   getTask(id: string): A2A.Task | undefined {
@@ -65,26 +58,9 @@ export class TaskStorage implements TaskStore {
   }
 
   getStoredTask(id: string): StoredTask | undefined {
-    const db = getDb()
-    const stmt = db.prepare(`
-      SELECT id, context_id, status_state, status_timestamp, status_message_id, metadata, created_at, updated_at 
-      FROM tasks 
-      WHERE id = ?
-    `)
-
-    const row = stmt.get(id) as {
-      id: string
-      context_id: string
-      status_state: string
-      status_timestamp: string
-      status_message_id: string | null
-      metadata: string
-      created_at: number
-      updated_at: number
-    } | undefined
-
+    const repo = getRepository()
+    const row = repo.getTaskRow(id)
     if (!row) return undefined
-
     return {
       id: row.id,
       contextId: row.context_id,
@@ -98,24 +74,8 @@ export class TaskStorage implements TaskStore {
   }
 
   getAllTasks(): A2A.Task[] {
-    const db = getDb()
-    const stmt = db.prepare(`
-      SELECT id, context_id, status_state, status_timestamp, status_message_id, metadata, created_at, updated_at 
-      FROM tasks 
-      ORDER BY created_at DESC
-    `)
-
-    const rows = stmt.all() as {
-      id: string
-      context_id: string
-      status_state: string
-      status_timestamp: string
-      status_message_id: string | null
-      metadata: string
-      created_at: number
-      updated_at: number
-    }[]
-
+    const repo = getRepository()
+    const rows = repo.listAllTasks()
     return rows.map((row) =>
       this.buildA2ATask({
         id: row.id,
@@ -131,25 +91,8 @@ export class TaskStorage implements TaskStore {
   }
 
   getTasksByContext(contextId: string): A2A.Task[] {
-    const db = getDb()
-    const stmt = db.prepare(`
-      SELECT id, context_id, status_state, status_timestamp, status_message_id, metadata, created_at, updated_at 
-      FROM tasks 
-      WHERE context_id = ?
-      ORDER BY created_at ASC
-    `)
-
-    const rows = stmt.all(contextId) as {
-      id: string
-      context_id: string
-      status_state: string
-      status_timestamp: string
-      status_message_id: string | null
-      metadata: string
-      created_at: number
-      updated_at: number
-    }[]
-
+    const repo = getRepository()
+    const rows = repo.listTasksByContext(contextId)
     return rows.map((row) =>
       this.buildA2ATask({
         id: row.id,
@@ -165,10 +108,8 @@ export class TaskStorage implements TaskStore {
   }
 
   deleteTask(id: string): boolean {
-    const db = getDb()
-    const stmt = db.prepare("DELETE FROM tasks WHERE id = ?")
-    const result = stmt.run(id) as unknown as { changes: number }
-    return result.changes > 0
+    const repo = getRepository()
+    return repo.deleteTask(id)
   }
 
   // Build A2A Task from stored data, including messages and artifacts
@@ -208,22 +149,8 @@ export class TaskStorage implements TaskStore {
 
   // Get messages that belong to this task
   private getTaskMessages(taskId: string): A2A.Message[] {
-    const db = getDb()
-    const stmt = db.prepare(`
-      SELECT id, context_id, role, parts, timestamp 
-      FROM messages 
-      WHERE task_id = ?
-      ORDER BY timestamp ASC
-    `)
-
-    const rows = stmt.all(taskId) as {
-      id: string
-      context_id: string
-      role: string
-      parts: string
-      timestamp: number
-    }[]
-
+    const repo = getRepository()
+    const rows = repo.listMessagesByTask(taskId)
     return rows.map((row) => ({
       kind: "message" as const,
       messageId: row.id,
@@ -237,24 +164,9 @@ export class TaskStorage implements TaskStore {
 
   // Get status message by ID
   private getStatusMessage(messageId: string): A2A.Message | undefined {
-    const db = getDb()
-    const stmt = db.prepare(`
-      SELECT id, context_id, task_id, role, parts, timestamp 
-      FROM messages 
-      WHERE id = ?
-    `)
-
-    const row = stmt.get(messageId) as {
-      id: string
-      context_id: string
-      task_id: string | null
-      role: string
-      parts: string
-      timestamp: number
-    } | undefined
-
+    const repo = getRepository()
+    const row = repo.getMessage(messageId)
     if (!row) return undefined
-
     return {
       kind: "message" as const,
       messageId: row.id,

@@ -1,11 +1,27 @@
 import { Database } from "better-sqlite3"
 
-const dbPath = "./data/sessions.db"
+// Resolve DB path from environment with sensible defaults for dev + docker
+function resolveDbPath() {
+  try {
+    const envPath = Deno.env.get("DB_PATH") ||
+      Deno.env.get("DATABASE_PATH") ||
+      Deno.env.get("SESSIONS_DB_PATH")
+    return envPath && envPath.trim().length > 0
+      ? envPath
+      : "./data/sessions.db"
+  } catch (_) {
+    // If Deno.env is not accessible for any reason, fallback to default
+    return "./data/sessions.db"
+  }
+}
+
+const dbPath = resolveDbPath()
 
 let db: Database
 
 export function getDb() {
   if (!db) {
+    console.log(`Opening SQLite database at: ${dbPath}`)
     db = new Database(dbPath)
     db.exec("PRAGMA journal_mode = WAL")
     db.exec("PRAGMA foreign_keys = ON")

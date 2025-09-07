@@ -12,9 +12,9 @@ import { memorySkill, memoryTool } from "../capabilities/memory.ts"
 import { AgentConfigService } from "./agent-config.ts"
 import { isMCPCapability } from "./capability-types.ts"
 import { ProviderService } from "./provider-service.ts"
-import { contextStorage, messageStorage } from "./storage.ts"
+import { contextRepository, messageRepository } from "./storage.ts"
 import { TaskService } from "./task-service.ts"
-import { TaskStorage } from "./task-storage.ts"
+import { TaskRepository } from "./task-storage.ts"
 
 interface MCPToolsDisposable {
   tools: Record<string, Vercel.Tool>
@@ -22,7 +22,7 @@ interface MCPToolsDisposable {
 }
 
 export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
-  private taskStorage = new TaskStorage()
+  private taskStorage = new TaskRepository()
   private taskService = new TaskService(this.taskStorage)
   private agentConfigService: AgentConfigService
 
@@ -326,12 +326,12 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
 
     try {
       // Ensure context exists
-      if (!contextStorage.getContext(params.message.contextId)) {
-        contextStorage.createContext(params.message.contextId)
+      if (!contextRepository.getContext(params.message.contextId)) {
+        contextRepository.createContext(params.message.contextId)
       }
 
       // Get context messages for history
-      const contextMessages = messageStorage.getContextMessages(
+      const contextMessages = messageRepository.getContextMessages(
         params.message.contextId,
         false,
       )
@@ -340,7 +340,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
       })
 
       // Add user message to context
-      messageStorage.createMessage(params.message)
+      messageRepository.createMessage(params.message)
 
       // Convert A2A messages to Vercel AI format for the model
       const vercelMessages: Vercel.UIMessage[] = []
@@ -454,7 +454,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
               }
 
               // Add to context messages
-              messageStorage.createMessage(responseMessage)
+              messageRepository.createMessage(responseMessage)
             }
           }
         },

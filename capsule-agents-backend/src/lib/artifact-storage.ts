@@ -1,5 +1,5 @@
-import { getDb } from "./db.ts"
 import type * as A2A from "@a2a-js/sdk"
+import { getRepository } from "./repository.ts"
 
 export interface StoredArtifact {
   id: string
@@ -10,28 +10,22 @@ export interface StoredArtifact {
   createdAt: number
 }
 
-export class ArtifactStorage {
+export class ArtifactRepository {
   createArtifact(
     taskId: string,
     artifact: Omit<A2A.Artifact, "artifactId">,
   ): StoredArtifact {
-    const db = getDb()
+    const repo = getRepository()
     const now = Date.now() / 1000
     const id = `artifact_${crypto.randomUUID()}`
-
-    const stmt = db.prepare(`
-      INSERT INTO artifacts (id, task_id, name, description, parts, created_at) 
-      VALUES (?, ?, ?, ?, ?, ?)
-    `)
-
-    stmt.run(
+    repo.insertArtifact({
       id,
-      taskId,
-      artifact.name || null,
-      artifact.description || null,
-      JSON.stringify(artifact.parts),
-      now,
-    )
+      task_id: taskId,
+      name: artifact.name ?? null,
+      description: artifact.description ?? null,
+      parts: JSON.stringify(artifact.parts),
+      created_at: now,
+    })
 
     return {
       id,
@@ -44,24 +38,9 @@ export class ArtifactStorage {
   }
 
   getArtifact(id: string): StoredArtifact | undefined {
-    const db = getDb()
-    const stmt = db.prepare(`
-      SELECT id, task_id, name, description, parts, created_at 
-      FROM artifacts 
-      WHERE id = ?
-    `)
-
-    const row = stmt.get(id) as {
-      id: string
-      task_id: string
-      name: string | null
-      description: string | null
-      parts: string
-      created_at: number
-    } | undefined
-
+    const repo = getRepository()
+    const row = repo.getArtifact(id)
     if (!row) return undefined
-
     return {
       id: row.id,
       taskId: row.task_id,
@@ -73,22 +52,8 @@ export class ArtifactStorage {
   }
 
   getArtifactsByTask(taskId: string): StoredArtifact[] {
-    const db = getDb()
-    const stmt = db.prepare(`
-      SELECT id, task_id, name, description, parts, created_at 
-      FROM artifacts 
-      WHERE task_id = ?
-      ORDER BY created_at ASC
-    `)
-
-    const rows = stmt.all(taskId) as {
-      id: string
-      task_id: string
-      name: string | null
-      description: string | null
-      parts: string
-      created_at: number
-    }[]
+    const repo = getRepository()
+    const rows = repo.listArtifactsByTask(taskId)
 
     return rows.map((row) => ({
       id: row.id,
@@ -104,49 +69,22 @@ export class ArtifactStorage {
     id: string,
     updates: Partial<Pick<StoredArtifact, "name" | "description" | "parts">>,
   ): boolean {
-    const db = getDb()
-    const fields: string[] = []
-    const values: (string | number)[] = []
-
-    if (updates.name !== undefined) {
-      fields.push("name = ?")
-      values.push(updates.name)
-    }
-    if (updates.description !== undefined) {
-      fields.push("description = ?")
-      values.push(updates.description)
-    }
-    if (updates.parts !== undefined) {
-      fields.push("parts = ?")
-      values.push(JSON.stringify(updates.parts))
-    }
-
-    if (fields.length === 0) return false
-
-    values.push(id)
-
-    const stmt = db.prepare(`
-      UPDATE artifacts 
-      SET ${fields.join(", ")} 
-      WHERE id = ?
-    `)
-
-    const result = stmt.run(...values) as unknown as { changes: number }
-    return result.changes > 0
+    const repo = getRepository()
+    return repo.updateArtifact(id, {
+      name: updates.name ?? null,
+      description: updates.description ?? null,
+      parts: updates.parts ? JSON.stringify(updates.parts) : undefined,
+    })
   }
 
   deleteArtifact(id: string): boolean {
-    const db = getDb()
-    const stmt = db.prepare("DELETE FROM artifacts WHERE id = ?")
-    const result = stmt.run(id) as unknown as { changes: number }
-    return result.changes > 0
+    const repo = getRepository()
+    return repo.deleteArtifact(id)
   }
 
   deleteArtifactsByTask(taskId: string): number {
-    const db = getDb()
-    const stmt = db.prepare("DELETE FROM artifacts WHERE task_id = ?")
-    const result = stmt.run(taskId) as unknown as { changes: number }
-    return result.changes
+    const repo = getRepository()
+    return repo.deleteArtifactsByTask(taskId)
   }
 
   // Convert stored artifacts to A2A Artifact format

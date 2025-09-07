@@ -560,7 +560,7 @@ export default function ChatInterface({
                   />
                 </div>
               )}
-              {/* Render only tasks with their inline history */}
+              {/* Render tasks and messages in a unified timeline */}
               <div className="flex flex-col space-y-4">
                 {isLoadingChat
                   ? (
@@ -569,20 +569,50 @@ export default function ChatInterface({
                       Loading conversation...
                     </div>
                   )
-                  : (tasks.length === 0 && currentTask === null)
+                  : (tasks.length === 0 && currentTask === null && messages.length === 0)
                   ? (
                     <div className="flex items-center justify-center h-full text-muted-foreground">
                       Send a message to start the conversation
                     </div>
                   )
                   : (
-                    timeline
-                      .filter((item) => item.kind === "task")
-                      .map((item) => (
-                        <div key={`task-${item.task.id}`} className="w-full">
-                          <TaskStatusDisplay task={item.task} />
+                    timeline.map((item, idx) => {
+                      if (item.kind === "task") {
+                        return (
+                          <div key={`task-${item.task.id}-${idx}`} className="w-full">
+                            <TaskStatusDisplay task={item.task} />
+                          </div>
+                        )
+                      }
+                      // Render a simple message bubble
+                      const isUser = item.message.role === "user"
+                      const bubbleClasses = [
+                        "max-w-[80%] rounded-lg px-3 py-2 text-sm whitespace-pre-wrap break-words border",
+                        isUser
+                          ? "bg-muted/50 border-muted-foreground/10"
+                          : "bg-primary/10 border-primary/20",
+                      ].join(" ")
+                      return (
+                        <div
+                          key={`msg-${idx}`}
+                          className={[
+                            "flex w-full",
+                            isUser ? "justify-start" : "justify-end",
+                          ].join(" ")}
+                        >
+                          <div className={bubbleClasses}>
+                            {item.message.isLoading ? (
+                              <span className="inline-flex items-center text-muted-foreground gap-2">
+                                <Loader2 className="h-3 w-3 animate-spin" />
+                                Thinking...
+                              </span>
+                            ) : (
+                              item.message.content || ""
+                            )}
+                          </div>
                         </div>
-                      ))
+                      )
+                    })
                   )}
                 <div ref={messagesEndRef} />
               </div>

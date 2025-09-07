@@ -86,12 +86,13 @@ export function TaskStatusDisplay({ task, className }: TaskStatusDisplayProps) {
   const getStatusMessageText = () => {
     if (task.status?.message?.parts) {
       const textParts = task.status.message.parts
-        .filter((part: unknown) =>
-          part && typeof part === "object" && "kind" in part &&
-          part.kind === "text"
-        )
+        .filter((part: unknown) => {
+          if (!part || typeof part !== "object") return false
+          const p = part as { kind?: string; type?: string }
+          return p.kind === "text" || p.type === "text"
+        })
         .map((part: unknown) =>
-          part && typeof part === "object" && "text" in part ? part.text : ""
+          part && typeof part === "object" && "text" in part ? (part as { text?: string }).text || "" : ""
         )
         .filter(Boolean)
       return textParts.join(" ").trim() || null
@@ -111,8 +112,11 @@ export function TaskStatusDisplay({ task, className }: TaskStatusDisplayProps) {
   const extractTextFromParts = (parts: A2A.Part[]): string => {
     try {
       const texts = parts
-        .filter((part): part is A2A.TextPart => part.kind === "text")
-        .map((part) => part.text.trim())
+        .filter((part): part is A2A.TextPart =>
+          (part as { kind?: string; type?: string }).kind === "text" ||
+          (part as { kind?: string; type?: string }).type === "text"
+        )
+        .map((part) => (part as { text?: string }).text?.trim?.() || "")
         .filter(Boolean)
       return texts.join("\n\n").trim()
     } catch {
@@ -127,8 +131,11 @@ export function TaskStatusDisplay({ task, className }: TaskStatusDisplayProps) {
       data?: unknown
     }[] = []
     for (const part of parts) {
-      if (part.kind === "data" && part.data) {
-        const data = part.data as {
+      const kind = (part as { kind?: string; type?: string }).kind ||
+        (part as { kind?: string; type?: string }).type
+      const dataField = (part as unknown as { data?: unknown }).data
+      if (kind === "data" && dataField) {
+        const data = dataField as {
           type?: string
           name?: string
           args?: unknown
@@ -158,10 +165,12 @@ export function TaskStatusDisplay({ task, className }: TaskStatusDisplayProps) {
     type DataItem = { data: unknown }
     const items: DataItem[] = []
     for (const part of parts) {
-      if (part.kind === "data") {
-        const dataPart = part as A2A.DataPart
+      const kind = (part as { kind?: string; type?: string }).kind ||
+        (part as { kind?: string; type?: string }).type
+      if (kind === "data") {
+        const dataPart = part as A2A.DataPart & { type?: string }
         items.push({
-          data: dataPart.data,
+          data: (dataPart as unknown as { data?: unknown }).data,
         })
       }
     }

@@ -1,6 +1,6 @@
-import { getDb } from "./db.ts"
 import type * as A2A from "@a2a-js/sdk"
-import { TaskStorage } from "./task-storage.ts"
+import { type DbMessageRow, getRepository } from "./repository.ts"
+import { TaskRepository } from "./task-storage.ts"
 
 export interface StoredContext {
   id: string
@@ -18,38 +18,18 @@ export interface StoredMessage {
   timestamp: number
 }
 
-export class ContextStorage {
+export class ContextRepository {
   createContext(id?: string, metadata: Record<string, unknown> = {}): string {
-    const db = getDb()
+    const repo = getRepository()
     const contextId = id || crypto.randomUUID()
-    const now = Date.now() / 1000
-
-    const stmt = db.prepare(`
-      INSERT INTO contexts (id, metadata, created_at, updated_at) 
-      VALUES (?, ?, ?, ?)
-    `)
-    stmt.run(contextId, JSON.stringify(metadata), now, now)
-
+    repo.insertContext({ id: contextId, metadata: JSON.stringify(metadata) })
     return contextId
   }
 
   getContext(id: string): StoredContext | undefined {
-    const db = getDb()
-    const stmt = db.prepare(`
-      SELECT id, metadata, created_at, updated_at 
-      FROM contexts 
-      WHERE id = ?
-    `)
-
-    const row = stmt.get(id) as {
-      id: string
-      metadata: string
-      created_at: number
-      updated_at: number
-    } | undefined
-
+    const repo = getRepository()
+    const row = repo.getContext(id)
     if (!row) return undefined
-
     return {
       id: row.id,
       metadata: JSON.parse(row.metadata),
@@ -59,42 +39,18 @@ export class ContextStorage {
   }
 
   updateContext(id: string, metadata: Record<string, unknown>): boolean {
-    const db = getDb()
-    const now = Date.now() / 1000
-
-    const stmt = db.prepare(`
-      UPDATE contexts 
-      SET metadata = ?, updated_at = ? 
-      WHERE id = ?
-    `)
-    const result = stmt.run(JSON.stringify(metadata), now, id) as unknown as {
-      changes: number
-    }
-    return result.changes > 0
+    const repo = getRepository()
+    return repo.updateContextMetadata(id, JSON.stringify(metadata))
   }
 
   deleteContext(id: string): boolean {
-    const db = getDb()
-    const stmt = db.prepare("DELETE FROM contexts WHERE id = ?")
-    const result = stmt.run(id) as unknown as { changes: number }
-    return result.changes > 0
+    const repo = getRepository()
+    return repo.deleteContext(id)
   }
 
   getAllContexts(): StoredContext[] {
-    const db = getDb()
-    const stmt = db.prepare(`
-      SELECT id, metadata, created_at, updated_at 
-      FROM contexts 
-      ORDER BY updated_at DESC
-    `)
-
-    const rows = stmt.all() as {
-      id: string
-      metadata: string
-      created_at: number
-      updated_at: number
-    }[]
-
+    const repo = getRepository()
+    const rows = repo.listContextsByUpdatedDesc()
     return rows.map((row) => ({
       id: row.id,
       metadata: JSON.parse(row.metadata),
@@ -104,71 +60,48 @@ export class ContextStorage {
   }
 
   touchContext(id: string): void {
-    const db = getDb()
-    const now = Date.now() / 1000
-    const stmt = db.prepare("UPDATE contexts SET updated_at = ? WHERE id = ?")
-    stmt.run(now, id)
+    const repo = getRepository()
+    repo.touchContext(id)
   }
 }
 
-export class MessageStorage {
+export class MessageRepository {
   createMessage(message: A2A.Message): StoredMessage {
     if (!message.contextId) {
       throw new Error("Message contextId is required")
     }
 
-    const db = getDb()
-    const now = Date.now() / 1000
+    const role = message.role as "user" | "agent"
 
-    const stmt = db.prepare(`
-      INSERT INTO messages (id, context_id, task_id, role, parts, timestamp) 
-      VALUES (?, ?, ?, ?, ?, ?)
-    `)
-
-    stmt.run(
-      message.messageId,
-      message.contextId,
-      message.taskId || null,
-      message.role,
-      JSON.stringify(message.parts),
-      now,
-    )
+    const repo = getRepository()
+    const row = repo.insertMessage({
+      id: message.messageId,
+      context_id: message.contextId,
+      task_id: message.taskId ?? null,
+      role,
+      parts: JSON.stringify(message.parts ?? []),
+    })
 
     return {
-      id: message.messageId,
-      contextId: message.contextId,
-      taskId: message.taskId,
-      role: message.role,
-      parts: message.parts,
-      timestamp: now,
+      id: row.id,
+      contextId: row.context_id,
+      taskId: row.task_id ?? undefined,
+      role: row.role,
+      parts: JSON.parse(row.parts) as A2A.Part[],
+      timestamp: row.timestamp,
     }
   }
 
   getMessage(id: string): A2A.Message | undefined {
-    const db = getDb()
-    const stmt = db.prepare(`
-      SELECT id, context_id, task_id, role, parts, timestamp 
-      FROM messages 
-      WHERE id = ?
-    `)
-
-    const row = stmt.get(id) as {
-      id: string
-      context_id: string
-      task_id: string | null
-      role: string
-      parts: string
-      timestamp: number
-    } | undefined
-
+    const repo = getRepository()
+    const row = repo.getMessage(id)
     if (!row) return undefined
-
     return {
       kind: "message",
       messageId: row.id,
       contextId: row.context_id,
       taskId: row.task_id || undefined,
-      role: row.role as "user" | "agent",
+      role: row.role,
       parts: JSON.parse(row.parts),
     }
   }
@@ -177,86 +110,46 @@ export class MessageStorage {
     contextId: string,
     includeTaskMessages: boolean = false,
   ): A2A.Message[] {
-    const db = getDb()
-    const whereClause = includeTaskMessages
-      ? "WHERE context_id = ?"
-      : "WHERE context_id = ? AND task_id IS NULL"
-
-    const stmt = db.prepare(`
-      SELECT id, context_id, task_id, role, parts, timestamp 
-      FROM messages 
-      ${whereClause}
-      ORDER BY timestamp ASC
-    `)
-
-    const rows = stmt.all(contextId) as {
-      id: string
-      context_id: string
-      task_id: string | null
-      role: string
-      parts: string
-      timestamp: number
-    }[]
-
-    return rows.map((row) => ({
+    const repo = getRepository()
+    const rows = repo.listMessagesByContext(contextId, includeTaskMessages)
+    return rows.map((row: DbMessageRow) => ({
       kind: "message" as const,
       messageId: row.id,
       contextId: row.context_id,
       taskId: row.task_id || undefined,
-      role: row.role as "user" | "agent",
+      role: row.role,
       parts: JSON.parse(row.parts),
       timestamp: new Date(row.timestamp * 1000).toISOString(),
     }))
   }
 
   getTaskMessages(taskId: string): A2A.Message[] {
-    const db = getDb()
-    const stmt = db.prepare(`
-      SELECT id, context_id, task_id, role, parts, timestamp 
-      FROM messages 
-      WHERE task_id = ?
-      ORDER BY timestamp ASC
-    `)
-
-    const rows = stmt.all(taskId) as {
-      id: string
-      context_id: string
-      task_id: string | null
-      role: string
-      parts: string
-      timestamp: number
-    }[]
-
+    const repo = getRepository()
+    const rows = repo.listMessagesByTask(taskId)
     return rows.map((row) => ({
       kind: "message" as const,
       messageId: row.id,
       contextId: row.context_id,
       taskId: row.task_id || undefined,
-      role: row.role as "user" | "agent",
+      role: row.role,
       parts: JSON.parse(row.parts),
       timestamp: new Date(row.timestamp * 1000).toISOString(),
     }))
   }
 
   deleteMessage(id: string): boolean {
-    const db = getDb()
-    const stmt = db.prepare("DELETE FROM messages WHERE id = ?")
-    const result = stmt.run(id) as unknown as { changes: number }
-    return result.changes > 0
+    const repo = getRepository()
+    return repo.deleteMessage(id)
   }
 
   deleteContextMessages(contextId: string): number {
-    const db = getDb()
-    const stmt = db.prepare("DELETE FROM messages WHERE context_id = ?")
-    const result = stmt.run(contextId) as unknown as { changes: number }
-    return result.changes
+    const repo = getRepository()
+    return repo.deleteMessagesByContext(contextId)
   }
 
   deleteTaskMessages(taskId: string): number {
-    const db = getDb()
-    const stmt = db.prepare("DELETE FROM messages WHERE task_id = ?")
-    const result = stmt.run(taskId) as unknown as { changes: number }
-    return result.changes
+    const repo = getRepository()
+    return repo.deleteMessagesByTask(taskId)
   }
 }
 
@@ -281,9 +174,9 @@ export interface ChatWithHistory {
 }
 
 export class ChatService {
-  private contextStorage = new ContextStorage()
-  private messageStorage = new MessageStorage()
-  private taskStorage = new TaskStorage()
+  private contextStorage = new ContextRepository()
+  private messageStorage = new MessageRepository()
+  private taskStorage = new TaskRepository()
 
   createChat(id?: string): string {
     return this.contextStorage.createContext(id)
@@ -327,7 +220,8 @@ export class ChatService {
     const chatSummaries: ChatSummary[] = []
 
     for (const context of contexts) {
-      const messages = this.messageStorage.getContextMessages(context.id, false)
+      // Include messages that belong to tasks so previews/counts reflect reality
+      const messages = this.messageStorage.getContextMessages(context.id, true)
 
       if (messages.length > 0) {
         chatSummaries.push({
@@ -348,7 +242,8 @@ export class ChatService {
     const context = this.contextStorage.getContext(contextId)
     if (!context) return null
 
-    const messages = this.messageStorage.getContextMessages(contextId, false)
+    // Include both context-level and task-linked messages
+    const messages = this.messageStorage.getContextMessages(contextId, true)
     const tasks = this.taskStorage.getTasksByContext(contextId)
 
     return {
@@ -374,27 +269,23 @@ export class ChatService {
   }
 
   addMessage(message: A2A.Message): void {
-    this.messageStorage.createMessage(message)
+    // Ensure context exists and normalize roles at service layer
+    if (!message.contextId) throw new Error("Message contextId is required")
+
+    if (!this.contextStorage.getContext(message.contextId)) {
+      this.contextStorage.createContext(message.contextId)
+    }
+
+    const normalized: A2A.Message = {
+      ...message,
+      role: message.role === "assistant"
+        ? "agent"
+        : (message.role as "user" | "agent"),
+    }
+
+    this.messageStorage.createMessage(normalized)
     if (message.contextId) {
       this.contextStorage.touchContext(message.contextId)
     }
   }
 }
-
-// Create singleton instances for backwards compatibility
-export const contextStorage = new ContextStorage()
-export const messageStorage = new MessageStorage()
-export const chatService = new ChatService()
-
-// Legacy function exports for backwards compatibility
-export const createChat = chatService.createChat.bind(chatService)
-export const createChatWithId = (contextId: string) =>
-  chatService.createChat(contextId)
-export const getChatsList = chatService.getChatsList.bind(chatService)
-export const getChatWithHistory = chatService.getChatWithHistory.bind(
-  chatService,
-)
-export const deleteChatById = chatService.deleteChatById.bind(chatService)
-export const updateChatMetadata = chatService.updateChatMetadata.bind(
-  chatService,
-)

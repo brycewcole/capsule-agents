@@ -1,15 +1,15 @@
 import type * as A2A from "@a2a-js/sdk"
-import { TaskStorage } from "./task-storage.ts"
-import { ArtifactStorage } from "./artifact-storage.ts"
-import { messageStorage } from "./storage.ts"
+import { TaskRepository } from "./task-storage.ts"
+import { ArtifactRepository } from "./artifact-storage.ts"
+import { messageRepository } from "./storage.ts"
 
 type TaskState = A2A.Task["status"]["state"]
 
 export class TaskService {
-  private taskStorage: TaskStorage
-  private artifactStorage = new ArtifactStorage()
+  private taskStorage: TaskRepository
+  private artifactStorage = new ArtifactRepository()
 
-  constructor(taskStorage: TaskStorage) {
+  constructor(taskStorage: TaskRepository) {
     this.taskStorage = taskStorage
   }
 
@@ -75,7 +75,7 @@ export class TaskService {
       }
 
       // Store the status message
-      messageStorage.createMessage(statusMessage)
+      messageRepository.createMessage(statusMessage)
       task.status.message = statusMessage
     }
 
@@ -134,7 +134,7 @@ export class TaskService {
       taskId: task.id,
     }
 
-    messageStorage.createMessage(taskMessage)
+    messageRepository.createMessage(taskMessage)
 
     // Update task to reflect new history (the task storage will rebuild history from messages)
     this.taskStorage.setTask(task.id, task)
