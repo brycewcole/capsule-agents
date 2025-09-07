@@ -19,15 +19,13 @@ import {
 } from "./ui/card.tsx"
 import {
   type A2ATask,
-  type CapabilityCall as ApiCapabilityCall,
   type ChatWithHistory,
   checkHealth,
   extractCapabilityCalls,
   extractResponseText,
   streamMessage,
 } from "../lib/api.ts"
-import Markdown from "react-markdown"
-import { CapabilityCallDisplay } from "./capability-call-display.tsx"
+/* message bubbles removed in favor of tasks-only view */
 import { TaskStatusDisplay } from "./task-status-display.tsx"
 import {
   getErrorMessage,
@@ -38,14 +36,16 @@ import {
 import { ErrorDisplay } from "./ui/error-display.tsx"
 import { ChatSidebar } from "./chat-sidebar.tsx"
 
-type CapabilityCall = ApiCapabilityCall
+// CapabilityCall is not used in tasks-only rendering
+// type CapabilityCall = ApiCapabilityCall
 
 type Message = {
   role: "user" | "agent"
   content: string
   isLoading?: boolean
-  capabilityCalls?: CapabilityCall[]
-  task?: A2ATask
+  // Kept for backward compatibility with existing logic, but unused in UI
+  capabilityCalls?: unknown[]
+  task?: A2ATask | null
   timestamp?: number
 }
 
@@ -559,7 +559,7 @@ export default function ChatInterface({
                   />
                 </div>
               )}
-              {/* Build merged timeline of tasks + messages */}
+              {/* Render only tasks with their inline history */}
               <div className="flex flex-col space-y-4">
                 {isLoadingChat
                   ? (
@@ -568,64 +568,20 @@ export default function ChatInterface({
                       Loading conversation...
                     </div>
                   )
-                  : messages.length === 0
+                  : (tasks.length === 0 && currentTask === null)
                   ? (
                     <div className="flex items-center justify-center h-full text-muted-foreground">
                       Send a message to start the conversation
                     </div>
                   )
                   : (
-                    timeline.map((item, index) => {
-                      if (item.kind === "task") {
-                        return (
-                          <div key={`task-${item.task.id}`} className="w-full">
-                            <TaskStatusDisplay task={item.task} />
-                          </div>
-                        )
-                      }
-                      const message = item.message
-                      return (
-                        <div
-                          key={`msg-${index}`}
-                          className={`flex ${
-                            message.role === "user"
-                              ? "justify-end"
-                              : "justify-start"
-                          }`}
-                        >
-                          <div className={`max-w-[80%]`}>
-                            <div
-                              className={`inline-block w-fit align-top rounded-2xl px-4 py-2 break-words max-w-full ${
-                                message.role === "user"
-                                  ? "bg-primary text-primary-foreground"
-                                  : "bg-muted text-left"
-                              }`}
-                            >
-                              {message.role === "agent"
-                                ? (
-                                  <div className="space-y-2">
-                                    {message.capabilityCalls && (
-                                      <CapabilityCallDisplay
-                                        capabilityCalls={message
-                                          .capabilityCalls}
-                                      />
-                                    )}
-                                    <div className="markdown">
-                                      <Markdown>{message.content}</Markdown>
-                                    </div>
-                                  </div>
-                                )
-                                : (
-                                  message.content
-                                )}
-                              {message.isLoading && (
-                                <Loader2 className="h-4 w-4 ml-1 inline animate-spin" />
-                              )}
-                            </div>
-                          </div>
+                    timeline
+                      .filter((item) => item.kind === "task")
+                      .map((item) => (
+                        <div key={`task-${item.task.id}`} className="w-full">
+                          <TaskStatusDisplay task={item.task} />
                         </div>
-                      )
-                    })
+                      ))
                   )}
                 <div ref={messagesEndRef} />
               </div>

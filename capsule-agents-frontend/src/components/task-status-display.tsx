@@ -2,7 +2,6 @@
 
 import { useState } from "react"
 import { Badge } from "./ui/badge.tsx"
-import { Card, CardContent, CardHeader } from "./ui/card.tsx"
 import { Button } from "./ui/button.tsx"
 import {
   AlertCircle,
@@ -168,292 +167,203 @@ export function TaskStatusDisplay({ task, className }: TaskStatusDisplayProps) {
     return items
   }
 
-  return (
-    <Card className={cn("w-full mb-2", className)}>
-      <CardHeader className="pb-2">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Badge
-              className={cn("gap-1.5", statusInfo.color)}
-              variant="outline"
-            >
-              <StatusIcon
-                className={cn(
-                  "h-3 w-3",
-                  statusInfo.animated && "animate-spin",
-                )}
-              />
-              {statusInfo.label}
-            </Badge>
-            <span className="text-sm text-muted-foreground">
-              Task: {taskId}
-            </span>
-          </div>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setIsExpanded(!isExpanded)}
-            className="h-6 w-6 p-0"
-          >
-            {isExpanded
-              ? <ChevronUp className="h-3 w-3" />
-              : <ChevronDown className="h-3 w-3" />}
-          </Button>
+  // DataPart preview renderer with show more/less toggle
+  function DataPartPreview(
+    { mediaType, data }: { mediaType?: string; data: unknown },
+  ) {
+    const [expanded, setExpanded] = useState(false)
+    const media = mediaType || "unknown"
+
+    // Image handling
+    if (typeof data === "string" && media.startsWith("image/")) {
+      const src = data.startsWith("data:") ? data : `data:${media};base64,${data}`
+      return (
+        <div className="space-y-1">
+          <div className="text-muted-foreground text-[11px]">Data part{media ? ` (${media})` : ""}</div>
+          <img src={src} alt={media} className="max-h-40 max-w-full rounded border" />
         </div>
-        {!isExpanded && (
-          <p className="text-xs text-muted-foreground">
-            {description}
-          </p>
+      )
+    }
+
+    // Prepare textual/JSON preview
+    let text: string
+    let isJson = false
+    if (media.includes("json")) {
+      try {
+        const obj = typeof data === "string" ? JSON.parse(data) : data
+        text = JSON.stringify(obj, null, 2)
+        isJson = true
+      } catch {
+        text = typeof data === "string" ? data : (() => {
+          try { return JSON.stringify(data, null, 2) } catch { return String(data) }
+        })()
+      }
+    } else if (typeof data === "string") {
+      text = data
+      // Also treat as JSON if it looks like it
+      if (text.trim().startsWith("{") || text.trim().startsWith("[")) {
+        try {
+          const obj = JSON.parse(text)
+          text = JSON.stringify(obj, null, 2)
+          isJson = true
+        } catch {
+          // keep as plain text
+        }
+      }
+    } else {
+      text = (() => { try { return JSON.stringify(data, null, 2) } catch { return String(data) } })()
+    }
+
+    const LIMIT = 800
+    const isLong = text.length > LIMIT
+    const shown = expanded || !isLong ? text : `${text.slice(0, LIMIT)}…`
+
+    return (
+      <div className="space-y-1">
+        <div className="text-muted-foreground text-[11px]">Data part{media ? ` (${media})` : ""}</div>
+        <pre className="bg-background/60 p-2 rounded border text-[11px] max-w-full overflow-x-auto whitespace-pre-wrap break-words">
+          {shown}
+        </pre>
+        {isLong && (
+          <div className="flex justify-end">
+            <Button variant="ghost" size="sm" className="h-6 px-2 text-xs"
+              onClick={() => setExpanded((v) => !v)}>
+              {expanded ? "Show less" : "Show more"}
+            </Button>
+          </div>
         )}
-      </CardHeader>
+      </div>
+    )
+  }
+
+  return (
+    <div className={cn("w-full mb-2", className)}>
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Badge className={cn("gap-1.5", statusInfo.color)} variant="outline">
+            <StatusIcon className={cn("h-3 w-3", statusInfo.animated && "animate-spin")} />
+            {statusInfo.label}
+          </Badge>
+          <span className="text-sm text-muted-foreground">Task: {taskId}</span>
+          {task.status?.timestamp && (
+            <span className="text-xs text-muted-foreground inline-flex items-center gap-1">
+              <Clock className="h-3 w-3" />
+              {new Date(task.status.timestamp).toLocaleTimeString()}
+            </span>
+          )}
+        </div>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => setIsExpanded(!isExpanded)}
+          className="h-6 w-6 p-0"
+          title={isExpanded ? "Collapse" : "Expand"}
+        >
+          {isExpanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+        </Button>
+      </div>
+
+      {!isExpanded && description && (
+        <p className="text-xs text-muted-foreground mt-1">{description}</p>
+      )}
 
       {isExpanded && (
-        <CardContent className="pt-0">
-          <div className="space-y-3">
-            <p className="text-sm text-muted-foreground">
-              {description}
-            </p>
+        <div className="mt-2 pr-1 min-w-0 relative">
+          {/* Vertical timeline line with corner caps; line inset so corners are clean */}
+          <div className="pointer-events-none absolute left-2 top-4 bottom-4 w-px bg-border" />
+          <div className="pointer-events-none absolute left-2 -top-1 w-4 h-4 border-l border-t border-border rounded-tl-md bg-transparent" />
+          <div className="pointer-events-none absolute left-2 -bottom-1 w-4 h-4 border-l border-b border-border rounded-bl-md bg-transparent" />
+          <div className="space-y-3 pl-5">
+          {getHistoryMessages().map((msg, idx) => {
+            const m = msg as {
+              role?: string
+              parts?: unknown[]
+              content?: { parts?: unknown[] }
+              timestamp?: string | number
+            }
+            const role = m.role === "assistant" ? "agent" : m.role || "agent"
+            const isUser = role === "user"
+            const parts = Array.isArray(m.parts)
+              ? m.parts
+              : (m.content && Array.isArray(m.content.parts))
+              ? m.content.parts
+              : []
+            const text = parts && parts.length > 0 ? extractTextFromParts(parts) : ""
+            const funcs = parts && parts.length > 0 ? summarizeFunctionsFromParts(parts) : []
+            const dataParts = parts && parts.length > 0 ? extractDataParts(parts) : []
 
-            <div className="grid grid-cols-2 gap-4 text-sm">
-              <div>
-                <span className="font-medium text-muted-foreground">
-                  Task ID:
-                </span>
-                <p className="font-mono text-xs mt-1">{task.id}</p>
-              </div>
-              <div>
-                <span className="font-medium text-muted-foreground">
-                  Context ID:
-                </span>
-                <p className="font-mono text-xs mt-1">{task.contextId}</p>
-              </div>
-            </div>
-
-            {task.status?.timestamp && (
-              <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                <Clock className="h-3 w-3" />
-                <span>
-                  Updated:{" "}
-                  {new Date(task.status.timestamp).toLocaleTimeString()}
-                </span>
-              </div>
-            )}
-
-            {"sessionId" in task &&
-              (task as { sessionId?: string }).sessionId && (
-              <div>
-                <span className="font-medium text-muted-foreground text-sm">
-                  Session ID:
-                </span>
-                <p className="font-mono text-xs mt-1">
-                  {String((task as { sessionId?: string }).sessionId)}
-                </p>
-              </div>
-            )}
-
-            {task.metadata && Object.keys(task.metadata).length > 0 && (
-              <div>
-                <span className="font-medium text-muted-foreground text-sm">
-                  Metadata:
-                </span>
-                <pre className="bg-muted p-2 rounded text-xs mt-1 overflow-auto">
-                  {JSON.stringify(task.metadata, null, 2)}
-                </pre>
-              </div>
-            )}
-
-            {task.artifacts && task.artifacts.length > 0 && (
-              <div>
-                <span className="font-medium text-muted-foreground text-sm">
-                  Artifacts: {task.artifacts.length}
-                </span>
-                <div className="mt-1 space-y-1">
-                  {task.artifacts.map((artifact, index) => (
-                    <div key={index} className="text-xs bg-muted p-2 rounded">
-                      {artifact.name && (
-                        <div className="font-medium">{artifact.name}</div>
-                      )}
-                      {artifact.description && (
-                        <div className="text-muted-foreground mt-1">
-                          {artifact.description}
+            return (
+              <div key={idx} className={`relative flex ${isUser ? "justify-end" : "justify-start"}`}>
+                <div className="max-w-[80%]">
+                  <div
+                    className={`inline-block w-fit align-top rounded-2xl px-4 py-2 break-words max-w-full ${
+                      isUser ? "bg-primary text-primary-foreground" : "bg-muted text-left"
+                    }`}
+                  >
+                    <div className="space-y-2">
+                      {text && (
+                        <div className="markdown text-sm">
+                          <Markdown>{text}</Markdown>
                         </div>
                       )}
-                      <div className="text-muted-foreground">
-                        Parts: {artifact.parts?.length || 0}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {getHistoryMessages().length > 0 && (
-              <div>
-                <span className="font-medium text-muted-foreground text-sm">
-                  History: {getHistoryMessages().length}
-                </span>
-                <div className="mt-1 space-y-2 max-h-64 overflow-y-auto overflow-x-hidden pr-1 min-w-0">
-                  {getHistoryMessages().map((msg, idx) => {
-                    const m = msg as {
-                      role?: string
-                      parts?: unknown[]
-                      content?: { parts?: unknown[] }
-                      timestamp?: string | number
-                    }
-                    const parts = Array.isArray(m.parts)
-                      ? m.parts
-                      : (m.content && Array.isArray(m.content.parts))
-                      ? m.content.parts
-                      : []
-                    const text = parts && parts.length > 0
-                      ? extractTextFromParts(parts)
-                      : ""
-                    const funcs = parts && parts.length > 0
-                      ? summarizeFunctionsFromParts(parts)
-                      : []
-                    const dataParts = parts && parts.length > 0
-                      ? extractDataParts(parts)
-                      : []
-                    const roleLabel = m.role ? m.role : "event"
-                    const timeLabel = m.timestamp
-                      ? (() => {
-                        try {
-                          const t = typeof m.timestamp === "number"
-                            ? new Date(m.timestamp * 1000)
-                            : new Date(m.timestamp)
-                          return t.toLocaleTimeString()
-                        } catch {
-                          return undefined
-                        }
-                      })()
-                      : undefined
-
-                    return (
-                      <div key={idx} className="bg-muted/40 p-2 rounded border">
-                        <div className="flex items-center justify-between mb-1">
-                          <span className="text-[11px] uppercase tracking-wide text-muted-foreground">
-                            {roleLabel}
-                          </span>
-                          {timeLabel && (
-                            <span className="text-[10px] text-muted-foreground">
-                              {timeLabel}
-                            </span>
-                          )}
-                        </div>
-                        {text && (
-                          <div className="markdown text-xs text-foreground">
-                            <Markdown>{text}</Markdown>
-                          </div>
-                        )}
-                        {funcs.length > 0 && (
-                          <div className="mt-2 space-y-1">
-                            {funcs.map((f, i) => (
-                              <div key={i} className="text-[11px] text-muted-foreground">
-                                {f.type === "call"
-                                  ? (
-                                    <>
-                                      <span className="font-medium">Function call</span>
-                                      {f.name ? `: ${f.name}` : ":"}
-                                       {f.data !== undefined && (
-                                         <pre className="mt-1 bg-background/60 p-2 rounded border text-[11px] max-w-full overflow-x-auto whitespace-pre-wrap break-words">
-                                           {(() => {
-                                             try {
-                                               return JSON.stringify(f.data, null, 2)
-                                             } catch {
-                                               return String(f.data)
-                                             }
-                                           })()}
-                                         </pre>
-                                       )}
-                                    </>
-                                  )
-                                  : (
-                                    <>
-                                      <span className="font-medium">Function response:</span>
-                                       {f.data !== undefined && (
-                                         <pre className="mt-1 bg-background/60 p-2 rounded border text-[11px] max-w-full overflow-x-auto whitespace-pre-wrap break-words">
-                                           {(() => {
-                                             try {
-                                               return JSON.stringify(f.data, null, 2)
-                                             } catch {
-                                               return String(f.data)
-                                             }
-                                           })()}
-                                         </pre>
-                                       )}
-                                    </>
-                                  )}
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                        {dataParts.length > 0 && (
-                          <div className="mt-2 space-y-2">
-                            {dataParts.map((d, i) => {
-                              const media = d.mediaType || "unknown"
-                              const isImage = typeof d.data === "string" && media.startsWith("image/")
-                              const renderData = () => {
-                                if (isImage) {
-                                  const src = (d.data as string).startsWith("data:")
-                                    ? (d.data as string)
-                                    : `data:${media};base64,${String(d.data)}`
-                                  return (
-                                    <img
-                                      src={src}
-                                      alt={media}
-                                      className="max-h-40 max-w-full rounded border"
-                                    />
-                                  )
-                                }
-                                // JSON-like
-                                const asString = typeof d.data === "string" ? d.data : undefined
-                                const looksJson = (media.includes("json") || (asString && asString.trim().startsWith("{") || asString?.trim().startsWith("[")))
-                                if (looksJson) {
-                                  try {
-                                    const obj = typeof d.data === "string" ? JSON.parse(d.data) : d.data
-                                    return (
-                                      <pre className="bg-background/60 p-2 rounded border text-[11px] max-w-full overflow-x-auto whitespace-pre-wrap break-words">
-                                        {JSON.stringify(obj, null, 2)}
-                                      </pre>
-                                    )
-                                  } catch {
-                                    // fall-through to raw text
-                                  }
-                                }
-                                // Plain text or fallback
-                                if (typeof d.data === "string") {
-                                  return (
-                                    <pre className="bg-background/60 p-2 rounded border text-[11px] max-w-full overflow-x-auto whitespace-pre-wrap break-words">
-                                      {d.data.length > 200 ? `${d.data.slice(0, 200)}…` : d.data}
+                      {!isUser && funcs.length > 0 && (
+                        <div className="space-y-1">
+                          {funcs.map((f, i) => (
+                            <div key={i} className="text-[11px] text-muted-foreground">
+                              {f.type === "call" ? (
+                                <>
+                                  <span className="font-medium">Function call</span>
+                                  {f.name ? `: ${f.name}` : ":"}
+                                  {f.data !== undefined && (
+                                    <pre className="mt-1 bg-background/60 p-2 rounded border text-[11px] max-w-full overflow-x-auto whitespace-pre-wrap break-words">
+                                      {(() => {
+                                        try {
+                                          return JSON.stringify(f.data, null, 2)
+                                        } catch {
+                                          return String(f.data)
+                                        }
+                                      })()}
                                     </pre>
-                                  )
-                                }
-                                return (
-                                  <pre className="bg-background/60 p-2 rounded border text-[11px] max-w-full overflow-x-auto whitespace-pre-wrap break-words">
-                                    {(() => { try { return JSON.stringify(d.data, null, 2) } catch { return String(d.data) } })()}
-                                  </pre>
-                                )
-                              }
-                              return (
-                                <div key={i} className="text-[11px]">
-                                  <div className="text-muted-foreground mb-1">
-                                    Data part{media ? ` (${media})` : ""}
-                                  </div>
-                                  {renderData()}
-                                </div>
-                              )
-                            })}
-                          </div>
-                        )}
-                      </div>
-                    )
-                  })}
+                                  )}
+                                </>
+                              ) : (
+                                <>
+                                  <span className="font-medium">Function response:</span>
+                                  {f.data !== undefined && (
+                                    <pre className="mt-1 bg-background/60 p-2 rounded border text-[11px] max-w-full overflow-x-auto whitespace-pre-wrap break-words">
+                                      {(() => {
+                                        try {
+                                          return JSON.stringify(f.data, null, 2)
+                                        } catch {
+                                          return String(f.data)
+                                        }
+                                      })()}
+                                    </pre>
+                                  )}
+                                </>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      {!isUser && dataParts.length > 0 && (
+                        <div className="space-y-2">
+                          {dataParts.map((d, i) => (
+                            <div key={i} className="text-[11px]">
+                              <DataPartPreview mediaType={d.mediaType} data={d.data} />
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
                 </div>
               </div>
-            )}
+            )
+          })}
           </div>
-        </CardContent>
+        </div>
       )}
-    </Card>
+    </div>
   )
 }
