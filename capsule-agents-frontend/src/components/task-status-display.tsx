@@ -17,6 +17,7 @@ import {
 } from "lucide-react"
 import { cn } from "../lib/utils.ts"
 import { type A2ATask } from "../lib/api.ts"
+import Markdown from "react-markdown"
 
 interface TaskStatusDisplayProps {
   task: A2ATask
@@ -340,8 +341,8 @@ export function TaskStatusDisplay({ task, className }: TaskStatusDisplayProps) {
                           )}
                         </div>
                         {text && (
-                          <div className="text-xs text-foreground whitespace-pre-wrap break-words">
-                             {text}
+                          <div className="markdown text-xs text-foreground">
+                            <Markdown>{text}</Markdown>
                           </div>
                         )}
                         {funcs.length > 0 && (
