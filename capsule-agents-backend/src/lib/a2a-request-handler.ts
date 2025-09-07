@@ -12,14 +12,9 @@ import { memorySkill, memoryTool } from "../capabilities/memory.ts"
 import { AgentConfigService } from "./agent-config.ts"
 import { isMCPCapability } from "./capability-types.ts"
 import { ProviderService } from "./provider-service.ts"
-import {
-  createChatWithId as createChatIfNotExists,
-  loadChat,
-  saveChat,
-} from "./storage.ts"
+import { contextStorage, messageStorage } from "./storage.ts"
 import { TaskService } from "./task-service.ts"
 import { TaskStorage } from "./task-storage.ts"
-import { VercelService } from "./vercel-service.ts"
 
 interface MCPToolsDisposable {
   tools: Record<string, Vercel.Tool>
@@ -41,14 +36,17 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
       throw error
     }
   }
+
   getAuthenticatedExtendedAgentCard(): Promise<A2A.AgentCard> {
     throw new Error("Method not implemented.")
   }
+
   listTaskPushNotificationConfigs(
     _params: A2A.ListTaskPushNotificationConfigParams,
   ): Promise<A2A.TaskPushNotificationConfig[]> {
     throw new Error("Method not implemented.")
   }
+
   deleteTaskPushNotificationConfig(
     _params: A2A.DeleteTaskPushNotificationConfigParams,
   ): Promise<void> {
@@ -95,9 +93,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
     }
   }
 
-  private async getAvailableTools(): Promise<
-    Record<string, Vercel.Tool>
-  > {
+  private async getAvailableTools(): Promise<Record<string, Vercel.Tool>> {
     const capabilities: Record<string, Vercel.Tool> = {}
 
     const agentInfo = this.agentConfigService.getAgentInfo()
@@ -118,22 +114,18 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
         const agentUrl = capability.agentUrl
         if (agentUrl && typeof agentUrl === "string") {
           try {
-            // Fetch agent card to get agent name and description
             log.info(
               `Fetching agent card from: ${agentUrl}/.well-known/agent.json`,
             )
             const agentCardResponse = await fetch(
               `${agentUrl}/.well-known/agent.json`,
               {
-                signal: AbortSignal.timeout(5000), // 5 second timeout
+                signal: AbortSignal.timeout(5000),
               },
             )
             let agentName = capability.name
             let description = `Communicate with agent at ${agentUrl}`
 
-            log.info(
-              `Agent card response status: ${agentCardResponse.status} for ${agentUrl}`,
-            )
             if (agentCardResponse.ok) {
               const agentCard: A2A.AgentCard = await agentCardResponse.json()
               agentName = agentCard.name
@@ -164,7 +156,6 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
                   message: params.message,
                   contextId: params.contextId,
                 })
-                // Convert result to string for capability return
                 if (result.error) {
                   return `Error: ${result.error}`
                 } else if (result.response) {
@@ -180,24 +171,6 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
             }
           } catch (error) {
             log.error(`Error setting up A2A capability for ${agentUrl}:`, error)
-            if (error instanceof Error) {
-              log.error(`Error message: ${error.message}`)
-              log.error(`Error type: ${error.constructor.name}`)
-              if (error.stack) {
-                log.error(`Error stack: ${error.stack}`)
-              }
-            } else {
-              log.error(`Non-Error thrown: ${String(error)}`)
-              log.error(`Type of error: ${typeof error}`)
-            }
-
-            // Check if it's a network error specifically
-            if (error instanceof TypeError && error.message.includes("fetch")) {
-              log.error(
-                `This appears to be a network/fetch error - agent at ${agentUrl} may not be running`,
-              )
-            }
-            // Create fallback capability
             capabilities[capability.name] = {
               description:
                 `Communicate with agent at ${agentUrl} (agent unavailable)`,
@@ -233,7 +206,6 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
       "Capabilities loaded from agent config:",
       Object.keys(capabilities),
     )
-
     return capabilities
   }
 
@@ -254,7 +226,6 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
     const availableCapabilities = await this.getAvailableTools()
     const skills: A2A.AgentSkill[] = []
 
-    // TODO add A2A and MCP server skills
     if ("fileAccess" in availableCapabilities) {
       skills.push(fileAccessSkill)
     }
@@ -283,16 +254,13 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
     }
   }
 
-  // TODO update this to not always return a task
-  // deno-lint-ignore require-await
-  async sendMessage(
+  sendMessage(
     _params: A2A.MessageSendParams,
   ): Promise<A2A.Message | A2A.Task> {
     throw new Error("Not yet implemented")
   }
 
-  // deno-lint-ignore require-await
-  async getTask(params: A2A.TaskQueryParams): Promise<A2A.Task> {
+  getTask(params: A2A.TaskQueryParams): Promise<A2A.Task> {
     const task = this.taskStorage.getTask(params.id)
     if (!task) {
       throw new Error("Task not found")
@@ -302,32 +270,29 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
     if (params.historyLength && task.history) {
       const limitedTask = { ...task }
       limitedTask.history = task.history.slice(-params.historyLength)
-      return limitedTask
+      return Promise.resolve(limitedTask)
     }
 
-    return task
+    return Promise.resolve(task)
   }
 
-  // deno-lint-ignore require-await
-  async cancelTask(params: A2A.TaskIdParams): Promise<A2A.Task> {
+  cancelTask(params: A2A.TaskIdParams): Promise<A2A.Task> {
     const task = this.taskStorage.getTask(params.id)
     if (!task) {
       throw new Error("Task not found")
     }
 
     this.taskService.cancelTask(task)
-    return task
+    return Promise.resolve(task)
   }
 
-  // deno-lint-ignore require-await
-  async setTaskPushNotificationConfig(
+  setTaskPushNotificationConfig(
     _params: A2A.TaskPushNotificationConfig,
   ): Promise<A2A.TaskPushNotificationConfig> {
     throw new Error("Push notifications are not supported")
   }
 
-  // deno-lint-ignore require-await
-  async getTaskPushNotificationConfig(
+  getTaskPushNotificationConfig(
     _params: A2A.TaskIdParams,
   ): Promise<A2A.TaskPushNotificationConfig> {
     throw new Error("Push notifications are not supported")
@@ -360,15 +325,55 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
     const statusUpdateQueue: A2A.TaskStatusUpdateEvent[] = []
 
     try {
-      createChatIfNotExists(params.message.contextId, "a2a-agent")
-      const chatHistory = loadChat(params.message.contextId)
-      log.info("Chat history loaded:", { messageCount: chatHistory.length })
+      // Ensure context exists
+      if (!contextStorage.getContext(params.message.contextId)) {
+        contextStorage.createContext(params.message.contextId)
+      }
 
-      const newMessage: Vercel.UIMessage = VercelService.createUIMessage(
-        params.message,
+      // Get context messages for history
+      const contextMessages = messageStorage.getContextMessages(
+        params.message.contextId,
+        false,
       )
+      log.info("Context messages loaded:", {
+        messageCount: contextMessages.length,
+      })
 
-      const combinedMessages = [...chatHistory, newMessage]
+      // Add user message to context
+      messageStorage.createMessage(params.message)
+
+      // Convert A2A messages to Vercel AI format for the model
+      const vercelMessages: Vercel.UIMessage[] = []
+
+      for (const message of contextMessages) {
+        const content = message.parts
+          .filter((part): part is A2A.TextPart => part.kind === "text")
+          .map((part) => part.text)
+          .join("")
+
+        if (content) {
+          vercelMessages.push({
+            id: message.messageId,
+            role: message.role === "agent" ? "assistant" : "user",
+            parts: [{ type: "text", text: content }],
+          })
+        }
+      }
+
+      // Add current user message
+      const userContent = params.message.parts
+        .filter((part): part is A2A.TextPart => part.kind === "text")
+        .map((part) => part.text)
+        .join("")
+
+      if (userContent) {
+        vercelMessages.push({
+          id: params.message.messageId,
+          role: "user",
+          parts: [{ type: "text", text: userContent }],
+        })
+      }
+
       let tools = await this.getAvailableTools()
       await using mcpTools = await this.getMCPServers()
       tools = Object.assign(tools, mcpTools.tools)
@@ -384,20 +389,16 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
         },
         system: agentInfo.description,
         model,
-        messages: Vercel.convertToModelMessages(combinedMessages),
+        messages: Vercel.convertToModelMessages(vercelMessages),
         tools: tools,
         stopWhen: Vercel.stepCountIs(10),
         onStepFinish: (
-          { text, toolCalls, toolResults, finishReason, usage },
+          { text, toolCalls, toolResults },
         ) => {
           log.info(
             `Step finished - text: "${this.truncateForLog(text)}", toolCalls: ${
               this.truncateForLog(toolCalls)
-            }, toolResults: ${
-              this.truncateForLog(toolResults)
-            }, finishReason: "${this.truncateForLog(finishReason)}", usage: ${
-              this.truncateForLog(usage)
-            }`,
+            }, toolResults: ${this.truncateForLog(toolResults)}`,
           )
 
           if (
@@ -414,15 +415,35 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
               )
             }
 
-            // Don't queue completion status here - we'll do it in onFinish with the full text
-            this.taskService.addVercelResultToHistory(
-              task,
-              text,
-              toolCalls,
-              toolResults,
-            )
+            // Add tool calls and results to task history
+            if (toolCalls) {
+              for (const toolCall of toolCalls) {
+                this.taskService.addToolCallToHistory(
+                  task,
+                  toolCall.toolName,
+                  toolCall.input,
+                  undefined, // Result will be added separately
+                )
+              }
+            }
+
+            if (toolResults) {
+              for (const toolResult of toolResults) {
+                // Find matching tool call and update with result
+                this.taskService.addToolCallToHistory(
+                  task,
+                  toolResult.toolName,
+                  {},
+                  toolResult.output,
+                )
+              }
+            }
+
+            if (text) {
+              this.taskService.createResponseMessage(task, text)
+            }
           } else {
-            // Create simple response message
+            // Create simple response message for context
             if (text) {
               responseMessage = {
                 kind: "message",
@@ -431,55 +452,24 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
                 parts: [{ kind: "text", text }],
                 contextId: params.message.contextId!,
               }
-            } else {
-              responseMessage = null
+
+              // Add to context messages
+              messageStorage.createMessage(responseMessage)
             }
           }
-
-          if (text) {
-            createChatIfNotExists(params.message.contextId!, "a2a-agent")
-            const assistantMessage = VercelService.createAssistantUIMessage(
-              text,
-            )
-            saveChat(params.message.contextId!, [
-              ...combinedMessages,
-              assistantMessage,
-            ])
-          }
         },
-        onFinish: ({ text, toolCalls, toolResults, finishReason, usage }) => {
-          log.info(
-            `Stream finished - text: "${
-              this.truncateForLog(text)
-            }", toolCalls: ${this.truncateForLog(toolCalls)}, toolResults: ${
-              this.truncateForLog(toolResults)
-            }, finishReason: "${this.truncateForLog(finishReason)}", usage: ${
-              this.truncateForLog(usage)
-            }`,
-          )
-          log.info(
-            `onFinish debug - hasCapabilityCalls: ${hasToolCalls}, task: ${
-              task ? "exists" : "null"
-            }`,
-          )
+        onFinish: ({ text }) => {
+          log.info(`Stream finished - text: "${this.truncateForLog(text)}"`)
 
-          // Queue completion status update with the final full text if we have capability calls
-          if (hasToolCalls && task) {
-            // Update the response message with the final text
-            responseMessage = this.taskService
-              .addVercelResultToHistory(task, text, toolCalls, toolResults)
+          // Queue completion status update if we have a task
+          if (hasToolCalls && task && text) {
+            this.taskService.createResponseMessage(task, text)
             statusUpdateQueue.push(this.taskService.transitionState(
               task,
               "completed",
               "Response ready",
             ))
             log.info("Task completed")
-          } else {
-            log.info(
-              `Skipping completion status - hasCapabilityCalls: ${hasToolCalls}, task: ${
-                task ? "exists" : "null"
-              }`,
-            )
           }
         },
       })

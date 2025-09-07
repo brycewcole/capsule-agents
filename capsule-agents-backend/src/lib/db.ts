@@ -8,6 +8,7 @@ export function getDb() {
   if (!db) {
     db = new Database(dbPath)
     db.exec("PRAGMA journal_mode = WAL")
+    db.exec("PRAGMA foreign_keys = ON")
     createTables(db)
   }
   return db
@@ -15,102 +16,59 @@ export function getDb() {
 
 function createTables(db: Database) {
   db.exec(`
+    -- Contexts: Top-level grouping of tasks and messages
     CREATE TABLE IF NOT EXISTS contexts (
-        app_name    TEXT,
-        user_id     TEXT,
         id          TEXT PRIMARY KEY,
-        state       TEXT,
-        create_time REAL,
-        update_time REAL
+        metadata    TEXT NOT NULL DEFAULT '{}',
+        created_at  REAL NOT NULL,
+        updated_at  REAL NOT NULL
     );
 
-    CREATE TABLE IF NOT EXISTS events (
-        id                    TEXT PRIMARY KEY,
-        app_name              TEXT,
-        user_id               TEXT,
-        context_id            TEXT,
-        invocation_id         TEXT,
-        author                TEXT,
-        branch                TEXT,
-        timestamp             REAL,
-        content               TEXT,
-        actions               TEXT,
-        long_running_tool_ids TEXT,
-        grounding_metadata    TEXT,
-        partial               INTEGER,
-        turn_complete         INTEGER,
-        error_code            TEXT,
-        error_message         TEXT,
-        interrupted           INTEGER,
-        FOREIGN KEY(context_id)
-          REFERENCES contexts(id)
-          ON DELETE CASCADE
+    -- Tasks: Main unit of work, groups messages in history
+    CREATE TABLE IF NOT EXISTS tasks (
+        id                  TEXT PRIMARY KEY,
+        context_id          TEXT NOT NULL,
+        status_state        TEXT NOT NULL CHECK (status_state IN ('submitted', 'working', 'input-required', 'completed', 'canceled', 'failed', 'rejected', 'auth-required', 'unknown')),
+        status_timestamp    TEXT NOT NULL,
+        status_message_id   TEXT,
+        metadata            TEXT NOT NULL DEFAULT '{}',
+        created_at          REAL NOT NULL,
+        updated_at          REAL NOT NULL,
+        FOREIGN KEY(context_id) REFERENCES contexts(id) ON DELETE CASCADE,
+        FOREIGN KEY(status_message_id) REFERENCES messages(id) ON DELETE SET NULL
     );
 
-    CREATE TABLE IF NOT EXISTS app_states (
-        app_name    TEXT PRIMARY KEY,
-        state       TEXT,
-        update_time REAL
+    -- Messages: Can exist in a task history or just in context
+    CREATE TABLE IF NOT EXISTS messages (
+        id          TEXT PRIMARY KEY,
+        context_id  TEXT NOT NULL,
+        task_id     TEXT,
+        role        TEXT NOT NULL CHECK (role IN ('user', 'agent')),
+        parts       TEXT NOT NULL DEFAULT '[]',
+        timestamp   REAL NOT NULL,
+        FOREIGN KEY(context_id) REFERENCES contexts(id) ON DELETE CASCADE,
+        FOREIGN KEY(task_id) REFERENCES tasks(id) ON DELETE CASCADE
     );
 
-    CREATE TABLE IF NOT EXISTS user_states (
-        app_name    TEXT,
-        user_id     TEXT,
-        state       TEXT,
-        update_time REAL,
-        PRIMARY KEY(app_name, user_id)
+    -- Artifacts: Output of a task
+    CREATE TABLE IF NOT EXISTS artifacts (
+        id          TEXT PRIMARY KEY,
+        task_id     TEXT NOT NULL,
+        name        TEXT,
+        description TEXT,
+        parts       TEXT NOT NULL DEFAULT '[]',
+        created_at  REAL NOT NULL,
+        FOREIGN KEY(task_id) REFERENCES tasks(id) ON DELETE CASCADE
     );
 
-    CREATE TABLE IF NOT EXISTS agent_info (
-        key               INTEGER PRIMARY KEY,
-        name              TEXT    NOT NULL,
-        description       TEXT    NOT NULL,
-        model_name        TEXT    NOT NULL,
-        model_parameters  TEXT    NOT NULL,
-        tools             TEXT    DEFAULT '[]'
-    );
-
-    CREATE TABLE IF NOT EXISTS a2a_tasks (
-        id                TEXT PRIMARY KEY,
-        context_id        TEXT NOT NULL,
-        status            TEXT NOT NULL, -- JSON serialized status object
-        history           TEXT NOT NULL, -- JSON array of messages
-        metadata          TEXT NOT NULL, -- JSON object
-        created_at        REAL NOT NULL,
-        updated_at        REAL NOT NULL
-    );
+    -- Create indexes for better performance
+    CREATE INDEX IF NOT EXISTS idx_tasks_context_id ON tasks(context_id);
+    CREATE INDEX IF NOT EXISTS idx_messages_context_id ON messages(context_id);
+    CREATE INDEX IF NOT EXISTS idx_messages_task_id ON messages(task_id);
+    CREATE INDEX IF NOT EXISTS idx_artifacts_task_id ON artifacts(task_id);
+    CREATE INDEX IF NOT EXISTS idx_contexts_updated_at ON contexts(updated_at);
+    CREATE INDEX IF NOT EXISTS idx_tasks_updated_at ON tasks(updated_at);
   `)
 
-  // Insert default agent info if it doesn't exist
-  try {
-    const existingAgent = db.prepare("SELECT 1 FROM agent_info WHERE key = 1")
-      .get()
-    if (!existingAgent) {
-      const mockAgent = {
-        name: "capsule_agent",
-        description:
-          "You are a Capsule agent. You are a friendly and helpful assistant.",
-        model_name: "", // Will be auto-selected by AgentConfigService
-        model_parameters: {},
-        tools: [],
-      }
-
-      const stmt = db.prepare(`
-        INSERT INTO agent_info(key, name, description, model_name, model_parameters, tools) 
-        VALUES(1, ?, ?, ?, ?, ?)
-      `)
-      stmt.run(
-        mockAgent.name,
-        mockAgent.description,
-        mockAgent.model_name,
-        JSON.stringify(mockAgent.model_parameters),
-        JSON.stringify(mockAgent.tools),
-      )
-      console.log("Default agent info inserted.")
-    }
-  } catch (error) {
-    console.error("Error initializing default agent info:", error)
-  }
-
-  console.log("Database tables created or already exist.")
+  console.log("Clean database schema created successfully.")
 }

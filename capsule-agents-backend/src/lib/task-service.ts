@@ -1,27 +1,13 @@
 import type * as A2A from "@a2a-js/sdk"
-import type * as Vercel from "ai"
-import type { TaskStorage } from "./task-storage.ts"
-
-interface ToolCallData {
-  type: "tool_call"
-  id: string
-  name: string
-  args: unknown
-  [k: string]: unknown
-}
-
-interface ToolResultData {
-  type: "tool_result"
-  id: string
-  name: string
-  result: unknown
-  [k: string]: unknown
-}
+import { TaskStorage } from "./task-storage.ts"
+import { ArtifactStorage } from "./artifact-storage.ts"
+import { messageStorage } from "./storage.ts"
 
 type TaskState = A2A.Task["status"]["state"]
 
 export class TaskService {
   private taskStorage: TaskStorage
+  private artifactStorage = new ArtifactStorage()
 
   constructor(taskStorage: TaskStorage) {
     this.taskStorage = taskStorage
@@ -45,11 +31,20 @@ export class TaskService {
         state: "submitted",
         timestamp: new Date().toISOString(),
       },
-      history: [initialMessage],
+      history: [],
       metadata: metadata || {},
     }
 
+    // Save the task first
     this.taskStorage.setTask(taskId, task)
+
+    // Then add the initial message as part of task history
+    const taskMessage: A2A.Message = {
+      ...initialMessage,
+      taskId,
+    }
+    this.addMessageToHistory(task, taskMessage)
+
     return task
   }
 
@@ -59,35 +54,48 @@ export class TaskService {
   transitionState(
     task: A2A.Task,
     newState: TaskState,
-    message?: string,
+    statusText?: string,
   ): A2A.TaskStatusUpdateEvent {
     task.status.state = newState
     task.status.timestamp = new Date().toISOString()
+
     let final = false
-    if (message) {
-      task.status.message = {
+    let statusMessage: A2A.Message | undefined
+
+    // Create status message if statusText provided
+    if (statusText) {
+      statusMessage = {
         kind: "message",
         messageId: this.createMessageId(),
         role: "agent",
-        parts: [{ kind: "text", text: message }],
+        parts: [{ kind: "text", text: statusText }],
         taskId: task.id,
         contextId: task.contextId,
       }
+
+      // Store the status message
+      messageStorage.createMessage(statusMessage)
+      task.status.message = statusMessage
     }
 
+    // Determine if this is a final state
     switch (newState) {
       case "failed":
       case "completed":
+      case "canceled":
+      case "rejected":
         final = true
         break
       case "submitted":
       case "working":
       case "input-required":
-      case "canceled":
-      case "rejected":
       case "auth-required":
       case "unknown":
+        final = false
+        break
     }
+
+    // Update the task
     this.taskStorage.setTask(task.id, task)
 
     return {
@@ -111,90 +119,107 @@ export class TaskService {
       throw new Error("Task cannot be canceled")
     }
 
-    this.transitionState(task, "canceled", undefined)
+    this.transitionState(task, "canceled", "Task canceled")
   }
 
   /**
    * Adds a message to task history
    */
   addMessageToHistory(task: A2A.Task, message: A2A.Message): void {
-    if (!task.history) {
-      task.history = []
+    // Store message with task association
+    const taskMessage: A2A.Message = {
+      ...message,
+      taskId: task.id,
     }
-    task.history.push(message)
+
+    messageStorage.createMessage(taskMessage)
+
+    // Update task to reflect new history (the task storage will rebuild history from messages)
     this.taskStorage.setTask(task.id, task)
   }
 
   /**
-   * Adds Vercel AI SDK result (tool calls, tool results, and response) to task history
+   * Creates an artifact for a task
    */
-  addVercelResultToHistory(
+  createArtifact(
     task: A2A.Task,
-    text: string,
-    toolCalls?: Vercel.TypedToolCall<Record<string, Vercel.Tool>>[],
-    toolResults?: Vercel.TypedToolResult<Record<string, Vercel.Tool>>[],
-  ): A2A.Message {
-    if (!task.history) task.history = []
+    artifact: Omit<A2A.Artifact, "artifactId">,
+  ): A2A.TaskArtifactUpdateEvent {
+    const storedArtifact = this.artifactStorage.createArtifact(
+      task.id,
+      artifact,
+    )
 
-    // Add tool calls to history if present
-    if (toolCalls && toolCalls.length > 0) {
-      for (const toolCall of toolCalls) {
-        const toolCallData: ToolCallData = {
-          type: "tool_call",
-          id: toolCall.toolCallId,
-          name: toolCall.toolName,
-          args: toolCall.input,
-        }
-
-        const toolCallMessage: A2A.Message = {
-          kind: "message",
-          messageId: this.createMessageId(),
-          role: "agent",
-          parts: [{ kind: "data", data: toolCallData }],
-          taskId: task.id,
-          contextId: task.contextId,
-        }
-
-        task.history.push(toolCallMessage)
-      }
+    return {
+      kind: "artifact-update",
+      taskId: task.id,
+      contextId: task.contextId,
+      artifact: {
+        artifactId: storedArtifact.id,
+        name: storedArtifact.name,
+        description: storedArtifact.description,
+        parts: storedArtifact.parts,
+      },
     }
-
-    // Add tool results to history if present
-    if (toolResults && toolResults.length > 0) {
-      for (const toolResult of toolResults) {
-        const toolResultData: ToolResultData = {
-          type: "tool_result",
-          id: toolResult.toolCallId,
-          name: toolResult.toolName,
-          // deno-lint-ignore no-explicit-any
-          result: (toolResult as any).result,
-        }
-
-        const toolResultMessage: A2A.Message = {
-          kind: "message",
-          messageId: this.createMessageId(),
-          role: "agent",
-          parts: [{ kind: "data", data: toolResultData }],
-          taskId: task.id,
-          contextId: task.contextId,
-        }
-
-        task.history.push(toolResultMessage)
-      }
-    }
-
-    // Create and add response message
-    const responseMessage = this.createResponseMessage(task, text)
-    this.addMessageToHistory(task, responseMessage)
-
-    return responseMessage
   }
 
   /**
-   * Creates a response message
+   * Adds a tool call and result as messages to task history
+   */
+  addToolCallToHistory(
+    task: A2A.Task,
+    toolName: string,
+    toolArgs: unknown,
+    toolResult: unknown,
+  ): void {
+    const callId = this.createMessageId()
+
+    // Create tool call message
+    const toolCallMessage: A2A.Message = {
+      kind: "message",
+      messageId: this.createMessageId(),
+      role: "agent",
+      parts: [{
+        kind: "data",
+        data: {
+          type: "tool_call",
+          id: callId,
+          name: toolName,
+          args: toolArgs,
+        },
+      }],
+      taskId: task.id,
+      contextId: task.contextId,
+    }
+
+    // Create tool result message
+    const toolResultMessage: A2A.Message = {
+      kind: "message",
+      messageId: this.createMessageId(),
+      role: "agent",
+      parts: [{
+        kind: "data",
+        data: {
+          type: "tool_result",
+          id: callId,
+          name: toolName,
+          result: toolResult,
+        },
+      }],
+      taskId: task.id,
+      contextId: task.contextId,
+    }
+
+    // Add both messages to history
+    this.addMessageToHistory(task, toolCallMessage)
+    this.addMessageToHistory(task, toolResultMessage)
+  }
+
+  /**
+   * Creates a response message and adds it to task history
    */
   createResponseMessage(task: A2A.Task, text: string): A2A.Message {
-    return {
+    const responseMessage: A2A.Message = {
       kind: "message",
       messageId: this.createMessageId(),
       role: "agent",
@@ -202,6 +227,9 @@ export class TaskService {
       taskId: task.id,
       contextId: task.contextId,
     }
+
+    this.addMessageToHistory(task, responseMessage)
+    return responseMessage
   }
 
   /**
@@ -213,6 +241,20 @@ export class TaskService {
       .map((part) => part.text)
       .filter(Boolean)
       .join(" ")
+  }
+
+  /**
+   * Get a task by ID
+   */
+  getTask(taskId: string): A2A.Task | undefined {
+    return this.taskStorage.getTask(taskId)
+  }
+
+  /**
+   * Get all tasks for a context
+   */
+  getTasksByContext(contextId: string): A2A.Task[] {
+    return this.taskStorage.getTasksByContext(contextId)
   }
 
   private createMessageId(): string {

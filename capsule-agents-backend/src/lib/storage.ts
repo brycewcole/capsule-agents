@@ -1,145 +1,266 @@
-// deno-lint-ignore-file no-explicit-any
 import { getDb } from "./db.ts"
-import type { UIMessage } from "ai"
-import { v4 as uuidv4 } from "uuid"
-import * as log from "@std/log"
+import type * as A2A from "@a2a-js/sdk"
+import { TaskStorage } from "./task-storage.ts"
 
-const APP_NAME = "capsule-agents-backend"
-
-export function createChat(userId: string): string {
-  const db = getDb()
-  const contextId = uuidv4()
-  const now = Date.now() / 1000
-
-  const stmt = db.prepare(
-    "INSERT INTO contexts (app_name, user_id, id, state, create_time, update_time) VALUES (?, ?, ?, ?, ?, ?)",
-  )
-  stmt.run(APP_NAME, userId, contextId, JSON.stringify({}), now, now)
-
-  return contextId
+export interface StoredContext {
+  id: string
+  metadata: Record<string, unknown>
+  createdAt: number
+  updatedAt: number
 }
 
-export function createChatWithId(contextId: string, userId: string): void {
-  log.info(
-    `createChatWithId called with contextId: "${contextId}", userId: "${userId}"`,
-  )
+export interface StoredMessage {
+  id: string
+  contextId: string
+  taskId?: string
+  role: "user" | "agent"
+  parts: A2A.Part[]
+  timestamp: number
+}
 
-  if (!contextId) {
-    log.error("createChatWithId called with empty contextId!")
-    return
+export class ContextStorage {
+  createContext(id?: string, metadata: Record<string, unknown> = {}): string {
+    const db = getDb()
+    const contextId = id || crypto.randomUUID()
+    const now = Date.now() / 1000
+
+    const stmt = db.prepare(`
+      INSERT INTO contexts (id, metadata, created_at, updated_at) 
+      VALUES (?, ?, ?, ?)
+    `)
+    stmt.run(contextId, JSON.stringify(metadata), now, now)
+
+    return contextId
   }
 
-  const db = getDb()
-  const now = Date.now() / 1000
+  getContext(id: string): StoredContext | undefined {
+    const db = getDb()
+    const stmt = db.prepare(`
+      SELECT id, metadata, created_at, updated_at 
+      FROM contexts 
+      WHERE id = ?
+    `)
 
-  const stmt = db.prepare(
-    "INSERT OR IGNORE INTO contexts (app_name, user_id, id, state, create_time, update_time) VALUES (?, ?, ?, ?, ?, ?)",
-  )
-  const result = stmt.run(
-    APP_NAME,
-    userId,
-    contextId,
-    JSON.stringify({}),
-    now,
-    now,
-  )
-  log.info(
-    `createChatWithId result: ${
-      (result as unknown as { changes: number }).changes
-    } rows affected`,
-  )
-}
+    const row = stmt.get(id) as {
+      id: string
+      metadata: string
+      created_at: number
+      updated_at: number
+    } | undefined
 
-export function loadChat(contextId: string): UIMessage[] {
-  const db = getDb()
-  const stmt = db.prepare(
-    "SELECT id, author, content, timestamp FROM events WHERE context_id = ? ORDER BY timestamp ASC",
-  )
-  const rows = stmt.all(contextId) as {
-    id: string
-    author: string
-    content: string
-    timestamp: number
-  }[]
+    if (!row) return undefined
 
-  return rows.map((row) => {
-    const msg = JSON.parse(row.content) as UIMessage
-    // Attach DB metadata for frontend timeline features
-    if (msg && typeof msg === "object") {
-      if (!msg.id) msg.id = row.id
-      ;(msg as UIMessage & { timestamp?: number }).timestamp = row.timestamp
-      if (!msg.role && row.author) {
-        ;(msg as UIMessage & { role?: "system" | "user" | "assistant" }).role =
-          row.author === "assistant"
-            ? "assistant"
-            : row.author as "system" | "user" | "assistant"
-      }
+    return {
+      id: row.id,
+      metadata: JSON.parse(row.metadata),
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
     }
-    return msg as UIMessage
-  })
-}
-
-export function saveChat(contextId: string, messages: UIMessage[]): void {
-  log.info(
-    `saveChat called with contextId: "${contextId}", messages: ${messages.length}`,
-  )
-
-  if (!contextId) {
-    log.error("saveChat called with empty contextId!")
-    return
   }
 
-  const db = getDb()
+  updateContext(id: string, metadata: Record<string, unknown>): boolean {
+    const db = getDb()
+    const now = Date.now() / 1000
 
-  // Get existing message IDs to avoid duplicates
-  const existingIds = new Set(
-    (db.prepare("SELECT id FROM events WHERE context_id = ?").all(
-      contextId,
-    ) as { id: string }[])
-      .map((row) => row.id),
-  )
+    const stmt = db.prepare(`
+      UPDATE contexts 
+      SET metadata = ?, updated_at = ? 
+      WHERE id = ?
+    `)
+    const result = stmt.run(JSON.stringify(metadata), now, id) as unknown as {
+      changes: number
+    }
+    return result.changes > 0
+  }
 
-  // Only insert new messages
-  const newMessages = messages.filter((msg) => !existingIds.has(msg.id))
+  deleteContext(id: string): boolean {
+    const db = getDb()
+    const stmt = db.prepare("DELETE FROM contexts WHERE id = ?")
+    const result = stmt.run(id) as unknown as { changes: number }
+    return result.changes > 0
+  }
 
-  if (newMessages.length === 0) {
-    // Still update the context timestamp even if no new messages
-    const updateStmt = db.prepare(
-      "UPDATE contexts SET update_time = ? WHERE id = ?",
+  getAllContexts(): StoredContext[] {
+    const db = getDb()
+    const stmt = db.prepare(`
+      SELECT id, metadata, created_at, updated_at 
+      FROM contexts 
+      ORDER BY updated_at DESC
+    `)
+
+    const rows = stmt.all() as {
+      id: string
+      metadata: string
+      created_at: number
+      updated_at: number
+    }[]
+
+    return rows.map((row) => ({
+      id: row.id,
+      metadata: JSON.parse(row.metadata),
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    }))
+  }
+
+  touchContext(id: string): void {
+    const db = getDb()
+    const now = Date.now() / 1000
+    const stmt = db.prepare("UPDATE contexts SET updated_at = ? WHERE id = ?")
+    stmt.run(now, id)
+  }
+}
+
+export class MessageStorage {
+  createMessage(message: A2A.Message): StoredMessage {
+    if (!message.contextId) {
+      throw new Error("Message contextId is required")
+    }
+
+    const db = getDb()
+    const now = Date.now() / 1000
+
+    const stmt = db.prepare(`
+      INSERT INTO messages (id, context_id, task_id, role, parts, timestamp) 
+      VALUES (?, ?, ?, ?, ?, ?)
+    `)
+
+    stmt.run(
+      message.messageId,
+      message.contextId,
+      message.taskId || null,
+      message.role,
+      JSON.stringify(message.parts),
+      now,
     )
-    updateStmt.run(Date.now() / 1000, contextId)
-    return
+
+    return {
+      id: message.messageId,
+      contextId: message.contextId,
+      taskId: message.taskId,
+      role: message.role,
+      parts: message.parts,
+      timestamp: now,
+    }
   }
 
-  const stmt = db.prepare(
-    "INSERT INTO events (id, app_name, user_id, context_id, author, content, timestamp) VALUES (?, ?, ?, ?, ?, ?, ?)",
-  )
+  getMessage(id: string): A2A.Message | undefined {
+    const db = getDb()
+    const stmt = db.prepare(`
+      SELECT id, context_id, task_id, role, parts, timestamp 
+      FROM messages 
+      WHERE id = ?
+    `)
 
-  const insert = db.transaction((msgs: UIMessage[]) => {
-    for (const message of msgs) {
-      const author = message.role
-      stmt.run(
-        message.id,
-        APP_NAME,
-        "user", // Assuming a single user for now
-        contextId,
-        author,
-        JSON.stringify(message),
-        Date.now() / 1000,
-      )
+    const row = stmt.get(id) as {
+      id: string
+      context_id: string
+      task_id: string | null
+      role: string
+      parts: string
+      timestamp: number
+    } | undefined
+
+    if (!row) return undefined
+
+    return {
+      kind: "message",
+      messageId: row.id,
+      contextId: row.context_id,
+      taskId: row.task_id || undefined,
+      role: row.role as "user" | "agent",
+      parts: JSON.parse(row.parts),
     }
-  })
+  }
 
-  insert(newMessages)
+  getContextMessages(
+    contextId: string,
+    includeTaskMessages: boolean = false,
+  ): A2A.Message[] {
+    const db = getDb()
+    const whereClause = includeTaskMessages
+      ? "WHERE context_id = ?"
+      : "WHERE context_id = ? AND task_id IS NULL"
 
-  // Also update the context's update_time
-  const updateStmt = db.prepare(
-    "UPDATE contexts SET update_time = ? WHERE id = ?",
-  )
-  updateStmt.run(Date.now() / 1000, contextId)
+    const stmt = db.prepare(`
+      SELECT id, context_id, task_id, role, parts, timestamp 
+      FROM messages 
+      ${whereClause}
+      ORDER BY timestamp ASC
+    `)
+
+    const rows = stmt.all(contextId) as {
+      id: string
+      context_id: string
+      task_id: string | null
+      role: string
+      parts: string
+      timestamp: number
+    }[]
+
+    return rows.map((row) => ({
+      kind: "message" as const,
+      messageId: row.id,
+      contextId: row.context_id,
+      taskId: row.task_id || undefined,
+      role: row.role as "user" | "agent",
+      parts: JSON.parse(row.parts),
+      timestamp: new Date(row.timestamp * 1000).toISOString(),
+    }))
+  }
+
+  getTaskMessages(taskId: string): A2A.Message[] {
+    const db = getDb()
+    const stmt = db.prepare(`
+      SELECT id, context_id, task_id, role, parts, timestamp 
+      FROM messages 
+      WHERE task_id = ?
+      ORDER BY timestamp ASC
+    `)
+
+    const rows = stmt.all(taskId) as {
+      id: string
+      context_id: string
+      task_id: string | null
+      role: string
+      parts: string
+      timestamp: number
+    }[]
+
+    return rows.map((row) => ({
+      kind: "message" as const,
+      messageId: row.id,
+      contextId: row.context_id,
+      taskId: row.task_id || undefined,
+      role: row.role as "user" | "agent",
+      parts: JSON.parse(row.parts),
+      timestamp: new Date(row.timestamp * 1000).toISOString(),
+    }))
+  }
+
+  deleteMessage(id: string): boolean {
+    const db = getDb()
+    const stmt = db.prepare("DELETE FROM messages WHERE id = ?")
+    const result = stmt.run(id) as unknown as { changes: number }
+    return result.changes > 0
+  }
+
+  deleteContextMessages(contextId: string): number {
+    const db = getDb()
+    const stmt = db.prepare("DELETE FROM messages WHERE context_id = ?")
+    const result = stmt.run(contextId) as unknown as { changes: number }
+    return result.changes
+  }
+
+  deleteTaskMessages(taskId: string): number {
+    const db = getDb()
+    const stmt = db.prepare("DELETE FROM messages WHERE task_id = ?")
+    const result = stmt.run(taskId) as unknown as { changes: number }
+    return result.changes
+  }
 }
 
-// Types for chat management
+// Chat management types for API compatibility
 export interface ChatSummary {
   id: string
   title: string
@@ -152,295 +273,128 @@ export interface ChatSummary {
 export interface ChatWithHistory {
   contextId: string
   title: string
-  messages: UIMessage[]
-  tasks: Array<{
-    id: string
-    status: unknown
-    history: unknown
-    metadata: unknown
-    createdAt: number
-    updatedAt: number
-  }>
+  messages: A2A.Message[]
+  tasks: A2A.Task[]
   metadata: Record<string, unknown>
   createTime: number
   updateTime: number
 }
 
-// Extract text from a Vercel UIMessage, handling both legacy {content} and current {parts}
-function extractTextFromUIMessage(msg: UIMessage | null | undefined): string {
-  if (msg == null) return ""
-  if (
-    typeof (msg as any).content === "string" && (msg as any).content.length > 0
-  ) {
-    return (msg as any).content
+export class ChatService {
+  private contextStorage = new ContextStorage()
+  private messageStorage = new MessageStorage()
+  private taskStorage = new TaskStorage()
+
+  createChat(id?: string): string {
+    return this.contextStorage.createContext(id)
   }
-  // Vercel UIMessage: parts: [{ type: 'text', text: string }, ...]
-  if (Array.isArray(msg.parts)) {
-    return msg.parts
-      .map((
-        p,
-      ) => (p && typeof p === "object" && "text" in p &&
-          typeof p.text === "string"
-        ? p.text
-        : "")
-      )
-      .join("")
+
+  // Extract text from A2A message parts
+  private extractTextFromMessage(message: A2A.Message): string {
+    return message.parts
+      .filter((part): part is A2A.TextPart => part.kind === "text")
+      .map((part) => part.text)
+      .join(" ")
       .trim()
   }
-  return ""
-}
 
-// Extract or generate a title from the first user message
-function extractChatTitle(messages: UIMessage[]): string {
-  const firstUserMessage = messages.find((m) => m.role === "user")
-  const text = extractTextFromUIMessage(firstUserMessage)
-  if (text) {
+  // Generate title from first user message
+  private generateChatTitle(messages: A2A.Message[]): string {
+    const firstUserMessage = messages.find((m) => m.role === "user")
+    if (!firstUserMessage) return "New Chat"
+
+    const text = this.extractTextFromMessage(firstUserMessage)
+    if (!text) return "New Chat"
+
     const title = text.slice(0, 50).trim()
     return title.length < text.length ? title + "..." : title
   }
-  return "New Chat"
-}
 
-// Get a preview of the last message
-function getMessagePreview(messages: UIMessage[]): string {
-  if (messages.length === 0) return "No messages"
-  const lastMessage = messages[messages.length - 1]
-  const text = extractTextFromUIMessage(lastMessage)
-  if (!text) return "No content"
-  const preview = text.slice(0, 100).trim()
-  return preview.length < text.length ? preview + "..." : preview
-}
+  // Get preview from last message
+  private getMessagePreview(messages: A2A.Message[]): string {
+    if (messages.length === 0) return "No messages"
 
-// Get list of all chats for a user
-export function getChatsList(userId: string = "user"): ChatSummary[] {
-  try {
-    const db = getDb()
+    const lastMessage = messages[messages.length - 1]
+    const text = this.extractTextFromMessage(lastMessage)
+    if (!text) return "No content"
 
-    log.info(`Getting chats for userId: ${userId}, app_name: ${APP_NAME}`)
+    const preview = text.slice(0, 100).trim()
+    return preview.length < text.length ? preview + "..." : preview
+  }
 
-    // First, let's see what's actually in the contexts table
-    const allContextsStmt = db.prepare(
-      `SELECT id, app_name, user_id, create_time FROM contexts LIMIT 10`,
-    )
-    const allContexts = allContextsStmt.all()
-    log.info("Sample contexts in database:", allContexts)
-
-    // Get all contexts for the user
-    const contextsStmt = db.prepare(`
-      SELECT id, state, create_time, update_time 
-      FROM contexts 
-      WHERE app_name = ? AND user_id = ? 
-      ORDER BY update_time DESC
-    `)
-    const contexts = contextsStmt.all(APP_NAME, userId) as Array<{
-      id: string
-      state: string
-      create_time: number
-      update_time: number
-    }>
-
-    log.info(
-      `Found ${contexts.length} contexts for user ${userId}:`,
-      contexts.map((c) => ({ id: c.id, update_time: c.update_time })),
-    )
-
-    // Also try with 'anonymous' user_id (might be what was used before)
-    const anonymousContextsStmt = db.prepare(`
-      SELECT id, state, create_time, update_time 
-      FROM contexts 
-      WHERE app_name = ? AND user_id = ? 
-      ORDER BY update_time DESC
-    `)
-    const anonymousContexts = anonymousContextsStmt.all(
-      APP_NAME,
-      "anonymous",
-    ) as Array<{
-      id: string
-      state: string
-      create_time: number
-      update_time: number
-    }>
-    log.info(
-      `Found ${anonymousContexts.length} contexts for user 'anonymous':`,
-      anonymousContexts.map((c) => ({ id: c.id, update_time: c.update_time })),
-    )
-
-    // Also try with 'a2a-agent' user_id (used by A2A requests)
-    const a2aContextsStmt = db.prepare(`
-      SELECT id, state, create_time, update_time 
-      FROM contexts 
-      WHERE app_name = ? AND user_id = ? 
-      ORDER BY update_time DESC
-    `)
-    const a2aContexts = a2aContextsStmt.all(APP_NAME, "a2a-agent") as Array<{
-      id: string
-      state: string
-      create_time: number
-      update_time: number
-    }>
-    log.info(
-      `Found ${a2aContexts.length} contexts for user 'a2a-agent':`,
-      a2aContexts.map((c) => ({ id: c.id, update_time: c.update_time })),
-    )
-
-    // Merge and de-duplicate by context id, prefer latest update_time
-    const dedupMap = new Map<
-      string,
-      { id: string; state: string; create_time: number; update_time: number }
-    >()
-    for (const c of [...contexts, ...anonymousContexts, ...a2aContexts]) {
-      const prev = dedupMap.get(c.id)
-      if (!prev || c.update_time > prev.update_time) dedupMap.set(c.id, c)
-    }
-    const allUserContexts = Array.from(dedupMap.values())
-
+  getChatsList(): ChatSummary[] {
+    const contexts = this.contextStorage.getAllContexts()
     const chatSummaries: ChatSummary[] = []
 
-    for (const context of allUserContexts) {
-      // Get message count and all messages for this context
-      const messagesStmt = db.prepare(`
-        SELECT content FROM events 
-        WHERE context_id = ? 
-        ORDER BY timestamp ASC
-      `)
-      const messageRows = messagesStmt.all(context.id) as { content: string }[]
-      const messages = messageRows.map((row) =>
-        JSON.parse(row.content) as UIMessage
-      )
+    for (const context of contexts) {
+      const messages = this.messageStorage.getContextMessages(context.id, false)
 
       if (messages.length > 0) {
         chatSummaries.push({
           id: context.id,
-          title: extractChatTitle(messages),
-          lastActivity: context.update_time,
+          title: this.generateChatTitle(messages),
+          lastActivity: context.updatedAt,
           messageCount: messages.length,
-          preview: getMessagePreview(messages),
-          createTime: context.create_time,
+          preview: this.getMessagePreview(messages),
+          createTime: context.createdAt,
         })
       }
     }
 
     return chatSummaries
-  } catch (error) {
-    log.error("Error in getChatsList:", error)
-    throw error
-  }
-}
-
-// Get full chat with history including messages and tasks
-export function getChatWithHistory(contextId: string): ChatWithHistory | null {
-  const db = getDb()
-
-  // Get context info
-  const contextStmt = db.prepare(`
-    SELECT state, create_time, update_time 
-    FROM contexts 
-    WHERE id = ? AND app_name = ?
-  `)
-  const context = contextStmt.get(contextId, APP_NAME) as {
-    state: string
-    create_time: number
-    update_time: number
-  } | undefined
-
-  if (!context) {
-    return null
   }
 
-  // Get messages
-  const messages = loadChat(contextId)
+  getChatWithHistory(contextId: string): ChatWithHistory | null {
+    const context = this.contextStorage.getContext(contextId)
+    if (!context) return null
 
-  // Get associated A2A tasks
-  const tasksStmt = db.prepare(`
-    SELECT id, status, history, metadata, created_at, updated_at
-    FROM a2a_tasks 
-    WHERE context_id = ?
-    ORDER BY created_at ASC
-  `)
-  const taskRows = tasksStmt.all(contextId) as Array<{
-    id: string
-    status: string
-    history: string
-    metadata: string
-    created_at: number
-    updated_at: number
-  }>
+    const messages = this.messageStorage.getContextMessages(contextId, false)
+    const tasks = this.taskStorage.getTasksByContext(contextId)
 
-  const tasks = taskRows.map((row) => ({
-    id: row.id,
-    status: JSON.parse(row.status),
-    history: JSON.parse(row.history),
-    metadata: JSON.parse(row.metadata),
-    createdAt: row.created_at,
-    updatedAt: row.updated_at,
-  }))
-
-  return {
-    contextId,
-    title: extractChatTitle(messages),
-    messages,
-    tasks,
-    metadata: JSON.parse(context.state),
-    createTime: context.create_time,
-    updateTime: context.update_time,
-  }
-}
-
-// Delete a chat and all associated data
-export function deleteChatById(contextId: string): boolean {
-  const db = getDb()
-
-  const deleteTransaction = db.transaction(() => {
-    // Delete events (messages)
-    const deleteEventsStmt = db.prepare(
-      "DELETE FROM events WHERE context_id = ?",
-    )
-    deleteEventsStmt.run(contextId)
-
-    // Delete A2A tasks
-    const deleteTasksStmt = db.prepare(
-      "DELETE FROM a2a_tasks WHERE context_id = ?",
-    )
-    deleteTasksStmt.run(contextId)
-
-    // Delete context
-    const deleteContextStmt = db.prepare("DELETE FROM contexts WHERE id = ?")
-    const result = deleteContextStmt.run(contextId)
-
-    return (result as unknown as { changes: number }).changes > 0
-  })
-
-  try {
-    return deleteTransaction()
-  } catch (error) {
-    console.error("Error deleting chat:", error)
-    return false
-  }
-}
-
-// Update chat metadata (for features like renaming)
-export function updateChatMetadata(
-  contextId: string,
-  metadata: Record<string, unknown>,
-): boolean {
-  const db = getDb()
-
-  try {
-    const updateStmt = db.prepare(`
-      UPDATE contexts 
-      SET state = ?, update_time = ? 
-      WHERE id = ? AND app_name = ?
-    `)
-    const result = updateStmt.run(
-      JSON.stringify(metadata),
-      Date.now() / 1000,
+    return {
       contextId,
-      APP_NAME,
-    )
+      title: this.generateChatTitle(messages),
+      messages,
+      tasks,
+      metadata: context.metadata,
+      createTime: context.createdAt,
+      updateTime: context.updatedAt,
+    }
+  }
 
-    return (result as unknown as { changes: number }).changes > 0
-  } catch (error) {
-    console.error("Error updating chat metadata:", error)
-    return false
+  deleteChatById(contextId: string): boolean {
+    return this.contextStorage.deleteContext(contextId)
+  }
+
+  updateChatMetadata(
+    contextId: string,
+    metadata: Record<string, unknown>,
+  ): boolean {
+    return this.contextStorage.updateContext(contextId, metadata)
+  }
+
+  addMessage(message: A2A.Message): void {
+    this.messageStorage.createMessage(message)
+    if (message.contextId) {
+      this.contextStorage.touchContext(message.contextId)
+    }
   }
 }
+
+// Create singleton instances for backwards compatibility
+export const contextStorage = new ContextStorage()
+export const messageStorage = new MessageStorage()
+export const chatService = new ChatService()
+
+// Legacy function exports for backwards compatibility
+export const createChat = chatService.createChat.bind(chatService)
+export const createChatWithId = (contextId: string) =>
+  chatService.createChat(contextId)
+export const getChatsList = chatService.getChatsList.bind(chatService)
+export const getChatWithHistory = chatService.getChatWithHistory.bind(
+  chatService,
+)
+export const deleteChatById = chatService.deleteChatById.bind(chatService)
+export const updateChatMetadata = chatService.updateChatMetadata.bind(
+  chatService,
+)

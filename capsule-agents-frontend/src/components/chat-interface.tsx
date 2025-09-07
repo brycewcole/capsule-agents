@@ -19,6 +19,7 @@ import {
 } from "./ui/card.tsx"
 import {
   type A2ATask,
+  type CapabilityCall,
   type ChatWithHistory,
   checkHealth,
   extractCapabilityCalls,

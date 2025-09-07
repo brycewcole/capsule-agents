@@ -16,6 +16,7 @@ import {
 } from "lucide-react"
 import { cn } from "../lib/utils.ts"
 import { type A2ATask } from "../lib/api.ts"
+import type * as A2A from "@a2a-js/sdk"
 import Markdown from "react-markdown"
 
 interface TaskStatusDisplayProps {
@@ -101,20 +102,17 @@ export function TaskStatusDisplay({ task, className }: TaskStatusDisplayProps) {
   const statusMessageText = getStatusMessageText()
   const description = statusMessageText
 
-  // Helpers to render history entries
+  // Get history messages from A2A task
   const getHistoryMessages = () => {
-    const history = (task as unknown as { history?: unknown[] }).history
-    if (!Array.isArray(history) || history.length === 0) return [] as unknown[]
-    return history
+    if (!task.history || !Array.isArray(task.history)) return []
+    return task.history
   }
 
-  const extractTextFromParts = (parts: unknown[]): string => {
+  const extractTextFromParts = (parts: A2A.Part[]): string => {
     try {
       const texts = parts
-        .filter((p) => p && typeof p === "object" && "kind" in (p as any))
-        .map((p) => (p as { kind?: string; text?: string }))
-        .filter((p) => p.kind === "text" && typeof p.text === "string")
-        .map((p) => p.text!.trim())
+        .filter((part): part is A2A.TextPart => part.kind === "text")
+        .map((part) => part.text.trim())
         .filter(Boolean)
       return texts.join("\n\n").trim()
     } catch {
@@ -122,23 +120,32 @@ export function TaskStatusDisplay({ task, className }: TaskStatusDisplayProps) {
     }
   }
 
-  const summarizeFunctionsFromParts = (parts: unknown[]) => {
-    const items: { type: "call" | "response"; name?: string; data?: unknown }[] = []
+  const summarizeFunctionsFromParts = (parts: A2A.Part[]) => {
+    const items: {
+      type: "call" | "response"
+      name?: string
+      data?: unknown
+    }[] = []
     for (const part of parts) {
-      if (part && typeof part === "object") {
-        const anyPart = part as any
-        if (anyPart.function_call) {
+      if (part.kind === "data" && part.data) {
+        const data = part.data as {
+          type?: string
+          name?: string
+          args?: unknown
+          result?: unknown
+        }
+        if (data.type === "tool_call") {
           items.push({
             type: "call",
-            name: String(anyPart.function_call.name || "function"),
-            data: anyPart.function_call.args ?? {},
+            name: String(data.name || "function"),
+            data: data.args ?? {},
           })
         }
-        if (anyPart.function_response) {
+        if (data.type === "tool_result") {
           items.push({
             type: "response",
             name: undefined,
-            data: anyPart.function_response.response,
+            data: data.result,
           })
         }
       }
@@ -146,72 +153,62 @@ export function TaskStatusDisplay({ task, className }: TaskStatusDisplayProps) {
     return items
   }
 
-  // Extract DataParts from parts array (supports A2A style and legacy variants)
-  const extractDataParts = (parts: unknown[]) => {
-    type DataItem = { mediaType?: string; data: unknown }
+  // Extract DataParts from parts array
+  const extractDataParts = (parts: A2A.Part[]) => {
+    type DataItem = { data: unknown }
     const items: DataItem[] = []
     for (const part of parts) {
-      if (!part || typeof part !== "object") continue
-      const p = part as any
-      // A2A-conventional: { kind: 'data', mediaType | mimeType, data }
-      if (p.kind === "data" && ("data" in p)) {
-        items.push({ mediaType: p.mediaType || p.mimeType, data: p.data })
-        continue
-      }
-      // Fallback: part that has data + media/mimeType, without kind marker
-      if ("data" in p && ("mediaType" in p || "mimeType" in p)) {
-        items.push({ mediaType: p.mediaType || p.mimeType, data: p.data })
-        continue
+      if (part.kind === "data") {
+        const dataPart = part as A2A.DataPart
+        items.push({
+          data: dataPart.data,
+        })
       }
     }
     return items
   }
 
   // DataPart preview renderer with show more/less toggle
-  function DataPartPreview(
-    { mediaType, data }: { mediaType?: string; data: unknown },
-  ) {
+  function DataPartPreview({ data }: { data: unknown }) {
     const [expanded, setExpanded] = useState(false)
-    const media = mediaType || "unknown"
 
-    // Image handling
-    if (typeof data === "string" && media.startsWith("image/")) {
-      const src = data.startsWith("data:") ? data : `data:${media};base64,${data}`
+    // Try to detect images from base64 data URIs
+    if (typeof data === "string" && data.startsWith("data:image/")) {
       return (
         <div className="space-y-1">
-          <div className="text-muted-foreground text-[11px]">Data part{media ? ` (${media})` : ""}</div>
-          <img src={src} alt={media} className="max-h-40 max-w-full rounded border" />
+          <div className="text-muted-foreground text-[11px]">
+            Data part (image)
+          </div>
+          <img
+            src={data}
+            alt="Data part image"
+            className="max-h-40 max-w-full rounded border"
+          />
         </div>
       )
     }
 
     // Prepare textual/JSON preview
     let text: string
-    let isJson = false
-    if (media.includes("json")) {
-      try {
-        const obj = typeof data === "string" ? JSON.parse(data) : data
-        text = JSON.stringify(obj, null, 2)
-        isJson = true
-      } catch {
-        text = typeof data === "string" ? data : (() => {
-          try { return JSON.stringify(data, null, 2) } catch { return String(data) }
-        })()
-      }
-    } else if (typeof data === "string") {
+    if (typeof data === "string") {
       text = data
-      // Also treat as JSON if it looks like it
+      // Treat as JSON if it looks like it
       if (text.trim().startsWith("{") || text.trim().startsWith("[")) {
         try {
           const obj = JSON.parse(text)
           text = JSON.stringify(obj, null, 2)
-          isJson = true
         } catch {
           // keep as plain text
         }
       }
     } else {
-      text = (() => { try { return JSON.stringify(data, null, 2) } catch { return String(data) } })()
+      text = (() => {
+        try {
+          return JSON.stringify(data, null, 2)
+        } catch {
+          return String(data)
+        }
+      })()
     }
 
     const LIMIT = 800
@@ -220,14 +217,18 @@ export function TaskStatusDisplay({ task, className }: TaskStatusDisplayProps) {
 
     return (
       <div className="space-y-1">
-        <div className="text-muted-foreground text-[11px]">Data part{media ? ` (${media})` : ""}</div>
+        <div className="text-muted-foreground text-[11px]">Data part</div>
         <pre className="bg-background/60 p-2 rounded border text-[11px] max-w-full overflow-x-auto whitespace-pre-wrap break-words">
           {shown}
         </pre>
         {isLong && (
           <div className="flex justify-end">
-            <Button variant="ghost" size="sm" className="h-6 px-2 text-xs"
-              onClick={() => setExpanded((v) => !v)}>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-6 px-2 text-xs"
+              onClick={() => setExpanded((v) => !v)}
+            >
               {expanded ? "Show less" : "Show more"}
             </Button>
           </div>
@@ -241,7 +242,9 @@ export function TaskStatusDisplay({ task, className }: TaskStatusDisplayProps) {
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Badge className={cn("gap-1.5", statusInfo.color)} variant="outline">
-            <StatusIcon className={cn("h-3 w-3", statusInfo.animated && "animate-spin")} />
+            <StatusIcon
+              className={cn("h-3 w-3", statusInfo.animated && "animate-spin")}
+            />
             {statusInfo.label}
           </Badge>
           <span className="text-sm text-muted-foreground">Task: {taskId}</span>
@@ -259,7 +262,9 @@ export function TaskStatusDisplay({ task, className }: TaskStatusDisplayProps) {
           className="h-6 w-6 p-0"
           title={isExpanded ? "Collapse" : "Expand"}
         >
-          {isExpanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+          {isExpanded
+            ? <ChevronUp className="h-3 w-3" />
+            : <ChevronDown className="h-3 w-3" />}
         </Button>
       </div>
 
@@ -274,48 +279,54 @@ export function TaskStatusDisplay({ task, className }: TaskStatusDisplayProps) {
           <div className="pointer-events-none absolute left-2 top-0 w-3 h-3 border-l border-t border-border rounded-tl-md bg-transparent" />
           <div className="pointer-events-none absolute left-2 bottom-0 w-3 h-3 border-l border-b border-border rounded-bl-md bg-transparent" />
           <div className="space-y-3 pl-5">
-          {getHistoryMessages().map((msg, idx) => {
-            const m = msg as {
-              role?: string
-              parts?: unknown[]
-              content?: { parts?: unknown[] }
-              timestamp?: string | number
-            }
-            const role = m.role === "assistant" ? "agent" : m.role || "agent"
-            const isUser = role === "user"
-            const parts = Array.isArray(m.parts)
-              ? m.parts
-              : (m.content && Array.isArray(m.content.parts))
-              ? m.content.parts
-              : []
-            const text = parts && parts.length > 0 ? extractTextFromParts(parts) : ""
-            const funcs = parts && parts.length > 0 ? summarizeFunctionsFromParts(parts) : []
-            const dataParts = parts && parts.length > 0 ? extractDataParts(parts) : []
+            {getHistoryMessages().map((msg, idx) => {
+              const message = msg as A2A.Message
+              const role = message.role
+              const isUser = role === "user"
+              const parts = message.parts || []
+              const text = parts.length > 0 ? extractTextFromParts(parts) : ""
+              const funcs = parts.length > 0
+                ? summarizeFunctionsFromParts(parts)
+                : []
+              const dataParts = parts.length > 0 ? extractDataParts(parts) : []
 
-            return (
-              <div key={idx} className={`relative flex ${isUser ? "justify-end" : "justify-start"}`}>
-                <div className="max-w-[80%]">
-                  <div
-                    className={`inline-block w-fit align-top rounded-2xl px-4 py-2 break-words max-w-full ${
-                      isUser ? "bg-primary text-primary-foreground" : "bg-muted text-left"
-                    }`}
-                  >
-                    <div className="space-y-2">
-                      {text && (
-                        <div className="markdown text-sm">
-                          <Markdown>{text}</Markdown>
-                        </div>
-                      )}
-                      {!isUser && funcs.length > 0 && (
-                        <div className="space-y-1">
-                          {funcs.map((f, i) => (
-                            <div key={i} className="text-[11px] text-muted-foreground">
-                              {f.type === "call" ? (
-                                <>
-                                  <span className="font-medium">Function call</span>
-                                  {f.name ? `: ${f.name}` : ":"}
-                                  {f.data !== undefined && (
-                                    <pre className="mt-1 bg-background/60 p-2 rounded border text-[11px] max-w-full overflow-x-auto whitespace-pre-wrap break-words">
+              return (
+                <div
+                  key={idx}
+                  className={`relative flex ${
+                    isUser ? "justify-end" : "justify-start"
+                  }`}
+                >
+                  <div className="max-w-[80%]">
+                    <div
+                      className={`inline-block w-fit align-top rounded-2xl px-4 py-2 break-words max-w-full ${
+                        isUser
+                          ? "bg-primary text-primary-foreground"
+                          : "bg-muted text-left"
+                      }`}
+                    >
+                      <div className="space-y-2">
+                        {text && (
+                          <div className="markdown text-sm">
+                            <Markdown>{text}</Markdown>
+                          </div>
+                        )}
+                        {!isUser && funcs.length > 0 && (
+                          <div className="space-y-1">
+                            {funcs.map((f, i) => (
+                              <div
+                                key={i}
+                                className="text-[11px] text-muted-foreground"
+                              >
+                                {f.type === "call"
+                                  ? (
+                                    <>
+                                      <span className="font-medium">
+                                        Function call
+                                      </span>
+                                      {f.name ? `: ${f.name}` : ":"}
+                                      {f.data !== undefined && (
+                                        <pre className="mt-1 bg-background/60 p-2 rounded border text-[11px] max-w-full overflow-x-auto whitespace-pre-wrap break-words">
                                       {(() => {
                                         try {
                                           return JSON.stringify(f.data, null, 2)
@@ -323,14 +334,17 @@ export function TaskStatusDisplay({ task, className }: TaskStatusDisplayProps) {
                                           return String(f.data)
                                         }
                                       })()}
-                                    </pre>
-                                  )}
-                                </>
-                              ) : (
-                                <>
-                                  <span className="font-medium">Function response:</span>
-                                  {f.data !== undefined && (
-                                    <pre className="mt-1 bg-background/60 p-2 rounded border text-[11px] max-w-full overflow-x-auto whitespace-pre-wrap break-words">
+                                        </pre>
+                                      )}
+                                    </>
+                                  )
+                                  : (
+                                    <>
+                                      <span className="font-medium">
+                                        Function response:
+                                      </span>
+                                      {f.data !== undefined && (
+                                        <pre className="mt-1 bg-background/60 p-2 rounded border text-[11px] max-w-full overflow-x-auto whitespace-pre-wrap break-words">
                                       {(() => {
                                         try {
                                           return JSON.stringify(f.data, null, 2)
@@ -338,29 +352,29 @@ export function TaskStatusDisplay({ task, className }: TaskStatusDisplayProps) {
                                           return String(f.data)
                                         }
                                       })()}
-                                    </pre>
+                                        </pre>
+                                      )}
+                                    </>
                                   )}
-                                </>
-                              )}
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                      {!isUser && dataParts.length > 0 && (
-                        <div className="space-y-2">
-                          {dataParts.map((d, i) => (
-                            <div key={i} className="text-[11px]">
-                              <DataPartPreview mediaType={d.mediaType} data={d.data} />
-                            </div>
-                          ))}
-                        </div>
-                      )}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        {!isUser && dataParts.length > 0 && (
+                          <div className="space-y-2">
+                            {dataParts.map((d, i) => (
+                              <div key={i} className="text-[11px]">
+                                <DataPartPreview data={d.data} />
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
                     </div>
                   </div>
                 </div>
-              </div>
-            )
-          })}
+              )
+            })}
           </div>
         </div>
       )}

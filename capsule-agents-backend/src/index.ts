@@ -333,8 +333,7 @@ app.get("/api/providers", (c) => {
 app.get("/api/chats", (c) => {
   log.info("GET /api/chats - Getting chat list")
   try {
-    const userId = "user" // TODO: Extract from auth when implemented
-    const chats = getChatsList(userId)
+    const chats = getChatsList()
     log.info("Chat list retrieved successfully:", {
       count: chats.length,
       chats: chats.map((c) => ({ id: c.id, title: c.title })),

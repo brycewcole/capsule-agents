@@ -1,70 +1,83 @@
-import { getDb } from "./db.ts"
+// deno-lint-ignore-file require-await
 import type * as A2A from "@a2a-js/sdk"
 import type { TaskStore } from "@a2a-js/sdk/server"
+import { ArtifactStorage } from "./artifact-storage.ts"
+import { getDb } from "./db.ts"
+
+export interface StoredTask {
+  id: string
+  contextId: string
+  statusState: A2A.Task["status"]["state"]
+  statusTimestamp: string
+  statusMessageId?: string
+  metadata: Record<string, unknown>
+  createdAt: number
+  updatedAt: number
+}
 
 export class TaskStorage implements TaskStore {
   private taskCounter = 0
+  private artifactStorage = new ArtifactStorage()
 
   createTaskId(): string {
-    return `task-${++this.taskCounter}-${Date.now()}`
+    return `task_${++this.taskCounter}_${Date.now()}`
   }
 
-  // deno-lint-ignore require-await
   async save(task: A2A.Task): Promise<void> {
     this.setTask(task.id, task)
   }
 
-  // deno-lint-ignore require-await
   async load(taskId: string): Promise<A2A.Task | undefined> {
-    const taskWithTimestamps = this.getTask(taskId)
-    if (!taskWithTimestamps) return undefined
-
-    // Return just the Task without our additional timestamp fields
-    const { created_at: _createdAt, updated_at: _updatedAt, ...task } =
-      taskWithTimestamps
-    return task
+    return this.getTask(taskId)
   }
 
   setTask(id: string, task: A2A.Task): void {
     const db = getDb()
     const now = Date.now() / 1000
 
-    const stmt = db.prepare(`
-      INSERT OR REPLACE INTO a2a_tasks 
-      (id, context_id, status, history, metadata, created_at, updated_at) 
-      VALUES (?, ?, ?, ?, ?, ?, ?)
-    `)
-
     // Check if task already exists to preserve created_at
-    const existing = this.getTask(id)
-    const createdAt = existing ? existing.created_at : now
+    const existing = this.getStoredTask(id)
+    const createdAt = existing ? existing.createdAt : now
+
+    const stmt = db.prepare(`
+      INSERT OR REPLACE INTO tasks 
+      (id, context_id, status_state, status_timestamp, status_message_id, metadata, created_at, updated_at) 
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `)
 
     stmt.run(
       id,
       task.contextId,
-      JSON.stringify(task.status),
-      JSON.stringify(task.history || []),
+      task.status.state,
+      task.status.timestamp,
+      task.status.message?.messageId || null,
       JSON.stringify(task.metadata || {}),
       createdAt,
       now,
     )
   }
 
-  getTask(
-    id: string,
-  ): (A2A.Task & { created_at: number; updated_at: number }) | undefined {
+  getTask(id: string): A2A.Task | undefined {
+    const storedTask = this.getStoredTask(id)
+    if (!storedTask) return undefined
+
+    return this.buildA2ATask(storedTask)
+  }
+
+  getStoredTask(id: string): StoredTask | undefined {
     const db = getDb()
     const stmt = db.prepare(`
-      SELECT id, context_id, status, history, metadata, created_at, updated_at 
-      FROM a2a_tasks 
+      SELECT id, context_id, status_state, status_timestamp, status_message_id, metadata, created_at, updated_at 
+      FROM tasks 
       WHERE id = ?
     `)
 
     const row = stmt.get(id) as {
       id: string
       context_id: string
-      status: string
-      history: string
+      status_state: string
+      status_timestamp: string
+      status_message_id: string | null
       metadata: string
       created_at: number
       updated_at: number
@@ -74,53 +87,54 @@ export class TaskStorage implements TaskStore {
 
     return {
       id: row.id,
-      kind: "task" as const,
       contextId: row.context_id,
-      status: JSON.parse(row.status),
-      history: JSON.parse(row.history),
+      statusState: row.status_state as A2A.Task["status"]["state"],
+      statusTimestamp: row.status_timestamp,
+      statusMessageId: row.status_message_id || undefined,
       metadata: JSON.parse(row.metadata),
-      created_at: row.created_at,
-      updated_at: row.updated_at,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
     }
   }
 
-  getAllTasks(): (A2A.Task & { created_at: number; updated_at: number })[] {
+  getAllTasks(): A2A.Task[] {
     const db = getDb()
     const stmt = db.prepare(`
-      SELECT id, context_id, status, history, metadata, created_at, updated_at 
-      FROM a2a_tasks 
+      SELECT id, context_id, status_state, status_timestamp, status_message_id, metadata, created_at, updated_at 
+      FROM tasks 
       ORDER BY created_at DESC
     `)
 
     const rows = stmt.all() as {
       id: string
       context_id: string
-      status: string
-      history: string
+      status_state: string
+      status_timestamp: string
+      status_message_id: string | null
       metadata: string
       created_at: number
       updated_at: number
     }[]
 
-    return rows.map((row) => ({
-      id: row.id,
-      kind: "task" as const,
-      contextId: row.context_id,
-      status: JSON.parse(row.status),
-      history: JSON.parse(row.history),
-      metadata: JSON.parse(row.metadata),
-      created_at: row.created_at,
-      updated_at: row.updated_at,
-    }))
+    return rows.map((row) =>
+      this.buildA2ATask({
+        id: row.id,
+        contextId: row.context_id,
+        statusState: row.status_state as A2A.Task["status"]["state"],
+        statusTimestamp: row.status_timestamp,
+        statusMessageId: row.status_message_id || undefined,
+        metadata: JSON.parse(row.metadata),
+        createdAt: row.created_at,
+        updatedAt: row.updated_at,
+      })
+    )
   }
 
-  getTasksByContext(
-    contextId: string,
-  ): (A2A.Task & { created_at: number; updated_at: number })[] {
+  getTasksByContext(contextId: string): A2A.Task[] {
     const db = getDb()
     const stmt = db.prepare(`
-      SELECT id, context_id, status, history, metadata, created_at, updated_at 
-      FROM a2a_tasks 
+      SELECT id, context_id, status_state, status_timestamp, status_message_id, metadata, created_at, updated_at 
+      FROM tasks 
       WHERE context_id = ?
       ORDER BY created_at ASC
     `)
@@ -128,30 +142,127 @@ export class TaskStorage implements TaskStore {
     const rows = stmt.all(contextId) as {
       id: string
       context_id: string
-      status: string
-      history: string
+      status_state: string
+      status_timestamp: string
+      status_message_id: string | null
       metadata: string
       created_at: number
       updated_at: number
     }[]
 
-    return rows.map((row) => ({
-      id: row.id,
-      kind: "task" as const,
-      contextId: row.context_id,
-      status: JSON.parse(row.status),
-      history: JSON.parse(row.history),
-      metadata: JSON.parse(row.metadata),
-      created_at: row.created_at,
-      updated_at: row.updated_at,
-    }))
+    return rows.map((row) =>
+      this.buildA2ATask({
+        id: row.id,
+        contextId: row.context_id,
+        statusState: row.status_state as A2A.Task["status"]["state"],
+        statusTimestamp: row.status_timestamp,
+        statusMessageId: row.status_message_id || undefined,
+        metadata: JSON.parse(row.metadata),
+        createdAt: row.created_at,
+        updatedAt: row.updated_at,
+      })
+    )
   }
 
   deleteTask(id: string): boolean {
     const db = getDb()
-    const stmt = db.prepare("DELETE FROM a2a_tasks WHERE id = ?")
+    const stmt = db.prepare("DELETE FROM tasks WHERE id = ?")
     const result = stmt.run(id) as unknown as { changes: number }
     return result.changes > 0
+  }
+
+  // Build A2A Task from stored data, including messages and artifacts
+  private buildA2ATask(stored: StoredTask): A2A.Task {
+    // Get task messages (history)
+    const messages = this.getTaskMessages(stored.id)
+
+    // Get task artifacts
+    const storedArtifacts = this.artifactStorage.getArtifactsByTask(stored.id)
+    const artifacts = this.artifactStorage.toA2AArtifacts(storedArtifacts)
+
+    // Build status message if exists
+    let statusMessage: A2A.Message | undefined
+    if (stored.statusMessageId) {
+      statusMessage = this.getStatusMessage(stored.statusMessageId)
+    }
+
+    const task: A2A.Task = {
+      id: stored.id,
+      kind: "task",
+      contextId: stored.contextId,
+      status: {
+        state: stored.statusState,
+        timestamp: stored.statusTimestamp,
+        message: statusMessage,
+      },
+      history: messages,
+      metadata: stored.metadata,
+    }
+
+    if (artifacts.length > 0) {
+      task.artifacts = artifacts
+    }
+
+    return task
+  }
+
+  // Get messages that belong to this task
+  private getTaskMessages(taskId: string): A2A.Message[] {
+    const db = getDb()
+    const stmt = db.prepare(`
+      SELECT id, context_id, role, parts, timestamp 
+      FROM messages 
+      WHERE task_id = ?
+      ORDER BY timestamp ASC
+    `)
+
+    const rows = stmt.all(taskId) as {
+      id: string
+      context_id: string
+      role: string
+      parts: string
+      timestamp: number
+    }[]
+
+    return rows.map((row) => ({
+      kind: "message" as const,
+      messageId: row.id,
+      contextId: row.context_id,
+      taskId: taskId,
+      role: row.role as "user" | "agent",
+      parts: JSON.parse(row.parts),
+      timestamp: new Date(row.timestamp * 1000).toISOString(),
+    }))
+  }
+
+  // Get status message by ID
+  private getStatusMessage(messageId: string): A2A.Message | undefined {
+    const db = getDb()
+    const stmt = db.prepare(`
+      SELECT id, context_id, task_id, role, parts, timestamp 
+      FROM messages 
+      WHERE id = ?
+    `)
+
+    const row = stmt.get(messageId) as {
+      id: string
+      context_id: string
+      task_id: string | null
+      role: string
+      parts: string
+      timestamp: number
+    } | undefined
+
+    if (!row) return undefined
+
+    return {
+      kind: "message" as const,
+      messageId: row.id,
+      contextId: row.context_id,
+      taskId: row.task_id || undefined,
+      role: row.role as "user" | "agent",
+      parts: JSON.parse(row.parts),
+    }
   }
 
   // Utility method to clean up old completed tasks
@@ -160,9 +271,9 @@ export class TaskStorage implements TaskStore {
     const cutoffTime = (Date.now() / 1000) - (olderThanDays * 24 * 60 * 60)
 
     const stmt = db.prepare(`
-      DELETE FROM a2a_tasks 
+      DELETE FROM tasks 
       WHERE updated_at < ? 
-      AND JSON_EXTRACT(status, '$.state') IN ('completed', 'failed', 'canceled')
+      AND status_state IN ('completed', 'failed', 'canceled')
     `)
 
     const result = stmt.run(cutoffTime) as unknown as { changes: number }
