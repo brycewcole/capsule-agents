@@ -61,6 +61,16 @@ function createTables(db: Database) {
         FOREIGN KEY(task_id) REFERENCES tasks(id) ON DELETE CASCADE
     );
 
+    -- Agent Configuration: Separate from A2A protocol data
+    CREATE TABLE IF NOT EXISTS agent_info (
+        key                 INTEGER PRIMARY KEY CHECK (key = 1),
+        name                TEXT NOT NULL DEFAULT 'Capsule Agent',
+        description         TEXT NOT NULL DEFAULT 'A configurable agent powered by the A2A protocol',
+        model_name          TEXT,
+        model_parameters    TEXT NOT NULL DEFAULT '{}',
+        tools               TEXT NOT NULL DEFAULT '[]'
+    );
+
     -- Create indexes for better performance
     CREATE INDEX IF NOT EXISTS idx_tasks_context_id ON tasks(context_id);
     CREATE INDEX IF NOT EXISTS idx_messages_context_id ON messages(context_id);

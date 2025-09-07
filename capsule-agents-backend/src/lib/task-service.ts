@@ -41,6 +41,7 @@ export class TaskService {
     // Then add the initial message as part of task history
     const taskMessage: A2A.Message = {
       ...initialMessage,
+      messageId: this.createMessageId(), // Generate new ID to avoid duplicates
       taskId,
     }
     this.addMessageToHistory(task, taskMessage)
@@ -126,9 +127,10 @@ export class TaskService {
    * Adds a message to task history
    */
   addMessageToHistory(task: A2A.Task, message: A2A.Message): void {
-    // Store message with task association
+    // Store message with task association, ensuring unique message ID
     const taskMessage: A2A.Message = {
       ...message,
+      messageId: message.messageId || this.createMessageId(), // Use existing ID or generate new one
       taskId: task.id,
     }
 

@@ -8,6 +8,7 @@ import {
 import { getDb } from "./db.ts"
 import { selectDefaultModel } from "./model-registry.ts"
 import { ProviderService } from "./provider-service.ts"
+import { AgentConfigSchema, transformConfigToAgentInfo } from "./config-schema.ts"
 
 // Types for agent configuration
 interface AgentInfoRow {
@@ -117,8 +118,23 @@ export class AgentConfigService {
 
       const row = stmt.get() as AgentInfoRow | undefined
       if (!row) {
-        log.error("No agent info found in database")
-        throw new Error("Agent info not found")
+        log.info("No agent info found, creating default configuration")
+        
+        // Use Zod schema defaults to create clean default configuration
+        const defaultConfig = AgentConfigSchema.parse({})
+        const defaultAgentInfo = transformConfigToAgentInfo(defaultConfig)
+        
+        log.info("Created default agent config:", {
+          name: defaultAgentInfo.name,
+          description: defaultAgentInfo.description,
+          capabilityCount: defaultAgentInfo.capabilities.length
+        })
+        
+        // Use existing updateAgentInfo logic to create defaults
+        this.updateAgentInfo(defaultAgentInfo)
+        
+        // Recursive call to get the newly created info
+        return this.getAgentInfo()
       }
 
       const capabilities = JSON.parse(row.capabilities || "[]")
