@@ -354,7 +354,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
     }
 
     let task: A2A.Task | null = null
-    let hasCapabilityCalls = false
+    let hasToolCalls = false
 
     // Queue for status updates that need to be yielded
     const statusUpdateQueue: A2A.TaskStatusUpdateEvent[] = []
@@ -404,10 +404,10 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
             (toolCalls && toolCalls.length > 0) ||
             (toolResults && toolResults.length > 0)
           ) {
-            hasCapabilityCalls = true
+            hasToolCalls = true
           }
 
-          if (hasCapabilityCalls) {
+          if (hasToolCalls) {
             if (!task) {
               throw new Error(
                 "Task should have been created on tool call start",
@@ -458,13 +458,13 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
             }`,
           )
           log.info(
-            `onFinish debug - hasCapabilityCalls: ${hasCapabilityCalls}, task: ${
+            `onFinish debug - hasCapabilityCalls: ${hasToolCalls}, task: ${
               task ? "exists" : "null"
             }`,
           )
 
           // Queue completion status update with the final full text if we have capability calls
-          if (hasCapabilityCalls && task) {
+          if (hasToolCalls && task) {
             // Update the response message with the final text
             responseMessage = this.taskService
               .addVercelResultToHistory(task, text, toolCalls, toolResults)
@@ -476,7 +476,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
             log.info("Task completed")
           } else {
             log.info(
-              `Skipping completion status - hasCapabilityCalls: ${hasCapabilityCalls}, task: ${
+              `Skipping completion status - hasCapabilityCalls: ${hasToolCalls}, task: ${
                 task ? "exists" : "null"
               }`,
             )
@@ -490,13 +490,15 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
         log.debug(`Stream event: ${e.type} - ${this.truncateForLog(e)}`)
         switch (e.type) {
           case "tool-input-start": {
-            log.info(`Tool input started: ${this.truncateForLog(e)}`)
-            task = this.taskService.createTask(
-              params.message.contextId!,
-              params.message,
-              params.metadata,
-            )
-            yield task
+            if (!task) {
+              log.info(`Tool input started: ${this.truncateForLog(e)}`)
+              task = this.taskService.createTask(
+                params.message.contextId!,
+                params.message,
+                params.metadata,
+              )
+              yield task
+            }
             const workingStatus = this.taskService.transitionState(
               task,
               "working",
