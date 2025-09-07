@@ -270,9 +270,9 @@ export function TaskStatusDisplay({ task, className }: TaskStatusDisplayProps) {
       {isExpanded && (
         <div className="mt-2 pr-1 min-w-0 relative">
           {/* Vertical timeline line with corner caps; line inset so corners are clean */}
-          <div className="pointer-events-none absolute left-2 top-4 bottom-4 w-px bg-border" />
-          <div className="pointer-events-none absolute left-2 -top-1 w-4 h-4 border-l border-t border-border rounded-tl-md bg-transparent" />
-          <div className="pointer-events-none absolute left-2 -bottom-1 w-4 h-4 border-l border-b border-border rounded-bl-md bg-transparent" />
+          <div className="pointer-events-none absolute left-2 top-3 bottom-3 w-px bg-border" />
+          <div className="pointer-events-none absolute left-2 top-0 w-3 h-3 border-l border-t border-border rounded-tl-md bg-transparent" />
+          <div className="pointer-events-none absolute left-2 bottom-0 w-3 h-3 border-l border-b border-border rounded-bl-md bg-transparent" />
           <div className="space-y-3 pl-5">
           {getHistoryMessages().map((msg, idx) => {
             const m = msg as {
