@@ -101,6 +101,72 @@ export function TaskStatusDisplay({ task, className }: TaskStatusDisplayProps) {
   const statusMessageText = getStatusMessageText()
   const description = statusMessageText
 
+  // Helpers to render history entries
+  const getHistoryMessages = () => {
+    const history = (task as unknown as { history?: unknown[] }).history
+    if (!Array.isArray(history) || history.length === 0) return [] as unknown[]
+    return history
+  }
+
+  const extractTextFromParts = (parts: unknown[]): string => {
+    try {
+      const texts = parts
+        .filter((p) => p && typeof p === "object" && "kind" in (p as any))
+        .map((p) => (p as { kind?: string; text?: string }))
+        .filter((p) => p.kind === "text" && typeof p.text === "string")
+        .map((p) => p.text!.trim())
+        .filter(Boolean)
+      return texts.join("\n\n").trim()
+    } catch {
+      return ""
+    }
+  }
+
+  const summarizeFunctionsFromParts = (parts: unknown[]) => {
+    const items: { type: "call" | "response"; name?: string; data?: unknown }[] = []
+    for (const part of parts) {
+      if (part && typeof part === "object") {
+        const anyPart = part as any
+        if (anyPart.function_call) {
+          items.push({
+            type: "call",
+            name: String(anyPart.function_call.name || "function"),
+            data: anyPart.function_call.args ?? {},
+          })
+        }
+        if (anyPart.function_response) {
+          items.push({
+            type: "response",
+            name: undefined,
+            data: anyPart.function_response.response,
+          })
+        }
+      }
+    }
+    return items
+  }
+
+  // Extract DataParts from parts array (supports A2A style and legacy variants)
+  const extractDataParts = (parts: unknown[]) => {
+    type DataItem = { mediaType?: string; data: unknown }
+    const items: DataItem[] = []
+    for (const part of parts) {
+      if (!part || typeof part !== "object") continue
+      const p = part as any
+      // A2A-conventional: { kind: 'data', mediaType | mimeType, data }
+      if (p.kind === "data" && ("data" in p)) {
+        items.push({ mediaType: p.mediaType || p.mimeType, data: p.data })
+        continue
+      }
+      // Fallback: part that has data + media/mimeType, without kind marker
+      if ("data" in p && ("mediaType" in p || "mimeType" in p)) {
+        items.push({ mediaType: p.mediaType || p.mimeType, data: p.data })
+        continue
+      }
+    }
+    return items
+  }
+
   return (
     <Card className={cn("w-full mb-2", className)}>
       <CardHeader className="pb-2">
@@ -216,6 +282,171 @@ export function TaskStatusDisplay({ task, className }: TaskStatusDisplayProps) {
                       </div>
                     </div>
                   ))}
+                </div>
+              </div>
+            )}
+
+            {getHistoryMessages().length > 0 && (
+              <div>
+                <span className="font-medium text-muted-foreground text-sm">
+                  History: {getHistoryMessages().length}
+                </span>
+                <div className="mt-1 space-y-2 max-h-64 overflow-y-auto overflow-x-hidden pr-1 min-w-0">
+                  {getHistoryMessages().map((msg, idx) => {
+                    const m = msg as {
+                      role?: string
+                      parts?: unknown[]
+                      content?: { parts?: unknown[] }
+                      timestamp?: string | number
+                    }
+                    const parts = Array.isArray(m.parts)
+                      ? m.parts
+                      : (m.content && Array.isArray(m.content.parts))
+                      ? m.content.parts
+                      : []
+                    const text = parts && parts.length > 0
+                      ? extractTextFromParts(parts)
+                      : ""
+                    const funcs = parts && parts.length > 0
+                      ? summarizeFunctionsFromParts(parts)
+                      : []
+                    const dataParts = parts && parts.length > 0
+                      ? extractDataParts(parts)
+                      : []
+                    const roleLabel = m.role ? m.role : "event"
+                    const timeLabel = m.timestamp
+                      ? (() => {
+                        try {
+                          const t = typeof m.timestamp === "number"
+                            ? new Date(m.timestamp * 1000)
+                            : new Date(m.timestamp)
+                          return t.toLocaleTimeString()
+                        } catch {
+                          return undefined
+                        }
+                      })()
+                      : undefined
+
+                    return (
+                      <div key={idx} className="bg-muted/40 p-2 rounded border">
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-[11px] uppercase tracking-wide text-muted-foreground">
+                            {roleLabel}
+                          </span>
+                          {timeLabel && (
+                            <span className="text-[10px] text-muted-foreground">
+                              {timeLabel}
+                            </span>
+                          )}
+                        </div>
+                        {text && (
+                          <div className="text-xs text-foreground whitespace-pre-wrap break-words">
+                             {text}
+                          </div>
+                        )}
+                        {funcs.length > 0 && (
+                          <div className="mt-2 space-y-1">
+                            {funcs.map((f, i) => (
+                              <div key={i} className="text-[11px] text-muted-foreground">
+                                {f.type === "call"
+                                  ? (
+                                    <>
+                                      <span className="font-medium">Function call</span>
+                                      {f.name ? `: ${f.name}` : ":"}
+                                       {f.data !== undefined && (
+                                         <pre className="mt-1 bg-background/60 p-2 rounded border text-[11px] max-w-full overflow-x-auto whitespace-pre-wrap break-words">
+                                           {(() => {
+                                             try {
+                                               return JSON.stringify(f.data, null, 2)
+                                             } catch {
+                                               return String(f.data)
+                                             }
+                                           })()}
+                                         </pre>
+                                       )}
+                                    </>
+                                  )
+                                  : (
+                                    <>
+                                      <span className="font-medium">Function response:</span>
+                                       {f.data !== undefined && (
+                                         <pre className="mt-1 bg-background/60 p-2 rounded border text-[11px] max-w-full overflow-x-auto whitespace-pre-wrap break-words">
+                                           {(() => {
+                                             try {
+                                               return JSON.stringify(f.data, null, 2)
+                                             } catch {
+                                               return String(f.data)
+                                             }
+                                           })()}
+                                         </pre>
+                                       )}
+                                    </>
+                                  )}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        {dataParts.length > 0 && (
+                          <div className="mt-2 space-y-2">
+                            {dataParts.map((d, i) => {
+                              const media = d.mediaType || "unknown"
+                              const isImage = typeof d.data === "string" && media.startsWith("image/")
+                              const renderData = () => {
+                                if (isImage) {
+                                  const src = (d.data as string).startsWith("data:")
+                                    ? (d.data as string)
+                                    : `data:${media};base64,${String(d.data)}`
+                                  return (
+                                    <img
+                                      src={src}
+                                      alt={media}
+                                      className="max-h-40 max-w-full rounded border"
+                                    />
+                                  )
+                                }
+                                // JSON-like
+                                const asString = typeof d.data === "string" ? d.data : undefined
+                                const looksJson = (media.includes("json") || (asString && asString.trim().startsWith("{") || asString?.trim().startsWith("[")))
+                                if (looksJson) {
+                                  try {
+                                    const obj = typeof d.data === "string" ? JSON.parse(d.data) : d.data
+                                    return (
+                                      <pre className="bg-background/60 p-2 rounded border text-[11px] max-w-full overflow-x-auto whitespace-pre-wrap break-words">
+                                        {JSON.stringify(obj, null, 2)}
+                                      </pre>
+                                    )
+                                  } catch {
+                                    // fall-through to raw text
+                                  }
+                                }
+                                // Plain text or fallback
+                                if (typeof d.data === "string") {
+                                  return (
+                                    <pre className="bg-background/60 p-2 rounded border text-[11px] max-w-full overflow-x-auto whitespace-pre-wrap break-words">
+                                      {d.data.length > 200 ? `${d.data.slice(0, 200)}…` : d.data}
+                                    </pre>
+                                  )
+                                }
+                                return (
+                                  <pre className="bg-background/60 p-2 rounded border text-[11px] max-w-full overflow-x-auto whitespace-pre-wrap break-words">
+                                    {(() => { try { return JSON.stringify(d.data, null, 2) } catch { return String(d.data) } })()}
+                                  </pre>
+                                )
+                              }
+                              return (
+                                <div key={i} className="text-[11px]">
+                                  <div className="text-muted-foreground mb-1">
+                                    Data part{media ? ` (${media})` : ""}
+                                  </div>
+                                  {renderData()}
+                                </div>
+                              )
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
                 </div>
               </div>
             )}
