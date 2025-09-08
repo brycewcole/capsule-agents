@@ -1,7 +1,7 @@
 import type * as A2A from "@a2a-js/sdk"
-import { TaskRepository } from "./task-storage.ts"
-import { ArtifactRepository } from "./artifact-storage.ts"
-import { messageRepository } from "./storage.ts"
+import { TaskRepository } from "../repositories/task.repository.ts"
+import { ArtifactRepository } from "../repositories/artifact.repository.ts"
+import { messageRepository } from "../repositories/message.repository.ts"
 
 type TaskState = A2A.Task["status"]["state"]
 
@@ -13,9 +13,6 @@ export class TaskService {
     this.taskStorage = taskStorage
   }
 
-  /**
-   * Creates a new task with initial state
-   */
   createTask(
     contextId: string,
     initialMessage: A2A.Message,
@@ -35,13 +32,11 @@ export class TaskService {
       metadata: metadata || {},
     }
 
-    // Save the task first
     this.taskStorage.setTask(taskId, task)
 
-    // Then add the initial message as part of task history
     const taskMessage: A2A.Message = {
       ...initialMessage,
-      messageId: this.createMessageId(), // Generate new ID to avoid duplicates
+      messageId: this.createMessageId(),
       taskId,
     }
     this.addMessageToHistory(task, taskMessage)
@@ -49,9 +44,6 @@ export class TaskService {
     return task
   }
 
-  /**
-   * Transitions task to a new state and generates update event
-   */
   transitionState(
     task: A2A.Task,
     newState: TaskState,
@@ -63,7 +55,6 @@ export class TaskService {
     let final = false
     let statusMessage: A2A.Message | undefined
 
-    // Create status message if statusText provided
     if (statusText) {
       statusMessage = {
         kind: "message",
@@ -74,12 +65,10 @@ export class TaskService {
         contextId: task.contextId,
       }
 
-      // Store the status message
       messageRepository.createMessage(statusMessage)
       task.status.message = statusMessage
     }
 
-    // Determine if this is a final state
     switch (newState) {
       case "failed":
       case "completed":
@@ -96,7 +85,6 @@ export class TaskService {
         break
     }
 
-    // Update the task
     this.taskStorage.setTask(task.id, task)
 
     return {
@@ -108,9 +96,6 @@ export class TaskService {
     }
   }
 
-  /**
-   * Cancels a task if it's in a cancelable state
-   */
   cancelTask(task: A2A.Task): void {
     if (
       task.status.state === "completed" ||
@@ -123,26 +108,18 @@ export class TaskService {
     this.transitionState(task, "canceled", "Task canceled")
   }
 
-  /**
-   * Adds a message to task history
-   */
   addMessageToHistory(task: A2A.Task, message: A2A.Message): void {
-    // Store message with task association, ensuring unique message ID
     const taskMessage: A2A.Message = {
       ...message,
-      messageId: message.messageId || this.createMessageId(), // Use existing ID or generate new one
+      messageId: message.messageId || this.createMessageId(),
       taskId: task.id,
     }
 
     messageRepository.createMessage(taskMessage)
 
-    // Update task to reflect new history (the task storage will rebuild history from messages)
     this.taskStorage.setTask(task.id, task)
   }
 
-  /**
-   * Creates an artifact for a task
-   */
   createArtifact(
     task: A2A.Task,
     artifact: Omit<A2A.Artifact, "artifactId">,
@@ -165,9 +142,6 @@ export class TaskService {
     }
   }
 
-  /**
-   * Adds a tool call and result as messages to task history
-   */
   addToolCallToHistory(
     task: A2A.Task,
     toolName: string,
@@ -176,7 +150,6 @@ export class TaskService {
   ): void {
     const callId = this.createMessageId()
 
-    // Create tool call message
     const toolCallMessage: A2A.Message = {
       kind: "message",
       messageId: this.createMessageId(),
@@ -194,7 +167,6 @@ export class TaskService {
       contextId: task.contextId,
     }
 
-    // Create tool result message
     const toolResultMessage: A2A.Message = {
       kind: "message",
       messageId: this.createMessageId(),
@@ -212,14 +184,10 @@ export class TaskService {
       contextId: task.contextId,
     }
 
-    // Add both messages to history
     this.addMessageToHistory(task, toolCallMessage)
     this.addMessageToHistory(task, toolResultMessage)
   }
 
-  /**
-   * Creates a response message and adds it to task history
-   */
   createResponseMessage(task: A2A.Task, text: string): A2A.Message {
     const responseMessage: A2A.Message = {
       kind: "message",
@@ -234,9 +202,6 @@ export class TaskService {
     return responseMessage
   }
 
-  /**
-   * Extracts text content from a message
-   */
   extractTextFromMessage(message: A2A.Message): string {
     return message.parts
       .filter((part): part is A2A.TextPart => part.kind === "text")
@@ -245,16 +210,10 @@ export class TaskService {
       .join(" ")
   }
 
-  /**
-   * Get a task by ID
-   */
   getTask(taskId: string): A2A.Task | undefined {
     return this.taskStorage.getTask(taskId)
   }
 
-  /**
-   * Get all tasks for a context
-   */
   getTasksByContext(contextId: string): A2A.Task[] {
     return this.taskStorage.getTasksByContext(contextId)
   }
@@ -263,3 +222,4 @@ export class TaskService {
     return `msg_${crypto.randomUUID()}`
   }
 }
+

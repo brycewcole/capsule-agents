@@ -10,7 +10,6 @@ function resolveDbPath() {
       ? envPath
       : "./data/sessions.db"
   } catch (_) {
-    // If Deno.env is not accessible for any reason, fallback to default
     return "./data/sessions.db"
   }
 }
@@ -77,7 +76,7 @@ function createTables(db: Database) {
         FOREIGN KEY(task_id) REFERENCES tasks(id) ON DELETE CASCADE
     );
 
-    -- Agent Configuration: Separate from A2A protocol data
+    -- Agent Configuration
     CREATE TABLE IF NOT EXISTS agent_info (
         key                 INTEGER PRIMARY KEY CHECK (key = 1),
         name                TEXT NOT NULL DEFAULT 'Capsule Agent',
@@ -87,7 +86,7 @@ function createTables(db: Database) {
         tools               TEXT NOT NULL DEFAULT '[]'
     );
 
-    -- Create indexes for better performance
+    -- Indexes
     CREATE INDEX IF NOT EXISTS idx_tasks_context_id ON tasks(context_id);
     CREATE INDEX IF NOT EXISTS idx_messages_context_id ON messages(context_id);
     CREATE INDEX IF NOT EXISTS idx_messages_task_id ON messages(task_id);
@@ -98,3 +97,4 @@ function createTables(db: Database) {
 
   console.log("Clean database schema created successfully.")
 }
+

@@ -1,9 +1,8 @@
 // deno-lint-ignore-file require-await
 import type * as A2A from "@a2a-js/sdk"
 import type { TaskStore } from "@a2a-js/sdk/server"
-import { ArtifactRepository } from "./artifact-storage.ts"
-import { getDb } from "./db.ts"
-import { getRepository, type DbTaskRow } from "./repository.ts"
+import { ArtifactRepository } from "./artifact.repository.ts"
+import { getDb } from "../infrastructure/db.ts"
 
 export interface StoredTask {
   id: string
@@ -33,33 +32,49 @@ export class TaskRepository implements TaskStore {
   }
 
   setTask(id: string, task: A2A.Task): void {
-    const repo = getRepository()
+    const db = getDb()
     const now = Date.now() / 1000
     const existing = this.getStoredTask(id)
     const createdAt = existing ? existing.createdAt : now
-    const row: DbTaskRow = {
+    const stmt = db.prepare(`
+      INSERT OR REPLACE INTO tasks (id, context_id, status_state, status_timestamp, status_message_id, metadata, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `)
+    stmt.run(
       id,
-      context_id: task.contextId,
-      status_state: task.status.state,
-      status_timestamp: task.status.timestamp,
-      status_message_id: task.status.message?.messageId || null,
-      metadata: JSON.stringify(task.metadata || {}),
-      created_at: createdAt,
-      updated_at: now,
-    }
-    repo.upsertTask(row)
+      task.contextId,
+      task.status.state,
+      task.status.timestamp,
+      task.status.message?.messageId || null,
+      JSON.stringify(task.metadata || {}),
+      createdAt,
+      now,
+    )
   }
 
   getTask(id: string): A2A.Task | undefined {
     const storedTask = this.getStoredTask(id)
     if (!storedTask) return undefined
-
     return this.buildA2ATask(storedTask)
   }
 
   getStoredTask(id: string): StoredTask | undefined {
-    const repo = getRepository()
-    const row = repo.getTaskRow(id)
+    const db = getDb()
+    const row = db.prepare(`
+      SELECT id, context_id, status_state, status_timestamp, status_message_id, metadata, created_at, updated_at
+      FROM tasks WHERE id = ?
+    `).get(id) as
+      | {
+        id: string
+        context_id: string
+        status_state: string
+        status_timestamp: string
+        status_message_id: string | null
+        metadata: string
+        created_at: number
+        updated_at: number
+      }
+      | undefined
     if (!row) return undefined
     return {
       id: row.id,
@@ -74,42 +89,63 @@ export class TaskRepository implements TaskStore {
   }
 
   getAllTasks(): A2A.Task[] {
-    const repo = getRepository()
-    const rows = repo.listAllTasks()
-    return rows.map((row) =>
-      this.buildA2ATask({
-        id: row.id,
-        contextId: row.context_id,
-        statusState: row.status_state as A2A.Task["status"]["state"],
-        statusTimestamp: row.status_timestamp,
-        statusMessageId: row.status_message_id || undefined,
-        metadata: JSON.parse(row.metadata),
-        createdAt: row.created_at,
-        updatedAt: row.updated_at,
-      })
-    )
+    const db = getDb()
+    const rows = db.prepare(`
+      SELECT id, context_id, status_state, status_timestamp, status_message_id, metadata, created_at, updated_at
+      FROM tasks ORDER BY created_at DESC
+    `).all() as {
+      id: string
+      context_id: string
+      status_state: string
+      status_timestamp: string
+      status_message_id: string | null
+      metadata: string
+      created_at: number
+      updated_at: number
+    }[]
+    return rows.map((row) => this.buildA2ATask({
+      id: row.id,
+      contextId: row.context_id,
+      statusState: row.status_state as A2A.Task["status"]["state"],
+      statusTimestamp: row.status_timestamp,
+      statusMessageId: row.status_message_id || undefined,
+      metadata: JSON.parse(row.metadata),
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    }))
   }
 
   getTasksByContext(contextId: string): A2A.Task[] {
-    const repo = getRepository()
-    const rows = repo.listTasksByContext(contextId)
-    return rows.map((row) =>
-      this.buildA2ATask({
-        id: row.id,
-        contextId: row.context_id,
-        statusState: row.status_state as A2A.Task["status"]["state"],
-        statusTimestamp: row.status_timestamp,
-        statusMessageId: row.status_message_id || undefined,
-        metadata: JSON.parse(row.metadata),
-        createdAt: row.created_at,
-        updatedAt: row.updated_at,
-      })
-    )
+    const db = getDb()
+    const rows = db.prepare(`
+      SELECT id, context_id, status_state, status_timestamp, status_message_id, metadata, created_at, updated_at
+      FROM tasks WHERE context_id = ? ORDER BY created_at ASC
+    `).all(contextId) as {
+      id: string
+      context_id: string
+      status_state: string
+      status_timestamp: string
+      status_message_id: string | null
+      metadata: string
+      created_at: number
+      updated_at: number
+    }[]
+    return rows.map((row) => this.buildA2ATask({
+      id: row.id,
+      contextId: row.context_id,
+      statusState: row.status_state as A2A.Task["status"]["state"],
+      statusTimestamp: row.status_timestamp,
+      statusMessageId: row.status_message_id || undefined,
+      metadata: JSON.parse(row.metadata),
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    }))
   }
 
   deleteTask(id: string): boolean {
-    const repo = getRepository()
-    return repo.deleteTask(id)
+    const db = getDb()
+    const res = db.prepare(`DELETE FROM tasks WHERE id = ?`).run(id) as unknown as { changes: number }
+    return res.changes > 0
   }
 
   // Build A2A Task from stored data, including messages and artifacts
@@ -149,8 +185,16 @@ export class TaskRepository implements TaskStore {
 
   // Get messages that belong to this task
   private getTaskMessages(taskId: string): A2A.Message[] {
-    const repo = getRepository()
-    const rows = repo.listMessagesByTask(taskId)
+    const db = getDb()
+    const rows = db.prepare(`
+      SELECT id, context_id, role, parts, timestamp FROM messages WHERE task_id = ? ORDER BY timestamp ASC
+    `).all(taskId) as {
+      id: string
+      context_id: string
+      role: string
+      parts: string
+      timestamp: number
+    }[]
     return rows.map((row) => ({
       kind: "message" as const,
       messageId: row.id,
@@ -164,8 +208,12 @@ export class TaskRepository implements TaskStore {
 
   // Get status message by ID
   private getStatusMessage(messageId: string): A2A.Message | undefined {
-    const repo = getRepository()
-    const row = repo.getMessage(messageId)
+    const db = getDb()
+    const row = db.prepare(`
+      SELECT id, context_id, task_id, role, parts, timestamp FROM messages WHERE id = ?
+    `).get(messageId) as
+      | { id: string; context_id: string; task_id: string | null; role: string; parts: string; timestamp: number }
+      | undefined
     if (!row) return undefined
     return {
       kind: "message" as const,

@@ -4,9 +4,9 @@ import {
   isA2ACapability,
   isMCPCapability,
   isPrebuiltCapability,
-} from "./capability-types.ts"
-import { getDb } from "./db.ts"
-import { selectDefaultModel } from "./model-registry.ts"
+} from "../lib/capability-types.ts"
+import { getDb } from "../infrastructure/db.ts"
+import { selectDefaultModel } from "../lib/model-registry.ts"
 import { ProviderService } from "./provider-service.ts"
 import { AgentConfigSchema, transformConfigToAgentInfo } from "./config-schema.ts"
 
@@ -202,62 +202,14 @@ export class AgentConfigService {
     }
   }
 
-  // Validate capabilities using the new type system
   private validateCapabilities(capabilities: Capability[]): void {
-    for (const capability of capabilities) {
-      if (!capability.name || typeof capability.name !== "string") {
-        throw new Error(`Capability is missing a valid name`)
-      }
-
-      if (typeof capability.enabled !== "boolean") {
-        throw new Error(
-          `Capability '${capability.name}' is missing enabled state`,
-        )
-      }
-
-      if (isA2ACapability(capability)) {
-        log.info("Validating A2A capability:", capability.name)
-        if (!capability.agentUrl || typeof capability.agentUrl !== "string") {
-          throw new Error(
-            `A2A capability '${capability.name}' is missing or has invalid agentUrl`,
-          )
-        }
-        try {
-          new URL(capability.agentUrl)
-        } catch {
-          throw new Error(
-            `A2A capability '${capability.name}' has invalid URL: ${capability.agentUrl}`,
-          )
-        }
-      } else if (isMCPCapability(capability)) {
-        log.info("Validating MCP capability:", capability.name)
-        if (!capability.serverUrl || typeof capability.serverUrl !== "string") {
-          throw new Error(
-            `MCP capability '${capability.name}' is missing or has invalid serverUrl`,
-          )
-        }
-        try {
-          new URL(capability.serverUrl)
-        } catch {
-          throw new Error(
-            `MCP capability '${capability.name}' has invalid URL: ${capability.serverUrl}`,
-          )
-        }
-      } else if (isPrebuiltCapability(capability)) {
-        log.info("Validating prebuilt capability:", capability.name)
-        if (
-          !capability.subtype ||
-          !["file_access", "web_search", "memory"].includes(
-            capability.subtype,
-          )
-        ) {
-          throw new Error(
-            `Prebuilt capability '${capability.name}' has invalid subtype: ${capability.subtype}`,
-          )
-        }
-      } else {
-        throw new Error(`Capability '${capability}' has invalid type`)
+    for (const cap of capabilities) {
+      if (
+        !isPrebuiltCapability(cap) && !isA2ACapability(cap) && !isMCPCapability(cap)
+      ) {
+        throw new Error(`Unknown capability type: ${JSON.stringify(cap)}`)
       }
     }
   }
 }
+

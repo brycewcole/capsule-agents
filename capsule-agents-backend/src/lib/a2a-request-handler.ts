@@ -9,12 +9,13 @@ import { executeA2ACall } from "../capabilities/a2a.ts"
 import { webSearchSkill, webSearchTool } from "../capabilities/brave-search.ts"
 import { fileAccessSkill, fileAccessTool } from "../capabilities/file-access.ts"
 import { memorySkill, memoryTool } from "../capabilities/memory.ts"
-import { AgentConfigService } from "./agent-config.ts"
+import { AgentConfigService } from "../services/agent-config.ts"
 import { isMCPCapability } from "./capability-types.ts"
-import { ProviderService } from "./provider-service.ts"
-import { contextRepository, messageRepository } from "./storage.ts"
-import { TaskService } from "./task-service.ts"
-import { TaskRepository } from "./task-storage.ts"
+import { ProviderService } from "../services/provider-service.ts"
+import { contextRepository } from "../repositories/context.repository.ts"
+import { messageRepository } from "../repositories/message.repository.ts"
+import { TaskService } from "../services/task.service.ts"
+import { TaskRepository } from "../repositories/task.repository.ts"
 
 interface MCPToolsDisposable {
   tools: Record<string, Vercel.Tool>

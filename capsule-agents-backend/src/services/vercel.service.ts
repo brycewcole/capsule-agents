@@ -5,15 +5,9 @@ import {
   isToolResultData,
   type ToolCallData,
   type ToolResultData,
-} from "./types.ts"
+} from "../lib/types.ts"
 
-/**
- * Service for converting A2A protocol types to Vercel AI SDK types
- */
 export class VercelService {
-  /**
-   * Convert A2A Message to Vercel UIMessage
-   */
   static toUIMessage(message: A2A.Message): Vercel.UIMessage {
     const text = message.parts
       .filter((part): part is A2A.TextPart => part.kind === "text")
@@ -28,16 +22,10 @@ export class VercelService {
     }
   }
 
-  /**
-   * Convert array of A2A Messages to Vercel UIMessages
-   */
   static toUIMessages(messages: A2A.Message[]): Vercel.UIMessage[] {
     return messages.map((msg) => this.toUIMessage(msg))
   }
 
-  /**
-   * Extract text content from A2A Message
-   */
   static extractText(message: A2A.Message): string {
     return message.parts
       .filter((part): part is A2A.TextPart => part.kind === "text")
@@ -46,9 +34,6 @@ export class VercelService {
       .join(" ")
   }
 
-  /**
-   * Create Vercel UIMessage from text
-   */
   static createAssistantUIMessage(text: string): Vercel.UIMessage {
     return {
       id: crypto.randomUUID(),
@@ -57,9 +42,6 @@ export class VercelService {
     }
   }
 
-  /**
-   * Convert A2A Message parts to Vercel UIMessage parts
-   */
   static toVercelMessageParts(
     parts: A2A.Part[],
   ): Vercel.UIMessagePart<Vercel.UIDataTypes, Vercel.UITools>[] {
@@ -127,9 +109,6 @@ export class VercelService {
     return messageParts
   }
 
-  /**
-   * Create comprehensive Vercel UIMessage from A2A Message with full part support
-   */
   static createUIMessage(message: A2A.Message): Vercel.UIMessage {
     const parts = this.toVercelMessageParts(message.parts)
 
@@ -140,3 +119,4 @@ export class VercelService {
     }
   }
 }
+
