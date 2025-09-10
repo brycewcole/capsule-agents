@@ -202,7 +202,9 @@ export class TaskRepository implements TaskStore {
       taskId: taskId,
       role: row.role as "user" | "agent",
       parts: JSON.parse(row.parts),
-      timestamp: new Date(row.timestamp * 1000).toISOString(),
+      metadata: {
+        timestamp: new Date(row.timestamp * 1000).toISOString(),
+      },
     }))
   }
 

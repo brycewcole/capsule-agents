@@ -190,7 +190,7 @@ export default function ChatInterface({
           content?: string
           parts?: Array<{ text?: string }>
           capabilityCalls?: unknown
-          timestamp?: number
+          metadata?: { timestamp?: string | number }
         }
       >).map(
         (msg) => {
@@ -206,13 +206,17 @@ export default function ChatInterface({
               p: { text?: string },
             ) => (typeof p?.text === "string" ? p.text : "")).join("")
             : ""
+          // Extract timestamp from metadata
+          const timestamp = msg.metadata?.timestamp
+            ? typeof msg.metadata.timestamp === "string"
+              ? new Date(msg.metadata.timestamp).getTime() / 1000
+              : msg.metadata.timestamp
+            : undefined
           return {
             role,
             content,
             capabilityCalls: msg.capabilityCalls || undefined,
-            timestamp: typeof msg.timestamp === "number"
-              ? msg.timestamp
-              : undefined,
+            timestamp,
           } as Message
         },
       ).filter((m) => m.content && m.content.trim().length > 0)

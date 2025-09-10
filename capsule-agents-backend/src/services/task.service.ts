@@ -157,10 +157,10 @@ export class TaskService {
       parts: [{
         kind: "data",
         data: {
-          type: "tool_call",
-          id: callId,
-          name: toolName,
-          args: toolArgs,
+          type: "tool-call",
+          toolCallId: callId,
+          toolName: toolName,
+          input: toolArgs,
         },
       }],
       taskId: task.id,
@@ -174,10 +174,10 @@ export class TaskService {
       parts: [{
         kind: "data",
         data: {
-          type: "tool_result",
-          id: callId,
-          name: toolName,
-          result: toolResult,
+          type: "tool-result",
+          toolCallId: callId,
+          toolName: toolName,
+          output: toolResult,
         },
       }],
       taskId: task.id,

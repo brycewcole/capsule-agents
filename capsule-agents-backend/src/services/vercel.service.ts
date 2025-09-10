@@ -1,17 +1,13 @@
 import type * as A2A from "@a2a-js/sdk"
 import type { UIDataTypes, UIMessage, UIMessagePart, UITools } from "ai"
+import { isToolCallData, isToolResultData } from "../lib/types.ts"
 import { MessageRepository } from "../repositories/message.repository.ts"
 import { TaskRepository } from "../repositories/task.repository.ts"
-import { isToolCallData, isToolResultData } from "../lib/types.ts"
-
-interface MessageWithTimestamp extends A2A.Message {
-  timestamp: string
-}
 
 export class VercelService {
   constructor(
     private messageRepository: MessageRepository,
-    private taskRepository: TaskRepository
+    private taskRepository: TaskRepository,
   ) {}
 
   private transformA2AToUIMessage(a2aMessage: A2A.Message): UIMessage {
@@ -27,24 +23,22 @@ export class VercelService {
         })
       } else if (part.kind === "data") {
         const dataPart = part
-        if (dataPart.data && isToolCallData(dataPart.data)) {
+        if (isToolCallData(dataPart.data)) {
           const data = dataPart.data
           uiParts.push({
-            type: `tool-${data.name}`,
-            toolCallId: data.id,
+            type: `tool-${data.toolName}`,
+            toolCallId: data.toolCallId,
             state: "input-available",
-            input: data.args || {},
-            providerExecuted: true,
+            input: data.input || {},
           })
-        } else if (dataPart.data && isToolResultData(dataPart.data)) {
+        } else if (isToolResultData(dataPart.data)) {
           const data = dataPart.data
           uiParts.push({
-            type: `tool-${data.name}`,
-            toolCallId: data.id,
+            type: `tool-${data.toolName}`,
+            toolCallId: data.toolCallId,
             state: "output-available",
             input: {},
-            output: data.response,
-            providerExecuted: true,
+            output: data.output,
           })
         }
       }
@@ -67,15 +61,24 @@ export class VercelService {
     const taskMessages = tasks.flatMap((task) => task.history || [])
 
     const allMessages = [...contextMessages, ...taskMessages]
-      .filter((message): message is MessageWithTimestamp =>
-        Boolean((message as MessageWithTimestamp).timestamp)
-      )
-      .sort((a, b) => {
-        const timeA = new Date(a.timestamp).getTime()
-        const timeB = new Date(b.timestamp).getTime()
-        return timeA - timeB
-      })
 
-    return allMessages.map((message) => this.transformA2AToUIMessage(message))
+    // Validate all messages have timestamps
+    for (const message of allMessages) {
+      if (!message.metadata?.timestamp) {
+        throw new Error(
+          `Message ${message.messageId} is missing timestamp in metadata`,
+        )
+      }
+    }
+
+    const sortedMessages = allMessages.sort((a, b) => {
+      const timeA = new Date(a.metadata!.timestamp as string).getTime()
+      const timeB = new Date(b.metadata!.timestamp as string).getTime()
+      return timeA - timeB
+    })
+
+    return sortedMessages.map((message) =>
+      this.transformA2AToUIMessage(message)
+    )
   }
 }

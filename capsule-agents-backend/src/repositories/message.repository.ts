@@ -89,7 +89,9 @@ export class MessageRepository {
       taskId: row.task_id || undefined,
       role: row.role,
       parts: JSON.parse(row.parts),
-      timestamp: new Date(row.timestamp * 1000).toISOString(),
+      metadata: {
+        timestamp: new Date(row.timestamp * 1000).toISOString(),
+      },
     }))
   }
 
@@ -112,7 +114,9 @@ export class MessageRepository {
       taskId: row.task_id || undefined,
       role: row.role,
       parts: JSON.parse(row.parts),
-      timestamp: new Date(row.timestamp * 1000).toISOString(),
+      metadata: {
+        timestamp: new Date(row.timestamp * 1000).toISOString(),
+      },
     }))
   }
 
