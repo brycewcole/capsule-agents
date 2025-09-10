@@ -134,11 +134,3 @@ export class ChatService {
   }
 }
 
-// Create singleton instances and exports used by index.ts
-export const chatService = new ChatService()
-export const createChat = chatService.createChat.bind(chatService)
-export const createChatWithId = (contextId: string) => chatService.createChat(contextId)
-export const getChatsList = chatService.getChatsList.bind(chatService)
-export const getChatWithHistory = chatService.getChatWithHistory.bind(chatService)
-export const deleteChatById = chatService.deleteChatById.bind(chatService)
-export const updateChatMetadata = chatService.updateChatMetadata.bind(chatService)

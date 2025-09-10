@@ -6,6 +6,7 @@ import { serveStatic } from "hono/deno"
 import { createA2AController } from "./controllers/a2a.controller.ts"
 import { createAgentController } from "./controllers/agent.controller.ts"
 import { createChatController } from "./controllers/chat.controller.ts"
+import { ChatService } from "./services/chat.service.ts"
 import { createHealthController } from "./controllers/health.controller.ts"
 import { getDb } from "./infrastructure/db.ts"
 import { CapsuleAgentA2ARequestHandler } from "./lib/a2a-request-handler.ts"
@@ -61,6 +62,7 @@ try {
 
 // Instantiate services/handlers
 const agentConfigService = new AgentConfigService(configFileAgentInfo)
+const chatService = new ChatService()
 const a2aRequestHandler = new CapsuleAgentA2ARequestHandler(agentConfigService)
 const jsonRpcHandler = new JsonRpcTransportHandler(a2aRequestHandler)
 
@@ -68,7 +70,7 @@ const jsonRpcHandler = new JsonRpcTransportHandler(a2aRequestHandler)
 app.route("/", createA2AController({ jsonRpcHandler, a2aRequestHandler }))
 app.route("/api", createHealthController())
 app.route("/api", createAgentController(agentConfigService))
-app.route("/api", createChatController())
+app.route("/api", createChatController(chatService))
 
 // Serve static files at /editor
 app.use(

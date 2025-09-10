@@ -1,8 +1,8 @@
 import { Hono } from "hono"
 import * as log from "@std/log"
-import { chatService } from "../services/chat.service.ts"
+import { ChatService } from "../services/chat.service.ts"
 
-export function createChatController() {
+export function createChatController(chatService: ChatService) {
   const router = new Hono()
 
   router.post("/chat/create", async (c) => {
