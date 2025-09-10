@@ -9,13 +9,14 @@ import { executeA2ACall } from "../capabilities/a2a.ts"
 import { webSearchSkill, webSearchTool } from "../capabilities/brave-search.ts"
 import { fileAccessSkill, fileAccessTool } from "../capabilities/file-access.ts"
 import { memorySkill, memoryTool } from "../capabilities/memory.ts"
-import { AgentConfigService } from "../services/agent-config.ts"
-import { isMCPCapability } from "./capability-types.ts"
-import { ProviderService } from "../services/provider-service.ts"
 import { contextRepository } from "../repositories/context.repository.ts"
 import { messageRepository } from "../repositories/message.repository.ts"
-import { TaskService } from "../services/task.service.ts"
 import { TaskRepository } from "../repositories/task.repository.ts"
+import { AgentConfigService } from "../services/agent-config.ts"
+import { ProviderService } from "../services/provider-service.ts"
+import { TaskService } from "../services/task.service.ts"
+import { VercelService } from "../services/vercel.service.ts"
+import { isMCPCapability } from "./capability-types.ts"
 
 interface MCPToolsDisposable {
   tools: Record<string, Vercel.Tool>
@@ -317,6 +318,10 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
   > {
     if (params.message.contextId == null) {
       params.message.contextId = crypto.randomUUID()
+      contextRepository.createContext(params.message.contextId)
+    }
+    if (!contextRepository.getContext(params.message.contextId)) {
+      throw new Error("Invalid contextId: " + params.message.contextId)
     }
 
     let task: A2A.Task | null = null
@@ -326,12 +331,6 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
     const statusUpdateQueue: A2A.TaskStatusUpdateEvent[] = []
 
     try {
-      // Ensure context exists
-      if (!contextRepository.getContext(params.message.contextId)) {
-        contextRepository.createContext(params.message.contextId)
-      }
-
-      // Get context messages for history
       const contextMessages = messageRepository.getContextMessages(
         params.message.contextId,
         false,
@@ -343,37 +342,11 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
       // Add user message to context
       messageRepository.createMessage(params.message)
 
-      // Convert A2A messages to Vercel AI format for the model
-      const vercelMessages: Vercel.UIMessage[] = []
-
-      for (const message of contextMessages) {
-        const content = message.parts
-          .filter((part): part is A2A.TextPart => part.kind === "text")
-          .map((part) => part.text)
-          .join("")
-
-        if (content) {
-          vercelMessages.push({
-            id: message.messageId,
-            role: message.role === "agent" ? "assistant" : "user",
-            parts: [{ type: "text", text: content }],
-          })
-        }
-      }
-
-      // Add current user message
-      const userContent = params.message.parts
-        .filter((part): part is A2A.TextPart => part.kind === "text")
-        .map((part) => part.text)
-        .join("")
-
-      if (userContent) {
-        vercelMessages.push({
-          id: params.message.messageId,
-          role: "user",
-          parts: [{ type: "text", text: userContent }],
-        })
-      }
+      // Convert A2A messages to Vercel AI UIMessage format using VercelService
+      const vercelMessages: Vercel.UIMessage[] = [
+        ...contextMessages.map((m) => VercelService.createUIMessage(m)),
+        VercelService.createUIMessage(params.message),
+      ]
 
       let tools = await this.getAvailableTools()
       await using mcpTools = await this.getMCPServers()
@@ -402,6 +375,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
             }, toolResults: ${this.truncateForLog(toolResults)}`,
           )
 
+          // Tool calls means use task
           if (
             (toolCalls && toolCalls.length > 0) ||
             (toolResults && toolResults.length > 0)

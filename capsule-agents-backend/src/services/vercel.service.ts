@@ -1,122 +1,81 @@
-import type * as Vercel from "ai"
 import type * as A2A from "@a2a-js/sdk"
-import {
-  isToolCallData,
-  isToolResultData,
-  type ToolCallData,
-  type ToolResultData,
-} from "../lib/types.ts"
+import type { UIDataTypes, UIMessage, UIMessagePart, UITools } from "ai"
+import { MessageRepository } from "../repositories/message.repository.ts"
+import { TaskRepository } from "../repositories/task.repository.ts"
+import { isToolCallData, isToolResultData } from "../lib/types.ts"
+
+interface MessageWithTimestamp extends A2A.Message {
+  timestamp: string
+}
 
 export class VercelService {
-  static toUIMessage(message: A2A.Message): Vercel.UIMessage {
-    const text = message.parts
-      .filter((part): part is A2A.TextPart => part.kind === "text")
-      .map((part) => part.text)
-      .filter(Boolean)
-      .join(" ")
+  constructor(
+    private messageRepository: MessageRepository,
+    private taskRepository: TaskRepository
+  ) {}
 
-    return {
-      id: message.messageId,
-      role: message.role as "user" | "assistant",
-      parts: [{ type: "text", text }],
-    }
-  }
+  private transformA2AToUIMessage(a2aMessage: A2A.Message): UIMessage {
+    const uiParts: UIMessagePart<UIDataTypes, UITools>[] = []
 
-  static toUIMessages(messages: A2A.Message[]): Vercel.UIMessage[] {
-    return messages.map((msg) => this.toUIMessage(msg))
-  }
-
-  static extractText(message: A2A.Message): string {
-    return message.parts
-      .filter((part): part is A2A.TextPart => part.kind === "text")
-      .map((part) => part.text)
-      .filter(Boolean)
-      .join(" ")
-  }
-
-  static createAssistantUIMessage(text: string): Vercel.UIMessage {
-    return {
-      id: crypto.randomUUID(),
-      role: "assistant",
-      parts: [{ type: "text", text }],
-    }
-  }
-
-  static toVercelMessageParts(
-    parts: A2A.Part[],
-  ): Vercel.UIMessagePart<Vercel.UIDataTypes, Vercel.UITools>[] {
-    const messageParts: Vercel.UIMessagePart<
-      Vercel.UIDataTypes,
-      Vercel.UITools
-    >[] = []
-
-    for (const part of parts) {
-      switch (part.kind) {
-        case "text":
-          messageParts.push({ type: "text", text: part.text || "" })
-          break
-
-        case "data": {
-          if (!part.data) {
-            throw new Error("Data part missing data property")
-          }
-
-          switch (part.data.type) {
-            case "function_call": {
-              if (!isToolCallData(part.data)) {
-                throw new Error(
-                  `Part is marked as function call but ${part.data} is not a valid ToolCallData`,
-                )
-              }
-              const toolCall: ToolCallData = part.data
-              messageParts.push({
-                type: "tool-call",
-                toolCallId: toolCall.id,
-                state: "input-available",
-                input: toolCall.args || {},
-              })
-              break
-            }
-
-            case "function_response": {
-              if (!isToolResultData(part.data)) {
-                throw new Error(
-                  `Part is marked as function response but ${part.data} is not a valid ToolResultData`,
-                )
-              }
-              const result: ToolResultData = part.data
-              messageParts.push({
-                type: "tool-result",
-                toolCallId: result.id,
-                state: "output-available",
-                input: result.args || {},
-                output: result.response,
-              })
-              break
-            }
-
-            default:
-              throw new Error(`Unsupported data type: ${part.data.type}`)
-          }
-          break
+    for (const part of a2aMessage.parts || []) {
+      if (part.kind === "text") {
+        const textPart = part
+        uiParts.push({
+          type: "text",
+          text: textPart.text,
+          state: "done",
+        })
+      } else if (part.kind === "data") {
+        const dataPart = part
+        if (dataPart.data && isToolCallData(dataPart.data)) {
+          const data = dataPart.data
+          uiParts.push({
+            type: `tool-${data.name}`,
+            toolCallId: data.id,
+            state: "input-available",
+            input: data.args || {},
+            providerExecuted: true,
+          })
+        } else if (dataPart.data && isToolResultData(dataPart.data)) {
+          const data = dataPart.data
+          uiParts.push({
+            type: `tool-${data.name}`,
+            toolCallId: data.id,
+            state: "output-available",
+            input: {},
+            output: data.response,
+            providerExecuted: true,
+          })
         }
-
-        default:
-          throw new Error(`Unsupported part kind: ${part.kind}`)
       }
     }
 
-    return messageParts
-  }
-
-  static createUIMessage(message: A2A.Message): Vercel.UIMessage {
-    const parts = this.toVercelMessageParts(message.parts)
-
     return {
-      id: message.messageId,
-      role: message.role as "user" | "assistant",
-      parts: parts.length > 0 ? parts : [{ type: "text", text: "" }],
+      id: a2aMessage.messageId,
+      role: a2aMessage.role === "agent" ? "assistant" : "user",
+      parts: uiParts,
     }
   }
-}
 
+  fromContext(contextId: string): UIMessage[] {
+    const contextMessages = this.messageRepository.getContextMessages(
+      contextId,
+      false,
+    )
+
+    const tasks = this.taskRepository.getTasksByContext(contextId)
+    const taskMessages = tasks.flatMap((task) => task.history || [])
+
+    const allMessages = [...contextMessages, ...taskMessages]
+      .filter((message): message is MessageWithTimestamp =>
+        Boolean((message as MessageWithTimestamp).timestamp)
+      )
+      .sort((a, b) => {
+        const timeA = new Date(a.timestamp).getTime()
+        const timeB = new Date(b.timestamp).getTime()
+        return timeA - timeB
+      })
+
+    return allMessages.map((message) => this.transformA2AToUIMessage(message))
+  }
+}

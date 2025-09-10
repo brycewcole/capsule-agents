@@ -1,11 +1,16 @@
+import { JsonRpcTransportHandler } from "@a2a-js/sdk/server"
+import * as log from "@std/log"
 import { Hono } from "hono"
 import { streamSSE } from "hono/streaming"
-import * as log from "@std/log"
-import { JsonRpcTransportHandler } from "@a2a-js/sdk/server"
 import { CapsuleAgentA2ARequestHandler } from "../lib/a2a-request-handler.ts"
 
-function isAsyncGenerator(value: unknown): value is AsyncGenerator<unknown, void, undefined> {
-  return Boolean(value && typeof value === "object" && value !== null && (Symbol.asyncIterator in value))
+function isAsyncGenerator(
+  value: unknown,
+): value is AsyncGenerator<unknown, void, undefined> {
+  return Boolean(
+    value && typeof value === "object" && value !== null &&
+      (Symbol.asyncIterator in value),
+  )
 }
 
 export function createA2AController(deps: {
@@ -41,7 +46,7 @@ export function createA2AController(deps: {
     let body
     try {
       body = await c.req.json()
-    } catch (error) {
+    } catch (_error) {
       return c.json({
         jsonrpc: "2.0",
         id: null,
@@ -56,9 +61,12 @@ export function createA2AController(deps: {
           try {
             let eventId = 0
             for await (const event of result) {
-              await stream.writeSSE({ data: JSON.stringify(event), id: String(eventId++) })
+              await stream.writeSSE({
+                data: JSON.stringify(event),
+                id: String(eventId++),
+              })
             }
-          } catch (err) {
+          } catch (_err) {
             await stream.writeSSE({
               data: JSON.stringify({
                 jsonrpc: "2.0",
@@ -71,7 +79,7 @@ export function createA2AController(deps: {
         })
       }
       return c.json(result)
-    } catch (error) {
+    } catch (_error) {
       return c.json({
         jsonrpc: "2.0",
         id: body.id,
@@ -82,4 +90,3 @@ export function createA2AController(deps: {
 
   return router
 }
-
