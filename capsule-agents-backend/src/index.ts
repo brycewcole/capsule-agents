@@ -3,14 +3,14 @@ import * as log from "@std/log"
 import { Hono } from "hono"
 import { cors } from "hono/cors"
 import { serveStatic } from "hono/deno"
-import { CapsuleAgentA2ARequestHandler } from "./lib/a2a-request-handler.ts"
-import { AgentConfigService, type AgentInfo } from "./services/agent-config.ts"
-import { ConfigFileService } from "./services/config-file.ts"
-import { getDb } from "./infrastructure/db.ts"
 import { createA2AController } from "./controllers/a2a.controller.ts"
 import { createAgentController } from "./controllers/agent.controller.ts"
 import { createChatController } from "./controllers/chat.controller.ts"
 import { createHealthController } from "./controllers/health.controller.ts"
+import { getDb } from "./infrastructure/db.ts"
+import { CapsuleAgentA2ARequestHandler } from "./lib/a2a-request-handler.ts"
+import { AgentConfigService, type AgentInfo } from "./services/agent-config.ts"
+import { ConfigFileService } from "./services/config-file.ts"
 
 const app = new Hono()
 
@@ -18,7 +18,7 @@ const app = new Hono()
 app.use(
   "/api/*",
   cors({
-    origin: ["http://localhost:5173", "http://localhost:3000", "http://localhost:8080"],
+    origin: "*",
     allowHeaders: ["Content-Type", "Authorization", "Cache-Control"],
     allowMethods: ["POST", "GET", "OPTIONS"],
     exposeHeaders: ["Content-Type"],
@@ -37,7 +37,7 @@ app.use(
 )
 
 // Initialize DB
-console.log("Initializing database...")
+log.info("Initializing database...")
 try {
   getDb()
   log.info("Database initialized successfully")
@@ -51,8 +51,9 @@ log.info("Checking for configuration file...")
 let configFileAgentInfo: AgentInfo | null = null
 try {
   configFileAgentInfo = await ConfigFileService.loadConfigFile()
-  if (configFileAgentInfo) log.info(`Loaded configuration from file: ${configFileAgentInfo.name}`)
-  else log.info("No configuration file found, using database defaults")
+  if (configFileAgentInfo) {
+    log.info(`Loaded configuration from file: ${configFileAgentInfo.name}`)
+  } else log.info("No configuration file found, using database defaults")
 } catch (error) {
   log.error("Failed to load configuration file:", error)
   throw error
@@ -72,7 +73,10 @@ app.route("/api", createChatController())
 // Serve static files at /editor
 app.use(
   "/editor/*",
-  serveStatic({ root: "./static", rewriteRequestPath: (path) => path.replace(/^\/editor/, "") }),
+  serveStatic({
+    root: "./static",
+    rewriteRequestPath: (path) => path.replace(/^\/editor/, ""),
+  }),
 )
 
 // Serve editor SPA
@@ -84,4 +88,3 @@ app.get(
 const port = parseInt(Deno.env.get("PORT") || "80")
 log.info(`Server running on port ${port}`)
 Deno.serve({ port }, app.fetch)
-
