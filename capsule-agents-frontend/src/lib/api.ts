@@ -163,7 +163,7 @@ export async function sendMessage(message: string, contextId?: string | null) {
       text: message,
     }],
     role: "user",
-    contextId: contextId || uuidv4(),
+    ...(contextId ? { contextId } : {}),
   }
 
   try {
@@ -204,7 +204,7 @@ export async function* streamMessage(
       text: message,
     }],
     role: "user",
-    contextId: contextId || uuidv4(),
+    ...(contextId ? { contextId } : {}),
   }
 
   try {
