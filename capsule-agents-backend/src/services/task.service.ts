@@ -1,7 +1,8 @@
 import type * as A2A from "@a2a-js/sdk"
-import { TaskRepository } from "../repositories/task.repository.ts"
+import { AnyToolResult } from "../lib/types.ts"
 import { ArtifactRepository } from "../repositories/artifact.repository.ts"
 import { messageRepository } from "../repositories/message.repository.ts"
+import { TaskRepository } from "../repositories/task.repository.ts"
 
 type TaskState = A2A.Task["status"]["state"]
 
@@ -15,7 +16,6 @@ export class TaskService {
 
   createTask(
     contextId: string,
-    initialMessage: A2A.Message,
     metadata?: Record<string, unknown>,
   ): A2A.Task {
     const taskId = this.taskStorage.createTaskId()
@@ -33,13 +33,6 @@ export class TaskService {
     }
 
     this.taskStorage.setTask(taskId, task)
-
-    const taskMessage: A2A.Message = {
-      ...initialMessage,
-      messageId: this.createMessageId(),
-      taskId,
-    }
-    this.addMessageToHistory(task, taskMessage)
 
     return task
   }
@@ -142,13 +135,11 @@ export class TaskService {
     }
   }
 
-  addToolCallToHistory(
+  addToolResultToHistory(
     task: A2A.Task,
-    toolName: string,
-    toolArgs: unknown,
-    toolResult: unknown,
+    toolResult: AnyToolResult,
   ): void {
-    const callId = this.createMessageId()
+    const { output: _, ...toolCall } = toolResult
 
     const toolCallMessage: A2A.Message = {
       kind: "message",
@@ -156,12 +147,7 @@ export class TaskService {
       role: "agent",
       parts: [{
         kind: "data",
-        data: {
-          type: "tool-call",
-          toolCallId: callId,
-          toolName: toolName,
-          input: toolArgs,
-        },
+        data: toolCall,
       }],
       taskId: task.id,
       contextId: task.contextId,
@@ -173,12 +159,7 @@ export class TaskService {
       role: "agent",
       parts: [{
         kind: "data",
-        data: {
-          type: "tool-result",
-          toolCallId: callId,
-          toolName: toolName,
-          output: toolResult,
-        },
+        data: { ...toolResult },
       }],
       taskId: task.id,
       contextId: task.contextId,
@@ -222,4 +203,3 @@ export class TaskService {
     return `msg_${crypto.randomUUID()}`
   }
 }
-

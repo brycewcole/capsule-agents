@@ -10,7 +10,7 @@ export class VercelService {
     private taskRepository: TaskRepository,
   ) {}
 
-  private transformA2AToUIMessage(a2aMessage: A2A.Message): UIMessage {
+  transformA2AToUIMessage(a2aMessage: A2A.Message): UIMessage {
     const uiParts: UIMessagePart<UIDataTypes, UITools>[] = []
 
     for (const part of a2aMessage.parts || []) {

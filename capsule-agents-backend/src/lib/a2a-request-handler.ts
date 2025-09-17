@@ -10,13 +10,14 @@ import { webSearchSkill, webSearchTool } from "../capabilities/brave-search.ts"
 import { fileAccessSkill, fileAccessTool } from "../capabilities/file-access.ts"
 import { memorySkill, memoryTool } from "../capabilities/memory.ts"
 import { contextRepository } from "../repositories/context.repository.ts"
-import { messageRepository } from "../repositories/message.repository.ts"
+import { MessageRepository } from "../repositories/message.repository.ts"
 import { TaskRepository } from "../repositories/task.repository.ts"
 import { AgentConfigService } from "../services/agent-config.ts"
 import { ProviderService } from "../services/provider-service.ts"
 import { TaskService } from "../services/task.service.ts"
 import { VercelService } from "../services/vercel.service.ts"
 import { isMCPCapability } from "./capability-types.ts"
+import { AnyToolCall, AnyToolResult } from "./types.ts"
 
 interface MCPToolsDisposable {
   tools: Record<string, Vercel.Tool>
@@ -25,7 +26,12 @@ interface MCPToolsDisposable {
 
 export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
   private taskStorage = new TaskRepository()
+  private messageRepository = new MessageRepository()
   private taskService = new TaskService(this.taskStorage)
+  private vercelService = new VercelService(
+    this.messageRepository,
+    this.taskStorage,
+  )
   private agentConfigService: AgentConfigService
 
   constructor(agentConfigService?: AgentConfigService) {
@@ -306,6 +312,20 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
     return str.length > maxLen ? str.slice(0, maxLen) + "..." : str
   }
 
+  private checkForPendingToolCalls(
+    toolCalls: AnyToolCall[],
+    toolResults: AnyToolResult[],
+  ): AnyToolCall[] {
+    if (!toolCalls || toolCalls.length === 0) return []
+    const resultIds = new Set<string>()
+    for (const r of toolResults || []) {
+      resultIds.add(r.toolCallId)
+    }
+    return (toolCalls || []).filter((tc) => {
+      return resultIds.has(tc.toolCallId) === false
+    })
+  }
+
   async *sendMessageStream(
     params: A2A.MessageSendParams,
   ): AsyncGenerator<
@@ -323,38 +343,22 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
     if (!contextRepository.getContext(params.message.contextId)) {
       throw new Error("Invalid contextId: " + params.message.contextId)
     }
+    const contextId = params.message.contextId
 
-    let task: A2A.Task | null = null
-    let hasToolCalls = false
-
-    // Queue for status updates that need to be yielded
+    // Queue for status updates that need to be yielded progressively
     const statusUpdateQueue: A2A.TaskStatusUpdateEvent[] = []
 
     try {
-      const contextMessages = messageRepository.getContextMessages(
-        params.message.contextId,
-        false,
-      )
-      log.info("Context messages loaded:", {
-        messageCount: contextMessages.length,
-      })
-
-      // Add user message to context
-      messageRepository.createMessage(params.message)
-
-      // Convert A2A messages to Vercel AI UIMessage format using VercelService
-      const vercelMessages: Vercel.UIMessage[] = [
-        ...contextMessages.map((m) => VercelService.createUIMessage(m)),
-        VercelService.createUIMessage(params.message),
-      ]
-
       let tools = await this.getAvailableTools()
       await using mcpTools = await this.getMCPServers()
       tools = Object.assign(tools, mcpTools.tools)
+
       const model = this.getConfiguredModel()
 
-      let responseMessage: A2A.Message | null = null
       const agentInfo = this.agentConfigService.getAgentInfo()
+      const vercelMessages = this.vercelService.fromContext(contextId)
+
+      let currentTask: A2A.Task | null = null
 
       const result = Vercel.streamText({
         experimental_telemetry: {
@@ -366,142 +370,83 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
         messages: Vercel.convertToModelMessages(vercelMessages),
         tools: tools,
         stopWhen: Vercel.stepCountIs(10),
-        onStepFinish: (
-          { text, toolCalls, toolResults },
-        ) => {
+        onStepFinish: (stepResult) => {
+          const { text, toolCalls, toolResults, finishReason } = stepResult
           log.info(
             `Step finished - text: "${this.truncateForLog(text)}", toolCalls: ${
               this.truncateForLog(toolCalls)
             }, toolResults: ${this.truncateForLog(toolResults)}`,
           )
 
-          // Tool calls means use task
-          if (
-            (toolCalls && toolCalls.length > 0) ||
-            (toolResults && toolResults.length > 0)
-          ) {
-            hasToolCalls = true
-          }
-
-          if (hasToolCalls) {
-            if (!task) {
-              throw new Error(
-                "Task should have been created on tool call start",
+          if (finishReason === "tool-calls") {
+            if (!currentTask) {
+              currentTask = this.taskService.createTask(
+                params.message.contextId!,
+                params.metadata,
               )
             }
-
+            const pendingToolCalls = this.checkForPendingToolCalls(
+              toolCalls || [],
+              toolResults || [],
+            )
+            if (pendingToolCalls.length > 0) {
+              throw new Error(
+                `Tool calls returned without matching results: ${
+                  this.truncateForLog(pendingToolCalls)
+                }`,
+              )
+            }
             // Add tool calls and results to task history
-            if (toolCalls) {
-              for (const toolCall of toolCalls) {
-                this.taskService.addToolCallToHistory(
-                  task,
-                  toolCall.toolName,
-                  toolCall.input,
-                  undefined, // Result will be added separately
-                )
-              }
+            for (const toolResult of toolResults) {
+              this.taskService.addToolResultToHistory(
+                currentTask,
+                toolResult,
+              )
             }
-
-            if (toolResults) {
-              for (const toolResult of toolResults) {
-                // Find matching tool call and update with result
-                this.taskService.addToolCallToHistory(
-                  task,
-                  toolResult.toolName,
-                  {},
-                  toolResult.output,
-                )
-              }
-            }
-
-            if (text) {
-              this.taskService.createResponseMessage(task, text)
-            }
-          } else {
-            // Create simple response message for context
-            if (text) {
-              responseMessage = {
-                kind: "message",
-                messageId: `msg_${crypto.randomUUID()}`,
-                role: "agent",
-                parts: [{ kind: "text", text }],
-                contextId: params.message.contextId!,
-              }
-
-              // Add to context messages
-              messageRepository.createMessage(responseMessage)
-            }
+            statusUpdateQueue.push(this.taskService.transitionState(
+              currentTask,
+              "working",
+              `Used ${toolCalls.map((tc) => tc.toolName).join(", ")}`,
+            ))
           }
         },
         onFinish: ({ text }) => {
           log.info(`Stream finished - text: "${this.truncateForLog(text)}"`)
 
-          // Queue completion status update if we have a task
-          if (hasToolCalls && task && text) {
-            this.taskService.createResponseMessage(task, text)
+          if (currentTask) {
+            this.taskService.createResponseMessage(currentTask, text)
             statusUpdateQueue.push(this.taskService.transitionState(
-              task,
+              currentTask,
               "completed",
-              "Response ready",
+              "Finished",
             ))
-            log.info("Task completed")
           }
         },
       })
 
       log.info("StreamText initialized, consuming stream...")
-
       for await (const e of result.fullStream) {
-        log.debug(`Stream event: ${e.type} - ${this.truncateForLog(e)}`)
+        // In the future we might want to add hooks here to display like
+        // using xyz
         switch (e.type) {
-          case "tool-input-start": {
-            if (!task) {
-              log.info(`Tool input started: ${this.truncateForLog(e)}`)
-              task = this.taskService.createTask(
-                params.message.contextId!,
-                params.message,
-                params.metadata,
-              )
-              yield task
-            }
-            const workingStatus = this.taskService.transitionState(
-              task,
-              "working",
-              `Using ${e.toolName}...`,
-            )
-            log.info(
-              `Yielding working status: ${JSON.stringify(workingStatus)}`,
-            )
-            yield workingStatus
-            break
-          }
-          case "tool-call":
-            log.info(`Tool call event: ${this.truncateForLog(e)}`)
-            break
-          case "tool-result":
-            log.info(`Tool result event: ${this.truncateForLog(e)}`)
-            break
           case "finish":
             log.info(`Finish event in stream: ${this.truncateForLog(e)}`)
             break
           default:
-            log.debug(`Unhandled stream event type: ${e.type}`)
             break
+        }
+
+        // Drain and yield queued status updates as they arrive
+        while (statusUpdateQueue.length > 0) {
+          const statusUpdate = statusUpdateQueue.shift()!
+          yield statusUpdate
         }
       }
 
-      // Yield any queued status updates
-      for (const statusUpdate of statusUpdateQueue) {
-        log.info(
-          `Yielding queued status update: ${this.truncateForLog(statusUpdate)}`,
-        )
+      // Final drain in case onFinish enqueued after the final event
+      while (statusUpdateQueue.length > 0) {
+        const statusUpdate = statusUpdateQueue.shift()!
         yield statusUpdate
-      }
-
-      // After stream processing, yield the response message if it was created
-      if (responseMessage) {
-        log.info("Yielding response message after stream completion")
-        yield responseMessage
       }
     } catch (error) {
       log.error("🚨 STREAM MESSAGE ERROR:", this.truncateForLog(error))
@@ -509,20 +454,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
         "Error stack:",
         error instanceof Error ? error.stack : "No stack available",
       )
-      log.error("Context ID:", params.message.contextId)
-
-      if (task) {
-        log.error("Task ID:", task.id)
-        const errorStatusUpdate = this.taskService.transitionState(
-          task as A2A.Task,
-          "failed",
-          `Task failed`,
-        )
-        yield errorStatusUpdate
-      } else {
-        // If no task was created, let the JSON-RPC error bubble up
-        throw error
-      }
+      throw error
     }
   }
 

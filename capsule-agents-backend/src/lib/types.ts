@@ -1,3 +1,5 @@
+// deno-lint-ignore-file no-explicit-any
+import { ToolCall, ToolResult } from "@ai-sdk/provider-utils"
 import { z } from "zod"
 
 export const ToolCallDataSchema = z.object({
@@ -23,3 +25,6 @@ export type ToolResultData = z.infer<typeof ToolResultDataSchema>
 
 export const isToolResultData = (u: unknown): u is ToolResultData =>
   ToolResultDataSchema.safeParse(u).success
+
+export type AnyToolCall = ToolCall<any, any>
+export type AnyToolResult = ToolResult<any, any, unknown>
