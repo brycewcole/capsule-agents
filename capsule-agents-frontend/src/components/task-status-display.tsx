@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { Badge } from "./ui/badge.tsx"
 import { Button } from "./ui/button.tsx"
 import {
@@ -15,7 +15,7 @@ import {
   XCircle,
 } from "lucide-react"
 import { cn } from "../lib/utils.ts"
-import { type A2ATask } from "../lib/api.ts"
+import { fetchTaskById, type A2ATask } from "../lib/api.ts"
 import type * as A2A from "@a2a-js/sdk"
 import Markdown from "react-markdown"
 
@@ -26,6 +26,14 @@ interface TaskStatusDisplayProps {
 
 export function TaskStatusDisplay({ task, className }: TaskStatusDisplayProps) {
   const [isExpanded, setIsExpanded] = useState(false)
+  const [history, setHistory] = useState<A2A.Message[]>(
+    Array.isArray(task.history) ? task.history : [],
+  )
+  const [hasLoadedHistory, setHasLoadedHistory] = useState(
+    Boolean(task.history && task.history.length > 0),
+  )
+  const [isLoadingHistory, setIsLoadingHistory] = useState(false)
+  const [historyError, setHistoryError] = useState<string | null>(null)
 
   // Get display info based on task state
   const getStatusInfo = () => {
@@ -82,6 +90,60 @@ export function TaskStatusDisplay({ task, className }: TaskStatusDisplayProps) {
   const StatusIcon = statusInfo.icon
   const taskId = task.id?.slice(-8) || "unknown"
 
+  // Reset local state when a new task is provided
+  useEffect(() => {
+    const incomingHistory = Array.isArray(task.history) ? task.history : []
+    setHistory(incomingHistory)
+    setHasLoadedHistory(incomingHistory.length > 0)
+    setHistoryError(null)
+  }, [task.id])
+
+  // Sync history if parent provides updates after mount
+  useEffect(() => {
+    if (Array.isArray(task.history) && task.history.length > 0) {
+      setHistory(task.history)
+      setHasLoadedHistory(true)
+      setHistoryError(null)
+    }
+  }, [task.history])
+
+  // Lazy-load task history via API once expanded
+  useEffect(() => {
+    if (!isExpanded || hasLoadedHistory || isLoadingHistory || !task.id) {
+      return
+    }
+
+    let cancelled = false
+    setIsLoadingHistory(true)
+    setHistoryError(null)
+
+    fetchTaskById(task.id, { historyLength: 100 })
+      .then((fullTask) => {
+        if (cancelled) return
+        const fetchedHistory = Array.isArray(fullTask.history)
+          ? fullTask.history
+          : []
+        setHistory(fetchedHistory)
+        setHasLoadedHistory(true)
+      })
+      .catch((error) => {
+        if (cancelled) return
+        const message = error instanceof Error
+          ? error.message
+          : "Failed to load task history"
+        setHistoryError(message)
+        setHasLoadedHistory(true)
+      })
+      .finally(() => {
+        if (cancelled) return
+        setIsLoadingHistory(false)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [isExpanded, hasLoadedHistory, isLoadingHistory, task.id])
+
   // Extract text from status message to use as description
   const getStatusMessageText = () => {
     if (task.status?.message?.parts) {
@@ -103,11 +165,7 @@ export function TaskStatusDisplay({ task, className }: TaskStatusDisplayProps) {
   const statusMessageText = getStatusMessageText()
   const description = statusMessageText
 
-  // Get history messages from A2A task
-  const getHistoryMessages = () => {
-    if (!task.history || !Array.isArray(task.history)) return []
-    return task.history
-  }
+  const historyMessages = history
 
   const extractTextFromParts = (parts: A2A.Part[]): string => {
     try {
@@ -288,102 +346,130 @@ export function TaskStatusDisplay({ task, className }: TaskStatusDisplayProps) {
           <div className="pointer-events-none absolute left-2 top-0 w-3 h-3 border-l border-t border-border rounded-tl-md bg-transparent" />
           <div className="pointer-events-none absolute left-2 bottom-0 w-3 h-3 border-l border-b border-border rounded-bl-md bg-transparent" />
           <div className="space-y-3 pl-5">
-            {getHistoryMessages().map((msg, idx) => {
-              const message = msg as A2A.Message
-              const role = message.role
-              const isUser = role === "user"
-              const parts = message.parts || []
-              const text = parts.length > 0 ? extractTextFromParts(parts) : ""
-              const funcs = parts.length > 0
-                ? summarizeFunctionsFromParts(parts)
-                : []
-              const dataParts = parts.length > 0 ? extractDataParts(parts) : []
-
-              return (
-                <div
-                  key={idx}
-                  className={`relative flex ${
-                    isUser ? "justify-end" : "justify-start"
-                  }`}
+            {isLoadingHistory && historyMessages.length === 0 ? (
+              <div className="text-xs text-muted-foreground flex items-center gap-2">
+                <Loader2 className="h-3 w-3 animate-spin" />
+                Loading task history...
+              </div>
+            ) : historyError ? (
+              <div className="text-xs text-destructive flex flex-col gap-2">
+                <span>{historyError}</span>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="self-start h-6 px-2"
+                  onClick={() => {
+                    setHasLoadedHistory(false)
+                    setHistoryError(null)
+                  }}
                 >
-                  <div className="max-w-[80%]">
-                    <div
-                      className={`inline-block w-fit align-top rounded-2xl px-4 py-2 break-words max-w-full ${
-                        isUser
-                          ? "bg-primary text-primary-foreground"
-                          : "bg-muted text-left"
-                      }`}
-                    >
-                      <div className="space-y-2">
-                        {text && (
-                          <div className="markdown text-sm">
-                            <Markdown>{text}</Markdown>
-                          </div>
-                        )}
-                        {!isUser && funcs.length > 0 && (
-                          <div className="space-y-1">
-                            {funcs.map((f, i) => (
-                              <div
-                                key={i}
-                                className="text-[11px] text-muted-foreground"
-                              >
-                                {f.type === "call"
-                                  ? (
-                                    <>
-                                      <span className="font-medium">
-                                        Function call
-                                      </span>
-                                      {f.name ? `: ${f.name}` : ":"}
-                                      {f.data !== undefined && (
-                                        <pre className="mt-1 bg-background/60 p-2 rounded border text-[11px] max-w-full overflow-x-auto whitespace-pre-wrap break-words">
-                                      {(() => {
-                                        try {
-                                          return JSON.stringify(f.data, null, 2)
-                                        } catch {
-                                          return String(f.data)
-                                        }
-                                      })()}
-                                        </pre>
-                                      )}
-                                    </>
-                                  )
-                                  : (
-                                    <>
-                                      <span className="font-medium">
-                                        Function response:
-                                      </span>
-                                      {f.data !== undefined && (
-                                        <pre className="mt-1 bg-background/60 p-2 rounded border text-[11px] max-w-full overflow-x-auto whitespace-pre-wrap break-words">
-                                      {(() => {
-                                        try {
-                                          return JSON.stringify(f.data, null, 2)
-                                        } catch {
-                                          return String(f.data)
-                                        }
-                                      })()}
-                                        </pre>
-                                      )}
-                                    </>
-                                  )}
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                        {!isUser && dataParts.length > 0 && (
-                          <div className="space-y-2">
-                            {dataParts.map((d, i) => (
-                              <div key={i} className="text-[11px]">
-                                <DataPartPreview data={d.data} />
-                              </div>
-                            ))}
-                          </div>
-                        )}
+                  Retry
+                </Button>
+              </div>
+            ) : historyMessages.length === 0 ? (
+              <div className="text-xs text-muted-foreground">
+                No history available for this task yet.
+              </div>
+            ) : (
+              historyMessages.map((msg, idx) => {
+                const message = msg as A2A.Message
+                const role = message.role
+                const isUser = role === "user"
+                const parts = message.parts || []
+                const text = parts.length > 0 ? extractTextFromParts(parts) : ""
+                const funcs = parts.length > 0
+                  ? summarizeFunctionsFromParts(parts)
+                  : []
+                const dataParts = parts.length > 0
+                  ? extractDataParts(parts)
+                  : []
+
+                return (
+                  <div
+                    key={message.messageId ?? idx}
+                    className={`relative flex ${
+                      isUser ? "justify-end" : "justify-start"
+                    }`}
+                  >
+                    <div className="max-w-[80%]">
+                      <div
+                        className={`inline-block w-fit align-top rounded-2xl px-4 py-2 break-words max-w-full ${
+                          isUser
+                            ? "bg-primary text-primary-foreground"
+                            : "bg-muted text-left"
+                        }`}
+                      >
+                        <div className="space-y-2">
+                          {text && (
+                            <div className="markdown text-sm">
+                              <Markdown>{text}</Markdown>
+                            </div>
+                          )}
+                          {!isUser && funcs.length > 0 && (
+                            <div className="space-y-1">
+                              {funcs.map((f, i) => (
+                                <div
+                                  key={i}
+                                  className="text-[11px] text-muted-foreground"
+                                >
+                                  {f.type === "call"
+                                    ? (
+                                      <>
+                                        <span className="font-medium">
+                                          Function call
+                                        </span>
+                                        {f.name ? `: ${f.name}` : ":"}
+                                        {f.data !== undefined && (
+                                          <pre className="mt-1 bg-background/60 p-2 rounded border text-[11px] max-w-full overflow-x-auto whitespace-pre-wrap break-words">
+                                        {(() => {
+                                          try {
+                                            return JSON.stringify(f.data, null, 2)
+                                          } catch {
+                                            return String(f.data)
+                                          }
+                                        })()}
+                                          </pre>
+                                        )}
+                                      </>
+                                    )
+                                    : (
+                                      <>
+                                        <span className="font-medium">
+                                          Function response:
+                                        </span>
+                                        {f.data !== undefined && (
+                                          <pre className="mt-1 bg-background/60 p-2 rounded border text-[11px] max-w-full overflow-x-auto whitespace-pre-wrap break-words">
+                                        {(() => {
+                                          try {
+                                            return JSON.stringify(f.data, null, 2)
+                                          } catch {
+                                            return String(f.data)
+                                          }
+                                        })()}
+                                          </pre>
+                                        )}
+                                      </>
+                                    )}
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                          {!isUser && dataParts.length > 0 && (
+                            <div className="space-y-2">
+                              {dataParts.map((d, i) => (
+                                <div key={i} className="text-[11px]">
+                                  <DataPartPreview data={d.data} />
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
                       </div>
                     </div>
                   </div>
-                </div>
-              )
-            })}
+                )
+              })
+            )}
           </div>
         </div>
       )}

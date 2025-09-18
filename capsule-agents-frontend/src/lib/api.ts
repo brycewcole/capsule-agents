@@ -151,6 +151,34 @@ export type AgentInfo = {
   capabilities?: Capability[]
 }
 
+export async function fetchTaskById(
+  taskId: string,
+  options: { historyLength?: number } = {},
+): Promise<A2ATask> {
+  try {
+    const response = await a2aClient.getTask({
+      id: taskId,
+      ...(options.historyLength ? { historyLength: options.historyLength } : {}),
+    })
+
+    if ("error" in response && response.error) {
+      const message = typeof response.error.message === "string"
+        ? response.error.message
+        : "Failed to fetch task"
+      throw new Error(message)
+    }
+
+    if (!("result" in response) || !response.result) {
+      throw new Error("Task response is missing result data")
+    }
+
+    return response.result as A2ATask
+  } catch (error) {
+    console.error("Failed to fetch task:", error)
+    throw error
+  }
+}
+
 // Function to send a message to the agent using A2A SDK
 export async function sendMessage(message: string, contextId?: string | null) {
   const messageId = uuidv4()
