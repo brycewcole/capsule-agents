@@ -1,5 +1,6 @@
 import type * as A2A from "@a2a-js/sdk"
 import { getDb } from "../infrastructure/db.ts"
+import { getChanges } from "./sqlite-utils.ts"
 
 export interface StoredMessage {
   id: string
@@ -169,27 +170,27 @@ export class MessageRepository {
     values.push(id)
     const res = db.prepare(`UPDATE messages SET ${fields.join(", ")} WHERE id = ?`).run(
       ...values,
-    ) as unknown as { changes: number }
+    )
 
-    return res.changes > 0
+    return getChanges(res) > 0
   }
 
   deleteMessage(id: string): boolean {
     const db = getDb()
-    const res = db.prepare(`DELETE FROM messages WHERE id = ?`).run(id) as unknown as { changes: number }
-    return res.changes > 0
+    const res = db.prepare(`DELETE FROM messages WHERE id = ?`).run(id)
+    return getChanges(res) > 0
   }
 
   deleteContextMessages(contextId: string): number {
     const db = getDb()
-    const res = db.prepare(`DELETE FROM messages WHERE context_id = ?`).run(contextId) as unknown as { changes: number }
-    return res.changes
+    const res = db.prepare(`DELETE FROM messages WHERE context_id = ?`).run(contextId)
+    return getChanges(res)
   }
 
   deleteTaskMessages(taskId: string): number {
     const db = getDb()
-    const res = db.prepare(`DELETE FROM messages WHERE task_id = ?`).run(taskId) as unknown as { changes: number }
-    return res.changes
+    const res = db.prepare(`DELETE FROM messages WHERE task_id = ?`).run(taskId)
+    return getChanges(res)
   }
 }
 

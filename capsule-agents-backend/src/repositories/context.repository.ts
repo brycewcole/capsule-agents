@@ -1,4 +1,5 @@
 import { getDb } from "../infrastructure/db.ts"
+import { getChanges } from "./sqlite-utils.ts"
 
 export interface StoredContext {
   id: string
@@ -38,14 +39,14 @@ export class ContextRepository {
       JSON.stringify(metadata),
       now,
       id,
-    ) as unknown as { changes: number }
-    return res.changes > 0
+    )
+    return getChanges(res) > 0
   }
 
   deleteContext(id: string): boolean {
     const db = getDb()
-    const res = db.prepare(`DELETE FROM contexts WHERE id = ?`).run(id) as unknown as { changes: number }
-    return res.changes > 0
+    const res = db.prepare(`DELETE FROM contexts WHERE id = ?`).run(id)
+    return getChanges(res) > 0
   }
 
   getAllContexts(): StoredContext[] {

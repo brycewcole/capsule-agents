@@ -1,5 +1,6 @@
 import type * as A2A from "@a2a-js/sdk"
 import { getDb } from "../infrastructure/db.ts"
+import { getChanges } from "./sqlite-utils.ts"
 
 export interface StoredArtifact {
   id: string
@@ -93,22 +94,22 @@ export class ArtifactRepository {
     }
     if (fields.length === 0) return false
     values.push(id)
-    const res = db.prepare(`UPDATE artifacts SET ${fields.join(", ")} WHERE id = ?`).run(...values) as unknown as {
-      changes: number
-    }
-    return res.changes > 0
+    const res = db.prepare(`UPDATE artifacts SET ${fields.join(", ")} WHERE id = ?`).run(
+      ...values,
+    )
+    return getChanges(res) > 0
   }
 
   deleteArtifact(id: string): boolean {
     const db = getDb()
-    const res = db.prepare(`DELETE FROM artifacts WHERE id = ?`).run(id) as unknown as { changes: number }
-    return res.changes > 0
+    const res = db.prepare(`DELETE FROM artifacts WHERE id = ?`).run(id)
+    return getChanges(res) > 0
   }
 
   deleteArtifactsByTask(taskId: string): number {
     const db = getDb()
-    const res = db.prepare(`DELETE FROM artifacts WHERE task_id = ?`).run(taskId) as unknown as { changes: number }
-    return res.changes
+    const res = db.prepare(`DELETE FROM artifacts WHERE task_id = ?`).run(taskId)
+    return getChanges(res)
   }
 
   // Convert stored artifacts to A2A Artifact format

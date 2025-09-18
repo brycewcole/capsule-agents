@@ -3,6 +3,7 @@ import type * as A2A from "@a2a-js/sdk"
 import type { TaskStore } from "@a2a-js/sdk/server"
 import { ArtifactRepository } from "./artifact.repository.ts"
 import { getDb } from "../infrastructure/db.ts"
+import { getChanges } from "./sqlite-utils.ts"
 
 export interface StoredTask {
   id: string
@@ -144,8 +145,8 @@ export class TaskRepository implements TaskStore {
 
   deleteTask(id: string): boolean {
     const db = getDb()
-    const res = db.prepare(`DELETE FROM tasks WHERE id = ?`).run(id) as unknown as { changes: number }
-    return res.changes > 0
+    const res = db.prepare(`DELETE FROM tasks WHERE id = ?`).run(id)
+    return getChanges(res) > 0
   }
 
   // Build A2A Task from stored data, including messages and artifacts
@@ -238,7 +239,7 @@ export class TaskRepository implements TaskStore {
       AND status_state IN ('completed', 'failed', 'canceled')
     `)
 
-    const result = stmt.run(cutoffTime) as unknown as { changes: number }
-    return result.changes
+    const result = stmt.run(cutoffTime)
+    return getChanges(result)
   }
 }
