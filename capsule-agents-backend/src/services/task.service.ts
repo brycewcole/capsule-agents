@@ -1,7 +1,7 @@
 import type * as A2A from "@a2a-js/sdk"
 import { AnyToolResult } from "../lib/types.ts"
 import { ArtifactRepository } from "../repositories/artifact.repository.ts"
-import { messageRepository } from "../repositories/message.repository.ts"
+import { MessageRepository, messageRepository } from "../repositories/message.repository.ts"
 import { TaskRepository } from "../repositories/task.repository.ts"
 
 type TaskState = A2A.Task["status"]["state"]
@@ -9,9 +9,14 @@ type TaskState = A2A.Task["status"]["state"]
 export class TaskService {
   private taskStorage: TaskRepository
   private artifactStorage = new ArtifactRepository()
+  private messageStorage: MessageRepository
 
-  constructor(taskStorage: TaskRepository) {
+  constructor(
+    taskStorage: TaskRepository,
+    messageStorage: MessageRepository = messageRepository,
+  ) {
     this.taskStorage = taskStorage
+    this.messageStorage = messageStorage
   }
 
   createTask(
@@ -58,7 +63,7 @@ export class TaskService {
         contextId: task.contextId,
       }
 
-      messageRepository.createMessage(statusMessage)
+      this.messageStorage.createMessage(statusMessage)
       task.status.message = statusMessage
     }
 
@@ -108,7 +113,7 @@ export class TaskService {
       taskId: task.id,
     }
 
-    messageRepository.createMessage(taskMessage)
+    this.messageStorage.createMessage(taskMessage)
 
     this.taskStorage.setTask(task.id, task)
   }
@@ -122,7 +127,7 @@ export class TaskService {
       throw new Error("Message context does not match task context")
     }
 
-    const updated = messageRepository.updateMessage(message.messageId, {
+    const updated = this.messageStorage.updateMessage(message.messageId, {
       taskId: task.id,
     })
 

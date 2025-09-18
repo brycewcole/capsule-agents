@@ -27,7 +27,10 @@ interface MCPToolsDisposable {
 export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
   private taskStorage = new TaskRepository()
   private messageRepository = new MessageRepository()
-  private taskService = new TaskService(this.taskStorage)
+  private taskService = new TaskService(
+    this.taskStorage,
+    this.messageRepository,
+  )
   private vercelService = new VercelService(
     this.messageRepository,
     this.taskStorage,
