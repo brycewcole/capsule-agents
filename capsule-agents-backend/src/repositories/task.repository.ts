@@ -38,8 +38,15 @@ export class TaskRepository implements TaskStore {
     const existing = this.getStoredTask(id)
     const createdAt = existing ? existing.createdAt : now
     const stmt = db.prepare(`
-      INSERT OR REPLACE INTO tasks (id, context_id, status_state, status_timestamp, status_message_id, metadata, created_at, updated_at)
+      INSERT INTO tasks (id, context_id, status_state, status_timestamp, status_message_id, metadata, created_at, updated_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET
+        context_id = excluded.context_id,
+        status_state = excluded.status_state,
+        status_timestamp = excluded.status_timestamp,
+        status_message_id = excluded.status_message_id,
+        metadata = excluded.metadata,
+        updated_at = excluded.updated_at
     `)
     stmt.run(
       id,

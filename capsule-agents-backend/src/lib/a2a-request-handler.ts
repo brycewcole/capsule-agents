@@ -417,6 +417,9 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
             }
             // Add tool calls and results to task history
             for (const toolResult of toolResults) {
+              log.info(
+                `Saving tool result: ${this.truncateForLog(toolResult)}`,
+              )
               this.taskService.addToolResultToHistory(
                 currentTask,
                 toolResult,
@@ -427,19 +430,24 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
               "working",
               `Used ${toolCalls.map((tc) => tc.toolName).join(", ")}`,
             ))
+            if (text) {
+              const textMessage = {}
+              this.taskService.addMessageToHistory(currentTask, {
+                kind: "message",
+                messageId: crypto.randomUUID(),
+                contextId: currentTask.contextId,
+                taskId: currentTask.id,
+                role: "agent",
+                parts: [{ kind: "text", text }],
+                metadata: {
+                  timestamp: new Date().toISOString(),
+                },
+              })
+            }
           }
         },
         onFinish: ({ text }) => {
           log.info(`Stream finished - text: "${this.truncateForLog(text)}"`)
-
-          if (currentTask) {
-            this.taskService.createResponseMessage(currentTask, text)
-            statusUpdateQueue.push(this.taskService.transitionState(
-              currentTask,
-              "completed",
-              "Finished",
-            ))
-          }
         },
       })
 
