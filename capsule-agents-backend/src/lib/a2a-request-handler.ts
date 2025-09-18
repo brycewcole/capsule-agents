@@ -345,6 +345,9 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
     }
     const contextId = params.message.contextId
 
+    // Save the user message
+    this.messageRepository.createMessage(params.message)
+
     // Queue for status updates that need to be yielded progressively
     const statusUpdateQueue: A2A.TaskStatusUpdateEvent[] = []
 
@@ -359,6 +362,14 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
       const vercelMessages = this.vercelService.fromContext(contextId)
 
       let currentTask: A2A.Task | null = null
+      log.info(vercelMessages)
+
+      log.debug("Sending message to model:", {
+        contextId: params.message.contextId,
+        messages: Vercel.convertToModelMessages(vercelMessages),
+        tools: Object.keys(tools),
+        systemPrompt: agentInfo.description,
+      })
 
       const result = Vercel.streamText({
         experimental_telemetry: {
@@ -383,6 +394,11 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
               currentTask = this.taskService.createTask(
                 params.message.contextId!,
                 params.metadata,
+              )
+              // Move user message into task context
+              this.taskService.addExistingMessageToHistory(
+                currentTask,
+                params.message,
               )
             }
             const pendingToolCalls = this.checkForPendingToolCalls(

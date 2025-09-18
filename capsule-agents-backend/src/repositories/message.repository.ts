@@ -120,6 +120,60 @@ export class MessageRepository {
     }))
   }
 
+  updateMessage(
+    id: string,
+    updates: Partial<
+      Pick<StoredMessage, "contextId" | "taskId" | "role" | "parts" | "timestamp">
+    >,
+  ): boolean {
+    const db = getDb()
+    const fields: string[] = []
+    const values: (string | number | null)[] = []
+
+    if (Object.prototype.hasOwnProperty.call(updates, "contextId")) {
+      if (updates.contextId == null) {
+        throw new Error("contextId cannot be null")
+      }
+      fields.push("context_id = ?")
+      values.push(updates.contextId)
+    }
+
+    if (Object.prototype.hasOwnProperty.call(updates, "taskId")) {
+      fields.push("task_id = ?")
+      values.push((updates.taskId ?? null) as string | null)
+    }
+
+    if (Object.prototype.hasOwnProperty.call(updates, "role")) {
+      if (!updates.role) {
+        throw new Error("role cannot be null")
+      }
+      fields.push("role = ?")
+      values.push(updates.role)
+    }
+
+    if (Object.prototype.hasOwnProperty.call(updates, "parts")) {
+      fields.push("parts = ?")
+      values.push(JSON.stringify(updates.parts ?? []))
+    }
+
+    if (Object.prototype.hasOwnProperty.call(updates, "timestamp")) {
+      fields.push("timestamp = ?")
+      if (updates.timestamp == null) {
+        throw new Error("timestamp cannot be null")
+      }
+      values.push(updates.timestamp)
+    }
+
+    if (fields.length === 0) return false
+
+    values.push(id)
+    const res = db.prepare(`UPDATE messages SET ${fields.join(", ")} WHERE id = ?`).run(
+      ...values,
+    ) as unknown as { changes: number }
+
+    return res.changes > 0
+  }
+
   deleteMessage(id: string): boolean {
     const db = getDb()
     const res = db.prepare(`DELETE FROM messages WHERE id = ?`).run(id) as unknown as { changes: number }

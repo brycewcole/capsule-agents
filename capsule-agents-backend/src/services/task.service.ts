@@ -113,6 +113,28 @@ export class TaskService {
     this.taskStorage.setTask(task.id, task)
   }
 
+  addExistingMessageToHistory(task: A2A.Task, message: A2A.Message): void {
+    if (!message.messageId) {
+      throw new Error("Existing message must have a messageId")
+    }
+
+    if (message.contextId !== task.contextId) {
+      throw new Error("Message context does not match task context")
+    }
+
+    const updated = messageRepository.updateMessage(message.messageId, {
+      taskId: task.id,
+    })
+
+    if (!updated) {
+      throw new Error(`Message not found: ${message.messageId}`)
+    }
+
+    message.taskId = task.id
+
+    this.taskStorage.setTask(task.id, task)
+  }
+
   createArtifact(
     task: A2A.Task,
     artifact: Omit<A2A.Artifact, "artifactId">,
