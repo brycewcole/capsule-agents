@@ -60,7 +60,7 @@ export class AgentConfigService {
       const row = stmt.get() as { model_name: string } | undefined
 
       if (!row) {
-        log.error("No agent info found for model validation")
+        log.debug("No agent info found yet, skipping model validation")
         return
       }
 
@@ -176,8 +176,8 @@ export class AgentConfigService {
       stmt.run(
         info.name,
         info.description,
-        info.model_name,
-        JSON.stringify(info.model_parameters),
+        info.model_name || null,
+        JSON.stringify(info.model_parameters || {}),
         JSON.stringify(info.capabilities),
       )
 

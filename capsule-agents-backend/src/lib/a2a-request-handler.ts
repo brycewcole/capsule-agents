@@ -369,12 +369,21 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
       const agentInfo = this.agentConfigService.getAgentInfo()
       const vercelMessages = this.vercelService.fromContext(contextId)
 
+      // Filter out reasoning and step-start parts that shouldn't be sent back to the model
+      // These are metadata parts that can cause API errors when included in subsequent requests
+      const cleanedMessages = vercelMessages.map((msg) => ({
+        ...msg,
+        parts: msg.parts.filter((part) =>
+          part.type !== "reasoning" && part.type !== "step-start"
+        ),
+      }))
+
       let currentTask: A2A.Task | null = null
-      log.info(vercelMessages)
+      log.info(cleanedMessages)
 
       log.debug("Sending message to model:", {
         contextId: params.message.contextId,
-        messages: Vercel.convertToModelMessages(vercelMessages),
+        messages: Vercel.convertToModelMessages(cleanedMessages),
         tools: Object.keys(tools),
         systemPrompt: agentInfo.description,
       })
@@ -386,7 +395,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
         },
         system: agentInfo.description,
         model,
-        messages: Vercel.convertToModelMessages(vercelMessages),
+        messages: Vercel.convertToModelMessages(cleanedMessages),
         tools: tools,
         stopWhen: Vercel.stepCountIs(10),
         onStepFinish: (stepResult) => {
@@ -425,40 +434,93 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
               "working",
               `Used ${toolCalls.map((tc) => tc.toolName).join(", ")}`,
             ))
-            if (text) {
-              this.taskService.addMessageToHistory(currentTask, {
-                kind: "message",
-                messageId: crypto.randomUUID(),
-                contextId: currentTask.contextId,
-                taskId: currentTask.id,
-                role: "agent",
-                parts: [{ kind: "text", text }],
-                metadata: {
-                  timestamp: new Date().toISOString(),
-                },
-              })
-            }
-          }
-        },
-        onFinish: async (result) => {
-          const assistantMessage = await result.toUIMessageStream()
-          for await (const msg of assistantMessage) {
-            if (msg.role === "assistant") {
-              await this.vercelService.upsertMessage({
-                message: msg,
-                contextId: params.message.contextId!,
-                taskId: currentTask?.id,
-              })
-            }
           }
         },
       })
 
+      // Queue to hold the final A2A message to yield after stream completes
+      let finalA2AMessage: A2A.Message | null = null
+
+      // Consume the UI message stream in background to trigger onFinish
+      // This ensures onFinish callback fires with UIMessage format
+      const uiMessageStream = result.toUIMessageStream({
+        originalMessages: cleanedMessages,
+        onFinish: async ({ responseMessage }) => {
+          log.info(
+            `Stream finished - responseMessage: ${
+              this.truncateForLog(responseMessage)
+            }`,
+          )
+
+          // Save to Vercel storage
+          await this.vercelService.upsertMessage({
+            message: responseMessage,
+            contextId,
+          })
+
+          // Convert to A2A message and save
+          const a2aMessage = this.vercelService.fromUIMessageToA2A(
+            responseMessage,
+            contextId,
+            currentTask?.id,
+          )
+          this.a2aMessageRepository.createMessage(a2aMessage)
+
+          // Store for yielding after fullStream completes
+          finalA2AMessage = a2aMessage
+
+          log.info("Saved assistant message to both Vercel and A2A storage")
+        },
+      })
+      ;(async () => {
+        try {
+          for await (const _ of uiMessageStream) {
+            // Just consume to ensure onFinish fires
+          }
+        } catch (error) {
+          log.error("Error consuming UI message stream:", error)
+        }
+      })()
+
       log.info("StreamText initialized, consuming stream...")
       for await (const e of result.fullStream) {
-        // In the future we might want to add hooks here to display like
-        // using xyz
         switch (e.type) {
+          case "tool-input-start":
+            log.info(`Tool input starting: ${e.toolName}`)
+            if (currentTask) {
+              statusUpdateQueue.push(this.taskService.transitionState(
+                currentTask,
+                "working",
+                `Preparing ${e.toolName}`,
+              ))
+            }
+            break
+          case "tool-input-end":
+            log.info(`Tool input ready: ${e.id}`)
+            break
+          case "tool-call":
+            log.info(`Tool called: ${e.toolName}`)
+            if (currentTask) {
+              statusUpdateQueue.push(this.taskService.transitionState(
+                currentTask,
+                "working",
+                `Executing ${e.toolName}`,
+              ))
+            }
+            break
+          case "tool-result":
+            log.info(`Tool completed: ${e.toolName}`)
+            if (currentTask) {
+              statusUpdateQueue.push(this.taskService.transitionState(
+                currentTask,
+                "working",
+                `Completed ${e.toolName}`,
+              ))
+            }
+            break
+          case "finish-step":
+            log.info("Step finished")
+            break
           case "finish":
             log.info(`Finish event in stream: ${this.truncateForLog(e)}`)
             break
@@ -477,6 +539,15 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
       while (statusUpdateQueue.length > 0) {
         const statusUpdate = statusUpdateQueue.shift()!
         yield statusUpdate
+      }
+
+      // Wait a moment for onFinish to complete and yield the final A2A message
+      // Small delay to ensure onFinish callback has executed
+      await new Promise((resolve) => setTimeout(resolve, 100))
+
+      if (finalA2AMessage) {
+        log.info("Yielding final A2A message")
+        yield finalA2AMessage
       }
     } catch (error) {
       log.error("🚨 STREAM MESSAGE ERROR:", this.truncateForLog(error))

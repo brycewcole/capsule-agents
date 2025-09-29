@@ -85,6 +85,70 @@ export class VercelService {
     }
   }
 
+  fromUIMessageToA2A(
+    uiMessage: UIMessage,
+    contextId: string,
+    taskId?: string,
+  ): A2A.Message {
+    const a2aParts: A2A.Part[] = []
+
+    for (const part of uiMessage.parts) {
+      if (part.type === "text") {
+        a2aParts.push({
+          kind: "text",
+          text: part.text,
+        })
+      } else if (part.type.startsWith("tool-")) {
+        const toolName = part.type.substring(5) // Remove "tool-" prefix
+        const toolPart = part as {
+          type: string
+          toolCallId: string
+          state: string
+          input?: unknown
+          output?: unknown
+        }
+
+        // Add tool call as data part
+        if (toolPart.state === "input-available" || toolPart.state === "output-available") {
+          a2aParts.push({
+            kind: "data",
+            data: {
+              type: "tool-call",
+              toolName,
+              toolCallId: toolPart.toolCallId,
+              input: toolPart.input,
+            },
+          })
+
+          // Add tool result if available
+          if (toolPart.state === "output-available" && toolPart.output !== undefined) {
+            a2aParts.push({
+              kind: "data",
+              data: {
+                type: "tool-result",
+                toolName,
+                toolCallId: toolPart.toolCallId,
+                output: toolPart.output,
+              },
+            })
+          }
+        }
+      }
+    }
+
+    return {
+      kind: "message",
+      messageId: uiMessage.id,
+      contextId,
+      taskId,
+      role: uiMessage.role === "assistant" ? "agent" : "user",
+      parts: a2aParts,
+      metadata: {
+        timestamp: new Date().toISOString(),
+      },
+    }
+  }
+
   fromContext(contextId: string): UIMessage[] {
     return this.vercelMessageRepository.getMessagesByContext(contextId)
   }
