@@ -1,9 +1,8 @@
 import type * as A2A from "@a2a-js/sdk"
-import { AnyToolResult } from "../lib/types.ts"
 import { ArtifactRepository } from "../repositories/artifact.repository.ts"
 import {
-  MessageRepository,
-  messageRepository,
+  A2AMessageRepository,
+  a2aMessageRepository,
 } from "../repositories/message.repository.ts"
 import { TaskRepository } from "../repositories/task.repository.ts"
 
@@ -12,11 +11,11 @@ type TaskState = A2A.Task["status"]["state"]
 export class TaskService {
   private taskStorage: TaskRepository
   private artifactStorage = new ArtifactRepository()
-  private messageStorage: MessageRepository
+  private messageStorage: A2AMessageRepository
 
   constructor(
     taskStorage: TaskRepository,
-    messageStorage: MessageRepository = messageRepository,
+    messageStorage: A2AMessageRepository = a2aMessageRepository,
   ) {
     this.taskStorage = taskStorage
     this.messageStorage = messageStorage
@@ -161,40 +160,6 @@ export class TaskService {
         parts: storedArtifact.parts,
       },
     }
-  }
-
-  addToolResultToHistory(
-    task: A2A.Task,
-    toolResult: AnyToolResult,
-  ): void {
-    const { output: _, ...toolCall } = toolResult
-
-    const toolCallMessage: A2A.Message = {
-      kind: "message",
-      messageId: this.createMessageId(),
-      role: "agent",
-      parts: [{
-        kind: "data",
-        data: toolCall,
-      }],
-      taskId: task.id,
-      contextId: task.contextId,
-    }
-
-    const toolResultMessage: A2A.Message = {
-      kind: "message",
-      messageId: this.createMessageId(),
-      role: "agent",
-      parts: [{
-        kind: "data",
-        data: { ...toolResult },
-      }],
-      taskId: task.id,
-      contextId: task.contextId,
-    }
-
-    this.addMessageToHistory(task, toolCallMessage)
-    this.addMessageToHistory(task, toolResultMessage)
   }
 
   extractTextFromMessage(message: A2A.Message): string {

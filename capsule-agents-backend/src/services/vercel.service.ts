@@ -1,16 +1,58 @@
 import type * as A2A from "@a2a-js/sdk"
 import type { UIDataTypes, UIMessage, UIMessagePart, UITools } from "ai"
 import { isToolCallData, isToolResultData } from "../lib/types.ts"
-import { MessageRepository } from "../repositories/message.repository.ts"
-import { TaskRepository } from "../repositories/task.repository.ts"
+import {
+  CreateVercelMessageParams,
+  StoredVercelMessage,
+  VercelMessageRepository,
+} from "../repositories/vercel-message.repository.ts"
 
 export class VercelService {
   constructor(
-    private messageRepository: MessageRepository,
-    private taskRepository: TaskRepository,
+    private vercelMessageRepository: VercelMessageRepository,
   ) {}
 
-  transformA2AToUIMessage(a2aMessage: A2A.Message): UIMessage {
+  createMessage(params: CreateVercelMessageParams): StoredVercelMessage {
+    return this.vercelMessageRepository.createMessage(params)
+  }
+
+  getMessage(id: string): StoredVercelMessage | undefined {
+    return this.vercelMessageRepository.getMessage(id)
+  }
+
+  getContextMessages(contextId: string): StoredVercelMessage[] {
+    return this.vercelMessageRepository.getMessagesByContext(contextId)
+  }
+
+  getTaskMessages(taskId: string): StoredVercelMessage[] {
+    return this.vercelMessageRepository.getMessagesByTask(taskId)
+  }
+
+  updateMessage(
+    id: string,
+    updates: Partial<
+      Pick<
+        StoredVercelMessage,
+        "contextId" | "taskId" | "role" | "message" | "metadata"
+      >
+    >,
+  ): boolean {
+    return this.vercelMessageRepository.updateMessage(id, updates)
+  }
+
+  deleteMessage(id: string): boolean {
+    return this.vercelMessageRepository.deleteMessage(id)
+  }
+
+  deleteContextMessages(contextId: string): number {
+    return this.vercelMessageRepository.deleteContextMessages(contextId)
+  }
+
+  deleteTaskMessages(taskId: string): number {
+    return this.vercelMessageRepository.deleteTaskMessages(taskId)
+  }
+
+  fromA2AToUIMessage(a2aMessage: A2A.Message): UIMessage {
     const uiParts: UIMessagePart<UIDataTypes, UITools>[] = []
 
     for (const part of a2aMessage.parts || []) {
@@ -52,33 +94,8 @@ export class VercelService {
   }
 
   fromContext(contextId: string): UIMessage[] {
-    const contextMessages = this.messageRepository.getContextMessages(
-      contextId,
-      false,
-    )
-
-    const tasks = this.taskRepository.getTasksByContext(contextId)
-    const taskMessages = tasks.flatMap((task) => task.history || [])
-
-    const allMessages = [...contextMessages, ...taskMessages]
-
-    // Validate all messages have timestamps
-    for (const message of allMessages) {
-      if (!message.metadata?.timestamp) {
-        throw new Error(
-          `Message ${message.messageId} is missing timestamp in metadata`,
-        )
-      }
-    }
-
-    const sortedMessages = allMessages.sort((a, b) => {
-      const timeA = new Date(a.metadata!.timestamp as string).getTime()
-      const timeB = new Date(b.metadata!.timestamp as string).getTime()
-      return timeA - timeB
-    })
-
-    return sortedMessages.map((message) =>
-      this.transformA2AToUIMessage(message)
-    )
+    return this.vercelMessageRepository
+      .getMessagesByContext(contextId)
+      .map((stored) => stored.message)
   }
 }

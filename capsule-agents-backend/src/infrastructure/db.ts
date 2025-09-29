@@ -6,9 +6,7 @@ function resolveDbPath() {
     const envPath = Deno.env.get("DB_PATH") ||
       Deno.env.get("DATABASE_PATH") ||
       Deno.env.get("SESSIONS_DB_PATH")
-    return envPath && envPath.trim().length > 0
-      ? envPath
-      : "./data/sessions.db"
+    return envPath && envPath.trim().length > 0 ? envPath : "./data/sessions.db"
   } catch (_) {
     return "./data/sessions.db"
   }
@@ -53,7 +51,7 @@ function createTables(db: Database) {
         FOREIGN KEY(status_message_id) REFERENCES messages(id) ON DELETE SET NULL
     );
 
-    -- Messages: Can exist in a task history or just in context
+    -- A2A Messages: Can exist in a task history or just in context
     CREATE TABLE IF NOT EXISTS messages (
         id          TEXT PRIMARY KEY,
         context_id  TEXT NOT NULL,
@@ -63,6 +61,20 @@ function createTables(db: Database) {
         timestamp   REAL NOT NULL,
         FOREIGN KEY(context_id) REFERENCES contexts(id) ON DELETE CASCADE,
         FOREIGN KEY(task_id) REFERENCES tasks(id) ON DELETE CASCADE
+    );
+
+    -- Vercel Messages: Stores raw UI messages for full model context
+    CREATE TABLE IF NOT EXISTS vercel_messages (
+        id          TEXT PRIMARY KEY,
+        context_id  TEXT NOT NULL,
+        task_id     TEXT,
+        role        TEXT NOT NULL,
+        payload     TEXT NOT NULL,
+        metadata    TEXT NOT NULL DEFAULT '{}',
+        created_at  REAL NOT NULL,
+        updated_at  REAL NOT NULL,
+        FOREIGN KEY(context_id) REFERENCES contexts(id) ON DELETE CASCADE,
+        FOREIGN KEY(task_id) REFERENCES tasks(id) ON DELETE SET NULL
     );
 
     -- Artifacts: Output of a task
@@ -90,6 +102,8 @@ function createTables(db: Database) {
     CREATE INDEX IF NOT EXISTS idx_tasks_context_id ON tasks(context_id);
     CREATE INDEX IF NOT EXISTS idx_messages_context_id ON messages(context_id);
     CREATE INDEX IF NOT EXISTS idx_messages_task_id ON messages(task_id);
+    CREATE INDEX IF NOT EXISTS idx_vercel_messages_context_id ON vercel_messages(context_id);
+    CREATE INDEX IF NOT EXISTS idx_vercel_messages_task_id ON vercel_messages(task_id);
     CREATE INDEX IF NOT EXISTS idx_artifacts_task_id ON artifacts(task_id);
     CREATE INDEX IF NOT EXISTS idx_contexts_updated_at ON contexts(updated_at);
     CREATE INDEX IF NOT EXISTS idx_tasks_updated_at ON tasks(updated_at);
@@ -97,4 +111,3 @@ function createTables(db: Database) {
 
   console.log("Clean database schema created successfully.")
 }
-

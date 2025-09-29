@@ -10,8 +10,9 @@ import { webSearchSkill, webSearchTool } from "../capabilities/brave-search.ts"
 import { fileAccessSkill, fileAccessTool } from "../capabilities/file-access.ts"
 import { memorySkill, memoryTool } from "../capabilities/memory.ts"
 import { contextRepository } from "../repositories/context.repository.ts"
-import { MessageRepository } from "../repositories/message.repository.ts"
+import { A2AMessageRepository } from "../repositories/message.repository.ts"
 import { TaskRepository } from "../repositories/task.repository.ts"
+import { VercelMessageRepository } from "../repositories/vercel-message.repository.ts"
 import { AgentConfigService } from "../services/agent-config.ts"
 import { ProviderService } from "../services/provider-service.ts"
 import { TaskService } from "../services/task.service.ts"
@@ -26,14 +27,14 @@ interface MCPToolsDisposable {
 
 export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
   private taskStorage = new TaskRepository()
-  private messageRepository = new MessageRepository()
+  private a2aMessageRepository = new A2AMessageRepository()
+  private vercelMessageRepository = new VercelMessageRepository()
   private taskService = new TaskService(
     this.taskStorage,
-    this.messageRepository,
+    this.a2aMessageRepository,
   )
   private vercelService = new VercelService(
-    this.messageRepository,
-    this.taskStorage,
+    this.vercelMessageRepository,
   )
   private agentConfigService: AgentConfigService
 
@@ -349,7 +350,11 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
     const contextId = params.message.contextId
 
     // Save the user message
-    this.messageRepository.createMessage(params.message)
+    this.a2aMessageRepository.createMessage(params.message)
+    this.vercelService.createMessage({
+      message: this.vercelService.fromA2AToUIMessage(params.message),
+      contextId: params.message.contextId,
+    })
 
     // Queue for status updates that need to be yielded progressively
     const statusUpdateQueue: A2A.TaskStatusUpdateEvent[] = []
@@ -415,23 +420,12 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
                 }`,
               )
             }
-            // Add tool calls and results to task history
-            for (const toolResult of toolResults) {
-              log.info(
-                `Saving tool result: ${this.truncateForLog(toolResult)}`,
-              )
-              this.taskService.addToolResultToHistory(
-                currentTask,
-                toolResult,
-              )
-            }
             statusUpdateQueue.push(this.taskService.transitionState(
               currentTask,
               "working",
               `Used ${toolCalls.map((tc) => tc.toolName).join(", ")}`,
             ))
             if (text) {
-              const textMessage = {}
               this.taskService.addMessageToHistory(currentTask, {
                 kind: "message",
                 messageId: crypto.randomUUID(),
@@ -446,8 +440,8 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
             }
           }
         },
-        onFinish: ({ text }) => {
-          log.info(`Stream finished - text: "${this.truncateForLog(text)}"`)
+        onFinish: (result) => {
+          result.steps
         },
       })
 
@@ -475,6 +469,9 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
         const statusUpdate = statusUpdateQueue.shift()!
         yield statusUpdate
       }
+
+      // Save the UI message
+      const r = await result.toUIMessageStream()
     } catch (error) {
       log.error("🚨 STREAM MESSAGE ERROR:", this.truncateForLog(error))
       log.error(

@@ -1,6 +1,6 @@
 import type * as A2A from "@a2a-js/sdk"
 import { ContextRepository } from "../repositories/context.repository.ts"
-import { MessageRepository } from "../repositories/message.repository.ts"
+import { A2AMessageRepository } from "../repositories/message.repository.ts"
 import { TaskRepository } from "../repositories/task.repository.ts"
 
 export interface ChatSummary {
@@ -24,7 +24,7 @@ export interface ChatWithHistory {
 
 export class ChatService {
   private contextStorage = new ContextRepository()
-  private messageStorage = new MessageRepository()
+  private messageStorage = new A2AMessageRepository()
   private taskStorage = new TaskRepository()
 
   createChat(id?: string): string {
@@ -125,7 +125,10 @@ export class ChatService {
       this.contextStorage.createContext(message.contextId)
     }
 
-    const normalized: A2A.Message = { ...message, role: message.role as "user" | "agent" }
+    const normalized: A2A.Message = {
+      ...message,
+      role: message.role as "user" | "agent",
+    }
 
     this.messageStorage.createMessage(normalized)
     if (message.contextId) {
@@ -133,4 +136,3 @@ export class ChatService {
     }
   }
 }
-

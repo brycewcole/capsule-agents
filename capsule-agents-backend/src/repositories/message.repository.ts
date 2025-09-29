@@ -2,7 +2,7 @@ import type * as A2A from "@a2a-js/sdk"
 import { getDb } from "../infrastructure/db.ts"
 import { getChanges } from "./sqlite-utils.ts"
 
-export interface StoredMessage {
+export interface StoredA2AMessage {
   id: string
   contextId: string
   taskId?: string
@@ -11,8 +11,8 @@ export interface StoredMessage {
   timestamp: number
 }
 
-export class MessageRepository {
-  createMessage(message: A2A.Message): StoredMessage {
+export class A2AMessageRepository {
+  createMessage(message: A2A.Message): StoredA2AMessage {
     if (!message.contextId) {
       throw new Error("Message contextId is required")
     }
@@ -72,7 +72,9 @@ export class MessageRepository {
     includeTaskMessages: boolean = false,
   ): A2A.Message[] {
     const db = getDb()
-    const where = includeTaskMessages ? `context_id = ?` : `context_id = ? AND task_id IS NULL`
+    const where = includeTaskMessages
+      ? `context_id = ?`
+      : `context_id = ? AND task_id IS NULL`
     const rows = db.prepare(
       `SELECT id, context_id, task_id, role, parts, timestamp FROM messages WHERE ${where} ORDER BY timestamp ASC`,
     ).all(contextId) as {
@@ -124,7 +126,10 @@ export class MessageRepository {
   updateMessage(
     id: string,
     updates: Partial<
-      Pick<StoredMessage, "contextId" | "taskId" | "role" | "parts" | "timestamp">
+      Pick<
+        StoredA2AMessage,
+        "contextId" | "taskId" | "role" | "parts" | "timestamp"
+      >
     >,
   ): boolean {
     const db = getDb()
@@ -168,7 +173,9 @@ export class MessageRepository {
     if (fields.length === 0) return false
 
     values.push(id)
-    const res = db.prepare(`UPDATE messages SET ${fields.join(", ")} WHERE id = ?`).run(
+    const res = db.prepare(
+      `UPDATE messages SET ${fields.join(", ")} WHERE id = ?`,
+    ).run(
       ...values,
     )
 
@@ -183,7 +190,9 @@ export class MessageRepository {
 
   deleteContextMessages(contextId: string): number {
     const db = getDb()
-    const res = db.prepare(`DELETE FROM messages WHERE context_id = ?`).run(contextId)
+    const res = db.prepare(`DELETE FROM messages WHERE context_id = ?`).run(
+      contextId,
+    )
     return getChanges(res)
   }
 
@@ -194,4 +203,4 @@ export class MessageRepository {
   }
 }
 
-export const messageRepository = new MessageRepository()
+export const a2aMessageRepository = new A2AMessageRepository()
