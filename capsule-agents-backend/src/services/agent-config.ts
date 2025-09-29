@@ -156,7 +156,10 @@ export class AgentConfigService {
 
       return result
     } catch (error) {
-      log.error("Error in AgentConfigService.getAgentInfo():", error)
+      log.error("Error in AgentConfigService.getAgentInfo():", error instanceof Error ? error.message : String(error))
+      if (error instanceof Error && error.stack) {
+        log.error("Stack trace:", error.stack)
+      }
       throw error
     }
   }
@@ -184,7 +187,10 @@ export class AgentConfigService {
       log.info("Database update completed successfully")
       return info
     } catch (error) {
-      log.error("Error in AgentConfigService.updateAgentInfo():", error)
+      log.error("Error in AgentConfigService.updateAgentInfo():", error instanceof Error ? error.message : String(error))
+      if (error instanceof Error && error.stack) {
+        log.error("Stack trace:", error.stack)
+      }
       throw error
     }
   }

@@ -452,6 +452,19 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
             }`,
           )
 
+          if (currentTask) {
+            statusUpdateQueue.push(this.taskService.transitionState(
+              currentTask,
+              "completed",
+              `Completed`,
+            ))
+          }
+
+          // Ensure the message has a valid ID
+          if (!responseMessage.id) {
+            responseMessage.id = crypto.randomUUID()
+          }
+
           // Save to Vercel storage
           await this.vercelService.upsertMessage({
             message: responseMessage,
@@ -477,8 +490,13 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
           for await (const _ of uiMessageStream) {
             // Just consume to ensure onFinish fires
           }
+          log.info("UI message stream consumed successfully")
         } catch (error) {
-          log.error("Error consuming UI message stream:", error)
+          console.log(error)
+          log.error(
+            "Error stack:",
+            error instanceof Error ? error.stack : "No stack available",
+          )
         }
       })()
 
