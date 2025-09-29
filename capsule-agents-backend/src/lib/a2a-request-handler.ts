@@ -349,9 +349,9 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
     }
     const contextId = params.message.contextId
 
-    // Save the user message
+    // Save the user message (both A2A and Vercel format)
     this.a2aMessageRepository.createMessage(params.message)
-    this.vercelService.createMessage({
+    await this.vercelService.upsertMessage({
       message: this.vercelService.fromA2AToUIMessage(params.message),
       contextId: params.message.contextId,
     })
@@ -440,8 +440,17 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
             }
           }
         },
-        onFinish: (result) => {
-          result.steps
+        onFinish: async (result) => {
+          const assistantMessage = await result.toUIMessageStream()
+          for await (const msg of assistantMessage) {
+            if (msg.role === "assistant") {
+              await this.vercelService.upsertMessage({
+                message: msg,
+                contextId: params.message.contextId!,
+                taskId: currentTask?.id,
+              })
+            }
+          }
         },
       })
 
@@ -469,9 +478,6 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
         const statusUpdate = statusUpdateQueue.shift()!
         yield statusUpdate
       }
-
-      // Save the UI message
-      const r = await result.toUIMessageStream()
     } catch (error) {
       log.error("🚨 STREAM MESSAGE ERROR:", this.truncateForLog(error))
       log.error(

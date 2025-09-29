@@ -63,18 +63,58 @@ function createTables(db: Database) {
         FOREIGN KEY(task_id) REFERENCES tasks(id) ON DELETE CASCADE
     );
 
-    -- Vercel Messages: Stores raw UI messages for full model context
+    -- Vercel Messages: Stores UI message metadata
     CREATE TABLE IF NOT EXISTS vercel_messages (
         id          TEXT PRIMARY KEY,
         context_id  TEXT NOT NULL,
         task_id     TEXT,
         role        TEXT NOT NULL,
-        payload     TEXT NOT NULL,
-        metadata    TEXT NOT NULL DEFAULT '{}',
         created_at  REAL NOT NULL,
-        updated_at  REAL NOT NULL,
         FOREIGN KEY(context_id) REFERENCES contexts(id) ON DELETE CASCADE,
         FOREIGN KEY(task_id) REFERENCES tasks(id) ON DELETE SET NULL
+    );
+
+    -- Vercel Message Parts: Flattened storage for message content
+    CREATE TABLE IF NOT EXISTS vercel_message_parts (
+        id                              TEXT PRIMARY KEY,
+        message_id                      TEXT NOT NULL,
+        type                            TEXT NOT NULL,
+        order_index                     INTEGER NOT NULL,
+        created_at                      REAL NOT NULL,
+
+        -- Text parts
+        text_text                       TEXT,
+
+        -- Reasoning parts
+        reasoning_text                  TEXT,
+
+        -- File parts
+        file_mediaType                  TEXT,
+        file_filename                   TEXT,
+        file_url                        TEXT,
+
+        -- Source URL parts
+        source_url_sourceId             TEXT,
+        source_url_url                  TEXT,
+        source_url_title                TEXT,
+
+        -- Source document parts
+        source_document_sourceId        TEXT,
+        source_document_mediaType       TEXT,
+        source_document_title           TEXT,
+        source_document_filename        TEXT,
+
+        -- Tool call shared columns
+        tool_toolCallId                 TEXT,
+        tool_state                      TEXT,
+        tool_errorText                  TEXT,
+        tool_input                      TEXT,
+        tool_output                     TEXT,
+
+        -- Provider metadata
+        provider_metadata               TEXT,
+
+        FOREIGN KEY(message_id) REFERENCES vercel_messages(id) ON DELETE CASCADE
     );
 
     -- Artifacts: Output of a task
@@ -104,6 +144,8 @@ function createTables(db: Database) {
     CREATE INDEX IF NOT EXISTS idx_messages_task_id ON messages(task_id);
     CREATE INDEX IF NOT EXISTS idx_vercel_messages_context_id ON vercel_messages(context_id);
     CREATE INDEX IF NOT EXISTS idx_vercel_messages_task_id ON vercel_messages(task_id);
+    CREATE INDEX IF NOT EXISTS idx_vercel_message_parts_message_id ON vercel_message_parts(message_id);
+    CREATE INDEX IF NOT EXISTS idx_vercel_message_parts_order ON vercel_message_parts(message_id, order_index);
     CREATE INDEX IF NOT EXISTS idx_artifacts_task_id ON artifacts(task_id);
     CREATE INDEX IF NOT EXISTS idx_contexts_updated_at ON contexts(updated_at);
     CREATE INDEX IF NOT EXISTS idx_tasks_updated_at ON tasks(updated_at);

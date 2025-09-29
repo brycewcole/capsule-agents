@@ -12,32 +12,24 @@ export class VercelService {
     private vercelMessageRepository: VercelMessageRepository,
   ) {}
 
+  upsertMessage(params: CreateVercelMessageParams): Promise<void> {
+    return this.vercelMessageRepository.upsertMessage(params)
+  }
+
   createMessage(params: CreateVercelMessageParams): StoredVercelMessage {
     return this.vercelMessageRepository.createMessage(params)
   }
 
-  getMessage(id: string): StoredVercelMessage | undefined {
+  getMessage(id: string): UIMessage | undefined {
     return this.vercelMessageRepository.getMessage(id)
   }
 
-  getContextMessages(contextId: string): StoredVercelMessage[] {
+  getContextMessages(contextId: string): UIMessage[] {
     return this.vercelMessageRepository.getMessagesByContext(contextId)
   }
 
-  getTaskMessages(taskId: string): StoredVercelMessage[] {
+  getTaskMessages(taskId: string): UIMessage[] {
     return this.vercelMessageRepository.getMessagesByTask(taskId)
-  }
-
-  updateMessage(
-    id: string,
-    updates: Partial<
-      Pick<
-        StoredVercelMessage,
-        "contextId" | "taskId" | "role" | "message" | "metadata"
-      >
-    >,
-  ): boolean {
-    return this.vercelMessageRepository.updateMessage(id, updates)
   }
 
   deleteMessage(id: string): boolean {
@@ -94,8 +86,6 @@ export class VercelService {
   }
 
   fromContext(contextId: string): UIMessage[] {
-    return this.vercelMessageRepository
-      .getMessagesByContext(contextId)
-      .map((stored) => stored.message)
+    return this.vercelMessageRepository.getMessagesByContext(contextId)
   }
 }
