@@ -65,7 +65,6 @@ export class TaskService {
         contextId: task.contextId,
       }
 
-      this.messageStorage.createMessage(statusMessage)
       task.status.message = statusMessage
     }
 
