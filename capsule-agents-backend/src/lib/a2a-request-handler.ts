@@ -559,10 +559,17 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
         yield statusUpdate
       }
 
-      // Wait a moment for onFinish to complete and yield the final A2A message
+      // Wait a moment for onFinish to complete
       // Small delay to ensure onFinish callback has executed
       await new Promise((resolve) => setTimeout(resolve, 100))
 
+      // Drain any status updates added by onFinish (e.g., "completed" status)
+      while (statusUpdateQueue.length > 0) {
+        const statusUpdate = statusUpdateQueue.shift()!
+        yield statusUpdate
+      }
+
+      // Yield the final A2A message
       if (finalA2AMessage) {
         log.info("Yielding final A2A message")
         yield finalA2AMessage
