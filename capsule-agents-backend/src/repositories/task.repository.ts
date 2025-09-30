@@ -5,6 +5,29 @@ import { getDb } from "../infrastructure/db.ts"
 import { ArtifactRepository } from "./artifact.repository.ts"
 import { getChanges } from "./sqlite-utils.ts"
 
+const parseMessageMetadata = (
+  metadataJson: string | null,
+  timestamp: number,
+): Record<string, unknown> => {
+  if (metadataJson) {
+    try {
+      const parsed = JSON.parse(metadataJson)
+      if (parsed && typeof parsed === "object") {
+        return {
+          ...parsed as Record<string, unknown>,
+          timestamp: new Date(timestamp * 1000).toISOString(),
+        }
+      }
+    } catch (_error) {
+      // fall through to default timestamp-only metadata
+    }
+  }
+
+  return {
+    timestamp: new Date(timestamp * 1000).toISOString(),
+  }
+}
+
 export interface StoredTask {
   id: string
   contextId: string
@@ -199,12 +222,13 @@ export class TaskRepository implements TaskStore {
   private getTaskMessages(taskId: string): A2A.Message[] {
     const db = getDb()
     const rows = db.prepare(`
-      SELECT id, context_id, role, parts, timestamp FROM messages WHERE task_id = ? ORDER BY timestamp ASC
+      SELECT id, context_id, role, parts, metadata, timestamp FROM messages WHERE task_id = ? ORDER BY timestamp ASC
     `).all(taskId) as {
       id: string
       context_id: string
       role: string
       parts: string
+      metadata: string | null
       timestamp: number
     }[]
     return rows.map((row) => ({
@@ -214,9 +238,7 @@ export class TaskRepository implements TaskStore {
       taskId: taskId,
       role: row.role as "user" | "agent",
       parts: JSON.parse(row.parts),
-      metadata: {
-        timestamp: new Date(row.timestamp * 1000).toISOString(),
-      },
+      metadata: parseMessageMetadata(row.metadata, row.timestamp),
     }))
   }
 
@@ -224,7 +246,7 @@ export class TaskRepository implements TaskStore {
   private getStatusMessage(messageId: string): A2A.Message | undefined {
     const db = getDb()
     const row = db.prepare(`
-      SELECT id, context_id, task_id, role, parts, timestamp FROM messages WHERE id = ?
+      SELECT id, context_id, task_id, role, parts, metadata, timestamp FROM messages WHERE id = ?
     `).get(messageId) as
       | {
         id: string
@@ -232,6 +254,7 @@ export class TaskRepository implements TaskStore {
         task_id: string | null
         role: string
         parts: string
+        metadata: string | null
         timestamp: number
       }
       | undefined
@@ -243,6 +266,7 @@ export class TaskRepository implements TaskStore {
       taskId: row.task_id || undefined,
       role: row.role as "user" | "agent",
       parts: JSON.parse(row.parts),
+      metadata: parseMessageMetadata(row.metadata, row.timestamp),
     }
   }
 

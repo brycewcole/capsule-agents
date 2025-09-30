@@ -40,6 +40,17 @@ export class ChatService {
       .trim()
   }
 
+  private filterStatusMessages(messages: A2A.Message[]): A2A.Message[] {
+    return messages.filter((message) => {
+      const metadata = message.metadata
+      if (metadata && typeof metadata === "object") {
+        const kind = (metadata as { kind?: unknown }).kind
+        return kind !== "status-message"
+      }
+      return true
+    })
+  }
+
   // Generate title from first user message
   private generateChatTitle(messages: A2A.Message[]): string {
     const firstUserMessage = messages.find((m) => m.role === "user")
@@ -71,14 +82,15 @@ export class ChatService {
     for (const context of contexts) {
       // Include messages that belong to tasks so previews/counts reflect reality
       const messages = this.messageStorage.getContextMessages(context.id, true)
+      const visibleMessages = this.filterStatusMessages(messages)
 
       if (messages.length > 0) {
         chatSummaries.push({
           id: context.id,
-          title: this.generateChatTitle(messages),
+          title: this.generateChatTitle(visibleMessages),
           lastActivity: context.updatedAt,
-          messageCount: messages.length,
-          preview: this.getMessagePreview(messages),
+          messageCount: visibleMessages.length,
+          preview: this.getMessagePreview(visibleMessages),
           createTime: context.createdAt,
         })
       }
@@ -93,12 +105,13 @@ export class ChatService {
 
     // Include both context-level and task-linked messages
     const messages = this.messageStorage.getContextMessages(contextId, true)
+    const visibleMessages = this.filterStatusMessages(messages)
     const tasks = this.taskStorage.getTasksByContext(contextId)
 
     return {
       contextId,
-      title: this.generateChatTitle(messages),
-      messages,
+      title: this.generateChatTitle(visibleMessages),
+      messages: visibleMessages,
       tasks,
       metadata: context.metadata,
       createTime: context.createdAt,

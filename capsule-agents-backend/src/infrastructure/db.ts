@@ -58,6 +58,7 @@ function createTables(db: Database) {
         task_id     TEXT,
         role        TEXT NOT NULL CHECK (role IN ('user', 'agent')),
         parts       TEXT NOT NULL DEFAULT '[]',
+        metadata    TEXT NOT NULL DEFAULT '{}',
         timestamp   REAL NOT NULL,
         FOREIGN KEY(context_id) REFERENCES contexts(id) ON DELETE CASCADE,
         FOREIGN KEY(task_id) REFERENCES tasks(id) ON DELETE CASCADE
@@ -151,5 +152,18 @@ function createTables(db: Database) {
     CREATE INDEX IF NOT EXISTS idx_tasks_updated_at ON tasks(updated_at);
   `)
 
+  ensureMessagesMetadataColumn(db)
+
   console.log("Clean database schema created successfully.")
+}
+
+function ensureMessagesMetadataColumn(db: Database) {
+  const columns = db.prepare("PRAGMA table_info(messages)").all() as {
+    name: string
+  }[]
+
+  const hasMetadata = columns.some((column) => column.name === "metadata")
+  if (!hasMetadata) {
+    db.exec("ALTER TABLE messages ADD COLUMN metadata TEXT NOT NULL DEFAULT '{}'")
+  }
 }

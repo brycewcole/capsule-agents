@@ -2,6 +2,26 @@ import type * as A2A from "@a2a-js/sdk"
 import { getDb } from "../infrastructure/db.ts"
 import { getChanges } from "./sqlite-utils.ts"
 
+const parseMetadata = (metadataJson: string | null | undefined): Record<string, unknown> => {
+  if (!metadataJson) return {}
+  try {
+    const parsed = JSON.parse(metadataJson)
+    return parsed && typeof parsed === "object" ? parsed as Record<string, unknown> : {}
+  } catch (_error) {
+    return {}
+  }
+}
+
+const addTimestampToMetadata = (
+  metadata: Record<string, unknown>,
+  timestampSeconds: number,
+): Record<string, unknown> => {
+  return {
+    ...metadata,
+    timestamp: new Date(timestampSeconds * 1000).toISOString(),
+  }
+}
+
 export interface StoredA2AMessage {
   id: string
   contextId: string
@@ -9,6 +29,7 @@ export interface StoredA2AMessage {
   role: "user" | "agent"
   parts: A2A.Part[]
   timestamp: number
+  metadata: Record<string, unknown>
 }
 
 export class A2AMessageRepository {
@@ -20,8 +41,11 @@ export class A2AMessageRepository {
     const role = message.role as "user" | "agent"
     const db = getDb()
     const ts = Date.now() / 1000
+    const metadata = message.metadata
+      ? JSON.parse(JSON.stringify(message.metadata)) as Record<string, unknown>
+      : {}
     const stmt = db.prepare(
-      `INSERT INTO messages (id, context_id, task_id, role, parts, timestamp) VALUES (?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO messages (id, context_id, task_id, role, parts, metadata, timestamp) VALUES (?, ?, ?, ?, ?, ?, ?)`,
     )
     stmt.run(
       message.messageId,
@@ -29,6 +53,7 @@ export class A2AMessageRepository {
       message.taskId ?? null,
       role,
       JSON.stringify(message.parts ?? []),
+      JSON.stringify(metadata),
       ts,
     )
 
@@ -39,13 +64,14 @@ export class A2AMessageRepository {
       role,
       parts: message.parts ?? [],
       timestamp: ts,
+      metadata: addTimestampToMetadata(metadata, ts),
     }
   }
 
   getMessage(id: string): A2A.Message | undefined {
     const db = getDb()
     const row = db.prepare(
-      `SELECT id, context_id, task_id, role, parts, timestamp FROM messages WHERE id = ?`,
+      `SELECT id, context_id, task_id, role, parts, metadata, timestamp FROM messages WHERE id = ?`,
     ).get(id) as
       | {
         id: string
@@ -53,10 +79,12 @@ export class A2AMessageRepository {
         task_id: string | null
         role: "user" | "agent"
         parts: string
+        metadata: string | null
         timestamp: number
       }
       | undefined
     if (!row) return undefined
+    const metadata = addTimestampToMetadata(parseMetadata(row.metadata), row.timestamp)
     return {
       kind: "message",
       messageId: row.id,
@@ -64,6 +92,7 @@ export class A2AMessageRepository {
       taskId: row.task_id || undefined,
       role: row.role,
       parts: JSON.parse(row.parts),
+      metadata,
     }
   }
 
@@ -76,13 +105,14 @@ export class A2AMessageRepository {
       ? `context_id = ?`
       : `context_id = ? AND task_id IS NULL`
     const rows = db.prepare(
-      `SELECT id, context_id, task_id, role, parts, timestamp FROM messages WHERE ${where} ORDER BY timestamp ASC`,
+      `SELECT id, context_id, task_id, role, parts, metadata, timestamp FROM messages WHERE ${where} ORDER BY timestamp ASC`,
     ).all(contextId) as {
       id: string
       context_id: string
       task_id: string | null
       role: "user" | "agent"
       parts: string
+      metadata: string | null
       timestamp: number
     }[]
     return rows.map((row) => ({
@@ -92,22 +122,21 @@ export class A2AMessageRepository {
       taskId: row.task_id || undefined,
       role: row.role,
       parts: JSON.parse(row.parts),
-      metadata: {
-        timestamp: new Date(row.timestamp * 1000).toISOString(),
-      },
+      metadata: addTimestampToMetadata(parseMetadata(row.metadata), row.timestamp),
     }))
   }
 
   getTaskMessages(taskId: string): A2A.Message[] {
     const db = getDb()
     const rows = db.prepare(
-      `SELECT id, context_id, task_id, role, parts, timestamp FROM messages WHERE task_id = ? ORDER BY timestamp ASC`,
+      `SELECT id, context_id, task_id, role, parts, metadata, timestamp FROM messages WHERE task_id = ? ORDER BY timestamp ASC`,
     ).all(taskId) as {
       id: string
       context_id: string
       task_id: string | null
       role: "user" | "agent"
       parts: string
+      metadata: string | null
       timestamp: number
     }[]
     return rows.map((row) => ({
@@ -117,9 +146,7 @@ export class A2AMessageRepository {
       taskId: row.task_id || undefined,
       role: row.role,
       parts: JSON.parse(row.parts),
-      metadata: {
-        timestamp: new Date(row.timestamp * 1000).toISOString(),
-      },
+      metadata: addTimestampToMetadata(parseMetadata(row.metadata), row.timestamp),
     }))
   }
 
@@ -128,7 +155,7 @@ export class A2AMessageRepository {
     updates: Partial<
       Pick<
         StoredA2AMessage,
-        "contextId" | "taskId" | "role" | "parts" | "timestamp"
+        "contextId" | "taskId" | "role" | "parts" | "timestamp" | "metadata"
       >
     >,
   ): boolean {
@@ -160,6 +187,11 @@ export class A2AMessageRepository {
     if (Object.prototype.hasOwnProperty.call(updates, "parts")) {
       fields.push("parts = ?")
       values.push(JSON.stringify(updates.parts ?? []))
+    }
+
+    if (Object.prototype.hasOwnProperty.call(updates, "metadata")) {
+      fields.push("metadata = ?")
+      values.push(JSON.stringify(updates.metadata ?? {}))
     }
 
     if (Object.prototype.hasOwnProperty.call(updates, "timestamp")) {
