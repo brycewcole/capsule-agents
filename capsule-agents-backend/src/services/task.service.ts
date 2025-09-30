@@ -62,9 +62,13 @@ export class TaskService {
         role: "agent",
         parts: [{ kind: "text", text: statusText }],
         taskId: task.id,
+        metadata: {
+          kind: "status-message",
+        },
         contextId: task.contextId,
       }
 
+      this.messageStorage.createMessage(statusMessage)
       task.status.message = statusMessage
     }
 

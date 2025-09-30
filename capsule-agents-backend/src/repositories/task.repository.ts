@@ -1,8 +1,8 @@
 // deno-lint-ignore-file require-await
 import type * as A2A from "@a2a-js/sdk"
 import type { TaskStore } from "@a2a-js/sdk/server"
-import { ArtifactRepository } from "./artifact.repository.ts"
 import { getDb } from "../infrastructure/db.ts"
+import { ArtifactRepository } from "./artifact.repository.ts"
 import { getChanges } from "./sqlite-utils.ts"
 
 export interface StoredTask {
@@ -111,16 +111,18 @@ export class TaskRepository implements TaskStore {
       created_at: number
       updated_at: number
     }[]
-    return rows.map((row) => this.buildA2ATask({
-      id: row.id,
-      contextId: row.context_id,
-      statusState: row.status_state as A2A.Task["status"]["state"],
-      statusTimestamp: row.status_timestamp,
-      statusMessageId: row.status_message_id || undefined,
-      metadata: JSON.parse(row.metadata),
-      createdAt: row.created_at,
-      updatedAt: row.updated_at,
-    }))
+    return rows.map((row) =>
+      this.buildA2ATask({
+        id: row.id,
+        contextId: row.context_id,
+        statusState: row.status_state as A2A.Task["status"]["state"],
+        statusTimestamp: row.status_timestamp,
+        statusMessageId: row.status_message_id || undefined,
+        metadata: JSON.parse(row.metadata),
+        createdAt: row.created_at,
+        updatedAt: row.updated_at,
+      })
+    )
   }
 
   getTasksByContext(contextId: string): A2A.Task[] {
@@ -138,16 +140,18 @@ export class TaskRepository implements TaskStore {
       created_at: number
       updated_at: number
     }[]
-    return rows.map((row) => this.buildA2ATask({
-      id: row.id,
-      contextId: row.context_id,
-      statusState: row.status_state as A2A.Task["status"]["state"],
-      statusTimestamp: row.status_timestamp,
-      statusMessageId: row.status_message_id || undefined,
-      metadata: JSON.parse(row.metadata),
-      createdAt: row.created_at,
-      updatedAt: row.updated_at,
-    }))
+    return rows.map((row) =>
+      this.buildA2ATask({
+        id: row.id,
+        contextId: row.context_id,
+        statusState: row.status_state as A2A.Task["status"]["state"],
+        statusTimestamp: row.status_timestamp,
+        statusMessageId: row.status_message_id || undefined,
+        metadata: JSON.parse(row.metadata),
+        createdAt: row.created_at,
+        updatedAt: row.updated_at,
+      })
+    )
   }
 
   deleteTask(id: string): boolean {
@@ -222,7 +226,14 @@ export class TaskRepository implements TaskStore {
     const row = db.prepare(`
       SELECT id, context_id, task_id, role, parts, timestamp FROM messages WHERE id = ?
     `).get(messageId) as
-      | { id: string; context_id: string; task_id: string | null; role: string; parts: string; timestamp: number }
+      | {
+        id: string
+        context_id: string
+        task_id: string | null
+        role: string
+        parts: string
+        timestamp: number
+      }
       | undefined
     if (!row) return undefined
     return {
