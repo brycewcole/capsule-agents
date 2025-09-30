@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { Input } from "./ui/input.tsx"
 import { Button } from "@/components/ui/button.tsx"
+import { Badge } from "./ui/badge.tsx"
 import {
   ArrowRight,
   Loader2,
@@ -17,7 +18,6 @@ import {
   CardHeader,
   CardTitle,
 } from "./ui/card.tsx"
-import { Separator } from "./ui/separator.tsx"
 import {
   type A2ATask,
   type CapabilityCall,
@@ -27,8 +27,6 @@ import {
   extractResponseText,
   streamMessage,
 } from "../lib/api.ts"
-/* message bubbles removed in favor of tasks-only view */
-import { TaskStatusDisplay } from "./task-status-display.tsx"
 import {
   getErrorMessage,
   isRecoverableError,
@@ -67,12 +65,113 @@ type TimelineEntry = {
     timestamp: number
     isLoading: boolean
     capabilityCalls?: CapabilityCall[]
+    taskUpdates?: Array<{ id: string; role: "user" | "agent" | "status"; text: string }>
   }
   tasks: TimelineTask[]
 }
 
 const createEntryId = () =>
   globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2)
+
+const toTimestampSeconds = (value?: string | number | null) => {
+  if (typeof value === "number") {
+    return value > 1e12 ? value / 1000 : value
+  }
+  if (typeof value === "string") {
+    const parsed = Date.parse(value)
+    return Number.isNaN(parsed) ? null : parsed / 1000
+  }
+  return null
+}
+
+const taskStatusMeta = {
+  submitted: {
+    label: "Submitted",
+    badgeClass: "border-blue-200 text-blue-700 bg-blue-50",
+  },
+  working: {
+    label: "Working",
+    badgeClass: "border-yellow-200 text-yellow-800 bg-yellow-50",
+  },
+  "input-required": {
+    label: "Input Required",
+    badgeClass: "border-orange-200 text-orange-800 bg-orange-50",
+  },
+  completed: {
+    label: "Completed",
+    badgeClass: "border-green-200 text-green-700 bg-green-50",
+  },
+  failed: {
+    label: "Failed",
+    badgeClass: "border-red-200 text-red-700 bg-red-50",
+  },
+  canceled: {
+    label: "Canceled",
+    badgeClass: "border-border text-muted-foreground bg-muted/40",
+  },
+  unknown: {
+    label: "Unknown",
+    badgeClass: "border-border text-muted-foreground bg-muted/40",
+  },
+} satisfies Record<string, { label: string; badgeClass: string }>
+
+const getTaskStatusInfo = (task: A2ATask) => {
+  const state = (task.status?.state as keyof typeof taskStatusMeta | undefined) ?? "unknown"
+  return taskStatusMeta[state] ?? taskStatusMeta.unknown
+}
+
+const extractTextFromParts = (parts: unknown[]): string => {
+  if (!Array.isArray(parts)) return ""
+  return parts
+    .filter((part) => {
+      if (!part || typeof part !== "object") return false
+      const candidate = part as { kind?: string; type?: string }
+      return candidate.kind === "text" || candidate.type === "text"
+    })
+    .map((part) => {
+      if (!part || typeof part !== "object") return ""
+      const candidate = part as { text?: string }
+      return candidate.text ?? ""
+    })
+    .filter(Boolean)
+    .join("\n\n")
+    .trim()
+}
+
+const buildTaskUpdates = (task: A2ATask) => {
+  const updates: Array<{ id: string; role: "user" | "agent" | "status"; text: string }> = []
+
+  if (Array.isArray(task.history)) {
+    for (const message of task.history) {
+      if (!message || typeof message !== "object") continue
+      const role = (message as { role?: string }).role
+      if (role !== "user" && role !== "assistant" && role !== "agent") continue
+      const normalizedRole = role === "user" ? "user" : "agent"
+      const parts = (message as { parts?: unknown[] }).parts ?? []
+      const text = extractTextFromParts(parts)
+      if (!text) continue
+      updates.push({
+        id: (message as { messageId?: string }).messageId ?? `${task.id ?? "task"}-history-${updates.length}`,
+        role: normalizedRole,
+        text,
+      })
+    }
+  }
+
+  const statusText = task.status?.message?.parts
+    ? extractTextFromParts(task.status.message.parts as unknown[])
+    : ""
+
+  if (statusText) {
+    updates.push({
+      id: `${task.id ?? "task"}-status`,
+      role: "status",
+      text: statusText,
+    })
+  }
+
+  return updates
+}
 
 interface ChatInterfaceProps {
   contextId?: string | null
@@ -245,9 +344,8 @@ export default function ChatInterface({
     console.log("Loading initial chat data:", initialChatData)
 
     const normalizeTimestamp = (value?: string | number | null) => {
-      if (typeof value === "number") return value
-      if (typeof value === "string") return new Date(value).getTime() / 1000
-      return Date.now() / 1000
+      const seconds = toTimestampSeconds(value ?? null)
+      return seconds ?? Date.now() / 1000
     }
 
     const normalizeMessage = (msg: {
@@ -535,21 +633,25 @@ export default function ChatInterface({
           })
 
           if (event.final && event.status.state === "completed") {
-            if (nextTask) {
-              finalCapabilityCalls = extractCapabilityCalls(nextTask)
-            }
-            updateEntry(targetEntryId, (entry) => ({
-              ...entry,
-              agent: entry.agent
-                ? {
-                  ...entry.agent,
-                  capabilityCalls: finalCapabilityCalls.length > 0
-                    ? finalCapabilityCalls
-                    : entry.agent.capabilityCalls,
-                  isLoading: false,
-                }
-                : entry.agent,
-            }))
+            updateEntry(targetEntryId, (entry) => {
+              const updates = nextTask ? buildTaskUpdates(nextTask) : []
+              const newCapabilities = nextTask
+                ? extractCapabilityCalls(nextTask)
+                : finalCapabilityCalls
+              return {
+                ...entry,
+                agent: entry.agent
+                  ? {
+                    ...entry.agent,
+                    capabilityCalls: newCapabilities.length > 0
+                      ? newCapabilities
+                      : entry.agent.capabilityCalls,
+                    isLoading: false,
+                    taskUpdates: updates,
+                  }
+                  : entry.agent,
+              }
+            })
             activeEntryIdRef.current = null
           } else if (event.final && event.status.state === "failed") {
             activeEntryIdRef.current = null
@@ -692,6 +794,9 @@ export default function ChatInterface({
                 ) : (
                   timelineEntries.map((entry, index) => {
                     const showConnector = index < timelineEntries.length - 1
+                    const hasTasks = entry.tasks.length > 0
+                    const capabilityCalls = entry.agent?.capabilityCalls ?? []
+                    const showAgentCard = entry.agent && (!hasTasks || entry.agent.isLoading)
 
                     return (
                       <div
@@ -719,7 +824,7 @@ export default function ChatInterface({
                             </CardContent>
                           </Card>
 
-                          {entry.agent && (
+                          {showAgentCard && entry.agent && (
                             <Card className="border-primary/20 bg-primary/5">
                               <CardHeader className="p-4 pb-2">
                                 <div className="flex items-center justify-between text-xs font-medium uppercase tracking-wide text-muted-foreground">
@@ -731,16 +836,18 @@ export default function ChatInterface({
                                 {entry.agent.isLoading ? (
                                   <span className="inline-flex items-center gap-2 text-muted-foreground">
                                     <Loader2 className="h-4 w-4 animate-spin" />
-                                    Thinking...
+                                    {hasTasks ? "Working on task..." : "Thinking..."}
                                   </span>
-                                ) : entry.agent.content ? (
-                                  <div className="whitespace-pre-wrap break-words">
-                                    {entry.agent.content}
-                                  </div>
-                                ) : (
-                                  <span className="text-muted-foreground">No response</span>
-                                )}
-                                {!entry.agent.isLoading &&
+                                ) : !hasTasks ? (
+                                  entry.agent.content ? (
+                                    <div className="whitespace-pre-wrap break-words">
+                                      {entry.agent.content}
+                                    </div>
+                                  ) : (
+                                    <span className="text-muted-foreground">No response</span>
+                                  )
+                                ) : null}
+                                {!entry.agent.isLoading && !hasTasks &&
                                   entry.agent.capabilityCalls &&
                                   entry.agent.capabilityCalls.length > 0 && (
                                     <div className="mt-3 space-y-1 text-xs text-muted-foreground">
@@ -762,11 +869,86 @@ export default function ChatInterface({
                             </Card>
                           )}
 
-                          {entry.tasks.length > 0 && <Separator className="my-2" />}
+                          {entry.tasks.map((item, taskIndex) => {
+                            const task = item.task
+                            const statusInfo = getTaskStatusInfo(task)
+                            const updates = entry.agent?.taskUpdates ?? buildTaskUpdates(task)
+                            const hasUpdates = updates.length > 0
+                            const shortId = item.id.slice(-8)
+                            const statusTimestampSeconds = toTimestampSeconds(task.status?.timestamp ?? null)
+                            const statusTimestamp = statusTimestampSeconds != null
+                              ? formatTimestamp(statusTimestampSeconds)
+                              : null
+                            const capabilityCallsForTask = taskIndex === 0 ? capabilityCalls : []
 
-                          {entry.tasks.map((item) => (
-                            <TaskStatusDisplay key={item.id} task={item.task} />
-                          ))}
+                            return (
+                              <div
+                                key={item.id}
+                                className="relative mt-4 rounded-lg border border-border/60 bg-background/60 p-4"
+                              >
+                                {hasUpdates && (
+                                  <div className="absolute left-4 top-10 bottom-4 w-px bg-border/60" />
+                                )}
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <Badge
+                                    variant="outline"
+                                    className={`text-xs font-medium ${statusInfo.badgeClass}`}
+                                  >
+                                    {statusInfo.label}
+                                  </Badge>
+                                  <span className="text-xs text-muted-foreground">
+                                    Task {shortId}
+                                  </span>
+                                  {statusTimestamp && (
+                                    <span className="text-xs text-muted-foreground">
+                                      • {statusTimestamp}
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="mt-3 space-y-3 text-sm text-foreground">
+                                  {!hasUpdates ? (
+                                    <p className="text-xs text-muted-foreground">
+                                      No task updates yet.
+                                    </p>
+                                  ) : (
+                                    updates.map((update) => (
+                                      <div key={update.id} className="relative pl-5">
+                                        <div className="absolute left-0 top-2 h-2 w-2 rounded-full bg-primary" />
+                                        <div className="rounded-md border border-border/60 bg-background px-3 py-2">
+                                          <div className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                                            {update.role === "user"
+                                              ? "User input"
+                                              : update.role === "agent"
+                                              ? "Agent update"
+                                              : "Status update"}
+                                          </div>
+                                          <div className="mt-1 whitespace-pre-wrap break-words">
+                                            {update.text}
+                                          </div>
+                                        </div>
+                                      </div>
+                                    ))
+                                  )}
+                                  {capabilityCallsForTask.length > 0 && (
+                                    <div className="space-y-1 text-xs text-muted-foreground">
+                                      <div className="font-medium uppercase tracking-wide">
+                                        Capability Calls
+                                      </div>
+                                      <ul className="ml-4 list-disc space-y-1">
+                                        {capabilityCallsForTask.map((call, idx) => (
+                                          <li key={`${call.name}-${idx}`}>
+                                            <span className="font-medium text-foreground/80">
+                                              {call.name}
+                                            </span>
+                                          </li>
+                                        ))}
+                                      </ul>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            )
+                          })}
                         </div>
                       </div>
                     )
