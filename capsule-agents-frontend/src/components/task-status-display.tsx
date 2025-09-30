@@ -4,6 +4,12 @@ import { useEffect, useState } from "react"
 import { Badge } from "./ui/badge.tsx"
 import { Button } from "./ui/button.tsx"
 import {
+  Card,
+  CardContent,
+  CardFooter,
+  CardHeader,
+} from "./ui/card.tsx"
+import {
   AlertCircle,
   CheckCircle,
   ChevronDown,
@@ -304,175 +310,199 @@ export function TaskStatusDisplay({ task, className }: TaskStatusDisplayProps) {
     )
   }
 
+  const statusTimestamp = task.status?.timestamp
+    ? new Date(task.status.timestamp)
+    : null
+
+  const displayableHistory = historyMessages
+    .map((message, idx) => {
+      const role = message.role === "assistant"
+        ? "agent"
+        : message.role === "user"
+        ? "user"
+        : null
+
+      if (!role) return null
+
+      const parts = message.parts || []
+      const text = parts.length > 0 ? extractTextFromParts(parts).trim() : ""
+      const funcs = parts.length > 0
+        ? summarizeFunctionsFromParts(parts)
+        : []
+      const dataParts = parts.length > 0
+        ? extractDataParts(parts)
+        : []
+
+      if (!text && funcs.length === 0 && dataParts.length === 0) {
+        return null
+      }
+
+      return {
+        id: message.messageId ?? `${task.id ?? "task"}-${idx}`,
+        role,
+        text,
+        funcs,
+        dataParts,
+      }
+    })
+    .filter((value): value is {
+      id: string
+      role: "user" | "agent"
+      text: string
+      funcs: ReturnType<typeof summarizeFunctionsFromParts>
+      dataParts: ReturnType<typeof extractDataParts>
+    } => Boolean(value))
+
+  const hasExpandableContent =
+    !hasLoadedHistory ||
+    historyError ||
+    isLoadingHistory ||
+    displayableHistory.length > 0
+
   return (
-    <div className={cn("w-full mb-2", className)}>
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <Badge className={cn("gap-1.5", statusInfo.color)} variant="outline">
-            <StatusIcon
-              className={cn("h-3 w-3", statusInfo.animated && "animate-spin")}
-            />
-            {statusInfo.label}
-          </Badge>
-          <span className="text-sm text-muted-foreground">Task: {taskId}</span>
-          {task.status?.timestamp && (
-            <span className="text-xs text-muted-foreground inline-flex items-center gap-1">
+    <Card className={cn("border-primary/30 bg-primary/5", className)}>
+      <CardHeader className="space-y-3 pb-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge className={cn("gap-1.5", statusInfo.color)} variant="outline">
+              <StatusIcon
+                className={cn("h-3 w-3", statusInfo.animated && "animate-spin")}
+              />
+              {statusInfo.label}
+            </Badge>
+            <span className="text-xs text-muted-foreground">
+              Task {taskId}
+            </span>
+          </div>
+          {statusTimestamp && (
+            <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
               <Clock className="h-3 w-3" />
-              {new Date(task.status.timestamp).toLocaleTimeString()}
+              {statusTimestamp.toLocaleTimeString([], {
+                hour: "2-digit",
+                minute: "2-digit",
+              })}
             </span>
           )}
         </div>
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => setIsExpanded(!isExpanded)}
-          className="h-6 w-6 p-0"
-          title={isExpanded ? "Collapse" : "Expand"}
-        >
-          {isExpanded
-            ? <ChevronUp className="h-3 w-3" />
-            : <ChevronDown className="h-3 w-3" />}
-        </Button>
-      </div>
 
-      {!isExpanded && description && (
-        <p className="text-xs text-muted-foreground mt-1">{description}</p>
-      )}
+        {description && (
+          <div className="prose prose-sm dark:prose-invert max-w-none">
+            <Markdown>{description}</Markdown>
+          </div>
+        )}
+
+        {!description && (
+          <p className="text-sm text-muted-foreground">
+            {statusInfo.label === "Completed"
+              ? "Task completed."
+              : "Task updates will appear here."}
+          </p>
+        )}
+      </CardHeader>
 
       {isExpanded && (
-        <div className="mt-2 pr-1 min-w-0 relative">
-          {/* Vertical timeline line with corner caps; line inset so corners are clean */}
-          <div className="pointer-events-none absolute left-2 top-3 bottom-3 w-px bg-border" />
-          <div className="pointer-events-none absolute left-2 top-0 w-3 h-3 border-l border-t border-border rounded-tl-md bg-transparent" />
-          <div className="pointer-events-none absolute left-2 bottom-0 w-3 h-3 border-l border-b border-border rounded-bl-md bg-transparent" />
-          <div className="space-y-3 pl-5">
-            {isLoadingHistory && historyMessages.length === 0 ? (
-              <div className="text-xs text-muted-foreground flex items-center gap-2">
-                <Loader2 className="h-3 w-3 animate-spin" />
-                Loading task history...
-              </div>
-            ) : historyError ? (
-              <div className="text-xs text-destructive flex flex-col gap-2">
-                <span>{historyError}</span>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="self-start h-6 px-2"
-                  onClick={() => {
-                    setHasLoadedHistory(false)
-                    setHistoryError(null)
-                  }}
+        <CardContent className="pt-0">
+          {isLoadingHistory && displayableHistory.length === 0 ? (
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <Loader2 className="h-3 w-3 animate-spin" />
+              Loading task activity...
+            </div>
+          ) : historyError ? (
+            <div className="space-y-2 text-xs text-destructive">
+              <span>{historyError}</span>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-6 px-2"
+                onClick={() => {
+                  setHasLoadedHistory(false)
+                  setHistoryError(null)
+                }}
+              >
+                Retry
+              </Button>
+            </div>
+          ) : displayableHistory.length === 0 ? (
+            <p className="text-xs text-muted-foreground">
+              No additional task activity yet.
+            </p>
+          ) : (
+            <div className="space-y-3">
+              {displayableHistory.map((event) => (
+                <div
+                  key={event.id}
+                  className={cn(
+                    "rounded-lg border px-3 py-2 text-sm",
+                    event.role === "user"
+                      ? "bg-muted/60"
+                      : "bg-background/80",
+                  )}
                 >
-                  Retry
-                </Button>
-              </div>
-            ) : historyMessages.length === 0 ? (
-              <div className="text-xs text-muted-foreground">
-                No history available for this task yet.
-              </div>
-            ) : (
-              historyMessages.map((msg, idx) => {
-                const message = msg as A2A.Message
-                const role = message.role
-                const isUser = role === "user"
-                const parts = message.parts || []
-                const text = parts.length > 0 ? extractTextFromParts(parts) : ""
-                const funcs = parts.length > 0
-                  ? summarizeFunctionsFromParts(parts)
-                  : []
-                const dataParts = parts.length > 0
-                  ? extractDataParts(parts)
-                  : []
-
-                return (
-                  <div
-                    key={message.messageId ?? idx}
-                    className={`relative flex ${
-                      isUser ? "justify-end" : "justify-start"
-                    }`}
-                  >
-                    <div className="max-w-[80%]">
-                      <div
-                        className={`inline-block w-fit align-top rounded-2xl px-4 py-2 break-words max-w-full ${
-                          isUser
-                            ? "bg-primary text-primary-foreground"
-                            : "bg-muted text-left"
-                        }`}
-                      >
-                        <div className="space-y-2">
-                          {text && (
-                            <div className="markdown text-sm">
-                              <Markdown>{text}</Markdown>
-                            </div>
-                          )}
-                          {!isUser && funcs.length > 0 && (
-                            <div className="space-y-1">
-                              {funcs.map((f, i) => (
-                                <div
-                                  key={i}
-                                  className="text-[11px] text-muted-foreground"
-                                >
-                                  {f.type === "call"
-                                    ? (
-                                      <>
-                                        <span className="font-medium">
-                                          Function call
-                                        </span>
-                                        {f.name ? `: ${f.name}` : ":"}
-                                        {f.data !== undefined && (
-                                          <pre className="mt-1 bg-background/60 p-2 rounded border text-[11px] max-w-full overflow-x-auto whitespace-pre-wrap break-words">
-                                        {(() => {
-                                          try {
-                                            return JSON.stringify(f.data, null, 2)
-                                          } catch {
-                                            return String(f.data)
-                                          }
-                                        })()}
-                                          </pre>
-                                        )}
-                                      </>
-                                    )
-                                    : (
-                                      <>
-                                        <span className="font-medium">
-                                          Function response:
-                                        </span>
-                                        {f.data !== undefined && (
-                                          <pre className="mt-1 bg-background/60 p-2 rounded border text-[11px] max-w-full overflow-x-auto whitespace-pre-wrap break-words">
-                                        {(() => {
-                                          try {
-                                            return JSON.stringify(f.data, null, 2)
-                                          } catch {
-                                            return String(f.data)
-                                          }
-                                        })()}
-                                          </pre>
-                                        )}
-                                      </>
-                                    )}
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                          {!isUser && dataParts.length > 0 && (
-                            <div className="space-y-2">
-                              {dataParts.map((d, i) => (
-                                <div key={i} className="text-[11px]">
-                                  <DataPartPreview data={d.data} />
-                                </div>
-                              ))}
-                            </div>
+                  <div className="flex items-center justify-between text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                    <span>{event.role === "user" ? "User input" : "Agent update"}</span>
+                  </div>
+                  {event.text && (
+                    <div className="prose prose-sm dark:prose-invert mt-2 max-w-none">
+                      <Markdown>{event.text}</Markdown>
+                    </div>
+                  )}
+                  {event.funcs.length > 0 && (
+                    <div className="mt-3 space-y-2 text-[11px] text-muted-foreground">
+                      {event.funcs.map((f, idx) => (
+                        <div key={idx} className="space-y-1">
+                          <span className="font-semibold text-foreground/80">
+                            {f.type === "call" ? "Function call" : "Function response"}
+                            {f.name ? `: ${f.name}` : ""}
+                          </span>
+                          {f.data !== undefined && (
+                            <pre className="max-h-48 overflow-auto rounded border bg-background/80 p-2 text-[11px]">
+                              {(() => {
+                                try {
+                                  return JSON.stringify(f.data, null, 2)
+                                } catch {
+                                  return String(f.data)
+                                }
+                              })()}
+                            </pre>
                           )}
                         </div>
-                      </div>
+                      ))}
                     </div>
-                  </div>
-                )
-              })
-            )}
-          </div>
-        </div>
+                  )}
+                  {event.dataParts.length > 0 && (
+                    <div className="mt-3 space-y-2 text-[11px] text-muted-foreground">
+                      {event.dataParts.map((item, idx) => (
+                        <DataPartPreview key={idx} data={item.data} />
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
       )}
-    </div>
+
+      {hasExpandableContent && (
+        <CardFooter className="pt-0">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="ml-auto h-7 px-2 text-xs"
+            onClick={() => setIsExpanded((value) => !value)}
+          >
+            {isExpanded ? (
+              <>
+                <ChevronUp className="mr-1 h-3 w-3" /> Hide task activity
+              </>
+            ) : (
+              <>
+                <ChevronDown className="mr-1 h-3 w-3" /> View task activity
+              </>
+            )}
+          </Button>
+        </CardFooter>
+      )}
+    </Card>
   )
 }

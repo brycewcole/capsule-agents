@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { Input } from "./ui/input.tsx"
 import { Button } from "@/components/ui/button.tsx"
 import {
@@ -17,6 +17,7 @@ import {
   CardHeader,
   CardTitle,
 } from "./ui/card.tsx"
+import { Separator } from "./ui/separator.tsx"
 import {
   type A2ATask,
   type CapabilityCall,
@@ -44,11 +45,34 @@ type Message = {
   role: "user" | "agent"
   content: string
   isLoading?: boolean
-  // Kept for backward compatibility with existing logic, but unused in UI
-  capabilityCalls?: unknown[]
+  capabilityCalls?: CapabilityCall[]
   task?: A2ATask | null
   timestamp?: number
 }
+
+type TimelineTask = {
+  id: string
+  task: A2ATask
+  createdAt: number
+}
+
+type TimelineEntry = {
+  id: string
+  user: {
+    content: string
+    timestamp: number
+  }
+  agent?: {
+    content: string
+    timestamp: number
+    isLoading: boolean
+    capabilityCalls?: CapabilityCall[]
+  }
+  tasks: TimelineTask[]
+}
+
+const createEntryId = () =>
+  globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2)
 
 interface ChatInterfaceProps {
   contextId?: string | null
@@ -75,84 +99,115 @@ export default function ChatInterface({
   onChatSelect,
   chatsRefreshKey,
 }: ChatInterfaceProps) {
-  const [messages, setMessages] = useState<Message[]>([])
+  const [timelineEntries, setTimelineEntries] = useState<TimelineEntry[]>([])
+  const [taskLocations, setTaskLocations] = useState<Record<string, { entryId: string; index: number }>>({})
   const [input, setInput] = useState("")
   const [isLoading, setIsLoading] = useState(false)
   const [isBackendConnected, setIsBackendConnected] = useState(false)
   const [connectionError, setConnectionError] = useState<
     JSONRPCError | Error | string | null
   >(null)
-  const [currentTask, setCurrentTask] = useState<A2ATask | null>(null)
-  const [tasks, setTasks] = useState<A2ATask[]>([])
-  const [taskStartTimes, setTaskStartTimes] = useState<Record<string, number>>(
-    {},
-  )
   // Use prop contextId if provided, otherwise defer assignment to backend on first message
   const [contextId, setContextId] = useState<string | null>(
     propContextId || null,
   )
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
+  const activeEntryIdRef = useRef<string | null>(null)
+  const taskLocationsRef = useRef(taskLocations)
+  const timelineEntriesRef = useRef<TimelineEntry[]>([])
+
+  const formatTimestamp = useCallback((seconds: number) => {
+    return new Intl.DateTimeFormat(undefined, {
+      hour: "numeric",
+      minute: "numeric",
+    }).format(new Date(seconds * 1000))
+  }, [])
+
+  useEffect(() => {
+    taskLocationsRef.current = taskLocations
+  }, [taskLocations])
+
+  useEffect(() => {
+    timelineEntriesRef.current = timelineEntries
+  }, [timelineEntries])
+
+  const appendEntry = useCallback((entry: TimelineEntry) => {
+    setTimelineEntries((prev) => [...prev, entry])
+  }, [])
+
+  const updateEntry = useCallback(
+    (entryId: string, updater: (entry: TimelineEntry) => TimelineEntry) => {
+      setTimelineEntries((prev) => prev.map((entry) => entry.id === entryId
+        ? updater(entry)
+        : entry))
+    },
+    [],
+  )
+
+  const upsertTask = useCallback(
+    (
+      entryId: string,
+      taskId: string,
+      buildTask: (previous: A2ATask | null) => A2ATask,
+    ) => {
+      let nextTaskRef: A2ATask | null = null
+      let updatedIndex = 0
+
+      const sortTasksByTime = (tasks: TimelineTask[]) =>
+        tasks.slice().sort((a, b) => a.createdAt - b.createdAt)
+
+      setTimelineEntries((prev) => prev.map((entry) => {
+        if (entry.id !== entryId) return entry
+
+        const existingIndex = entry.tasks.findIndex((item) => item.id === taskId)
+        const previousTask = existingIndex >= 0 ? entry.tasks[existingIndex].task : null
+        const nextTask = buildTask(previousTask)
+        nextTaskRef = nextTask
+
+        const createdAt = (nextTask as { createdAt?: number }).createdAt
+          ? Number((nextTask as { createdAt?: number }).createdAt)
+          : nextTask.status?.timestamp ? Date.parse(nextTask.status.timestamp) / 1000 : Date.now() / 1000
+
+        if (existingIndex >= 0) {
+          const nextTasks = [...entry.tasks]
+          nextTasks[existingIndex] = { id: taskId, task: nextTask, createdAt }
+          const sortedTasks = sortTasksByTime(nextTasks)
+          updatedIndex = sortedTasks.findIndex((item) => item.id === taskId)
+          return { ...entry, tasks: sortedTasks }
+        }
+
+        const appendedTasks = [...entry.tasks, { id: taskId, task: nextTask, createdAt }]
+        const sortedTasks = sortTasksByTime(appendedTasks)
+        updatedIndex = sortedTasks.findIndex((item) => item.id === taskId)
+        return {
+          ...entry,
+          tasks: sortedTasks,
+        }
+      }))
+
+      setTaskLocations((prev) => ({
+        ...prev,
+        [taskId]: { entryId, index: updatedIndex },
+      }))
+
+      return nextTaskRef
+    },
+    [],
+  )
 
   // Start a fresh chat locally and notify parent
   const startNewChat = useCallback(() => {
     // Clear all local UI state immediately so old messages/tasks disappear
-    setMessages([])
-    setCurrentTask(null)
-    setTasks([])
-    setTaskStartTimes({})
+    setTimelineEntries([])
+    setTaskLocations({})
+    activeEntryIdRef.current = null
+    timelineEntriesRef.current = []
+    taskLocationsRef.current = {}
     setContextId(null)
     // Inform parent to clear its selected chat
     if (onNewChat) onNewChat()
   }, [onNewChat])
-
-  // Build merged timeline of tasks + messages, de-duplicating tasks by id
-  const timeline = useMemo(() => {
-    type TimelineItem =
-      | { kind: "message"; time: number; message: Message }
-      | { kind: "task"; time: number; task: A2ATask }
-
-    const msgTime = (
-      m: Message,
-    ) => (typeof m.timestamp === "number" ? m.timestamp : Date.now() / 1000)
-    const taskTime = (t: A2ATask) => {
-      const id = t.id
-      if (id && taskStartTimes[id] != null) return taskStartTimes[id]
-      const created = (t as { createdAt?: number }).createdAt
-      if (typeof created === "number") return created
-      if (t.status?.timestamp) return Date.parse(t.status.timestamp) / 1000
-      return Date.now() / 1000
-    }
-
-    const items: TimelineItem[] = []
-    for (const m of messages) {
-      items.push({ kind: "message", time: msgTime(m), message: m })
-    }
-
-    // Deduplicate tasks by id, prefer the most recent by status timestamp
-    const byId = new Map<string, A2ATask>()
-    const consider = (t: A2ATask | null | undefined) => {
-      if (!t || !t.id) return
-      const prev = byId.get(t.id)
-      if (!prev) {
-        byId.set(t.id, t)
-        return
-      }
-      const prevTime = prev.status?.timestamp
-        ? Date.parse(prev.status.timestamp)
-        : 0
-      const nextTime = t.status?.timestamp ? Date.parse(t.status.timestamp) : 0
-      if (nextTime >= prevTime) byId.set(t.id, t)
-    }
-    for (const t of tasks) consider(t)
-    consider(currentTask)
-    for (const t of byId.values()) {
-      items.push({ kind: "task", time: taskTime(t), task: t })
-    }
-
-    items.sort((a, b) => a.time - b.time)
-    return items
-  }, [messages, tasks, currentTask, taskStartTimes])
 
   // Initialize state - check backend connection
   useEffect(() => {
@@ -180,80 +235,170 @@ export default function ChatInterface({
 
   // Load initial chat data when provided
   useEffect(() => {
-    if (initialChatData) {
-      console.log("Loading initial chat data:", initialChatData)
-
-      // Convert backend messages to frontend Message format
-      const convertedMessages: Message[] = (initialChatData.messages as Array<
-        {
-          role?: string
-          content?: string
-          parts?: Array<{ text?: string }>
-          capabilityCalls?: unknown
-          metadata?: { timestamp?: string | number }
-        }
-      >).map(
-        (msg) => {
-          // Normalize role: backend stores 'assistant', UI expects 'agent' for assistant messages
-          const role: "user" | "agent" = msg.role === "assistant"
-            ? "agent"
-            : (msg.role as "user" | "agent")
-          // Normalize content: either legacy msg.content or Vercel UIMessage parts array
-          const content: string = typeof msg.content === "string"
-            ? msg.content
-            : Array.isArray(msg.parts)
-            ? msg.parts.map((
-              p: { text?: string },
-            ) => (typeof p?.text === "string" ? p.text : "")).join("")
-            : ""
-          // Extract timestamp from metadata
-          const timestamp = msg.metadata?.timestamp
-            ? typeof msg.metadata.timestamp === "string"
-              ? new Date(msg.metadata.timestamp).getTime() / 1000
-              : msg.metadata.timestamp
-            : undefined
-          return {
-            role,
-            content,
-            capabilityCalls: msg.capabilityCalls || undefined,
-            timestamp,
-          } as Message
-        },
-      ).filter((m) => m.content && m.content.trim().length > 0)
-
-      setMessages(convertedMessages)
-      // Attach most recent task as current task so status is visible on load
-      const loadedTasks = (initialChatData.tasks || []) as Array<
-        { id?: string; createdAt?: number; updatedAt?: number }
-      >
-      setTasks(loadedTasks as unknown as A2ATask[])
-      // Seed task start times from createdAt
-      setTaskStartTimes((prev) => {
-        const next = { ...prev }
-        for (const t of loadedTasks) {
-          const id = t.id
-          const createdAt = t.createdAt
-          if (id && typeof createdAt === "number" && next[id] == null) {
-            next[id] = createdAt
-          }
-        }
-        return next
-      })
-      if (loadedTasks.length > 0) {
-        // Pick latest by updatedAt if present, else by createdAt
-        const latest = [...loadedTasks].sort((a, b) =>
-          (b.updatedAt || 0) - (a.updatedAt || 0)
-        )[0]
-        setCurrentTask(latest as unknown as A2ATask)
-      } else {
-        setCurrentTask(null)
-      }
-    } else {
-      // Clear messages for new chat
-      setMessages([])
-      setCurrentTask(null)
-      setTasks([])
+    if (!initialChatData) {
+      setTimelineEntries([])
+      setTaskLocations({})
+      activeEntryIdRef.current = null
+      return
     }
+
+    console.log("Loading initial chat data:", initialChatData)
+
+    const normalizeTimestamp = (value?: string | number | null) => {
+      if (typeof value === "number") return value
+      if (typeof value === "string") return new Date(value).getTime() / 1000
+      return Date.now() / 1000
+    }
+
+    const normalizeMessage = (msg: {
+      role?: string
+      content?: string
+      parts?: Array<{ text?: string }>
+      capabilityCalls?: CapabilityCall[]
+      metadata?: { timestamp?: string | number }
+    }): Message | null => {
+      const role: "user" | "agent" = msg.role === "assistant"
+        ? "agent"
+        : (msg.role as "user" | "agent")
+      const rawContent = typeof msg.content === "string"
+        ? msg.content
+        : Array.isArray(msg.parts)
+        ? msg.parts.map((part) => part?.text ?? "").join("")
+        : ""
+      const content = rawContent.trim()
+      if (!content) return null
+
+      return {
+        role,
+        content,
+        capabilityCalls: Array.isArray(msg.capabilityCalls)
+          ? msg.capabilityCalls as CapabilityCall[]
+          : undefined,
+        timestamp: msg.metadata?.timestamp ? normalizeTimestamp(msg.metadata.timestamp) : undefined,
+      }
+    }
+
+    const convertedMessages: Message[] = (initialChatData.messages as Array<
+      {
+        role?: string
+        content?: string
+        parts?: Array<{ text?: string }>
+        capabilityCalls?: CapabilityCall[]
+        metadata?: { timestamp?: string | number }
+      }
+    >).map(normalizeMessage).filter((m): m is Message => Boolean(m))
+
+    const nextEntries: TimelineEntry[] = []
+    let currentEntry: TimelineEntry | null = null
+
+    for (const message of convertedMessages) {
+      const timestamp = message.timestamp ?? Date.now() / 1000
+      if (message.role === "user") {
+        currentEntry = {
+          id: createEntryId(),
+          user: {
+            content: message.content,
+            timestamp,
+          },
+          agent: undefined,
+          tasks: [],
+        }
+        nextEntries.push(currentEntry)
+      } else {
+        if (!currentEntry) {
+          currentEntry = {
+            id: createEntryId(),
+            user: {
+              content: "",
+              timestamp,
+            },
+            tasks: [],
+          }
+          nextEntries.push(currentEntry)
+        }
+        currentEntry.agent = {
+          content: message.content,
+          timestamp,
+          isLoading: false,
+          capabilityCalls: message.capabilityCalls,
+        }
+      }
+    }
+
+    for (const entry of nextEntries) {
+      if (!entry.agent) {
+        entry.agent = {
+          content: "",
+          timestamp: entry.user.timestamp,
+          isLoading: false,
+        }
+      }
+    }
+
+    const nextTaskLocations: Record<string, { entryId: string; index: number }> = {}
+    const attachTaskToEntry = (task: A2ATask, entry: TimelineEntry) => {
+      if (!task.id) return
+      const createdAt = (task as { createdAt?: number }).createdAt
+        ? Number((task as { createdAt?: number }).createdAt)
+        : task.status?.timestamp ? Date.parse(task.status.timestamp) / 1000 : Date.now() / 1000
+
+      const existingIndex = entry.tasks.findIndex((item) => item.id === task.id)
+      if (existingIndex >= 0) {
+        entry.tasks[existingIndex] = {
+          id: task.id,
+          task,
+          createdAt,
+        }
+        nextTaskLocations[task.id] = { entryId: entry.id, index: existingIndex }
+        return
+      }
+
+      entry.tasks.push({
+        id: task.id,
+        task,
+        createdAt,
+      })
+      nextTaskLocations[task.id] = {
+        entryId: entry.id,
+        index: entry.tasks.length - 1,
+      }
+    }
+
+    const loadedTasks = ((initialChatData.tasks || []) as A2ATask[]).filter(
+      (task) => task && typeof task === "object",
+    )
+
+    const sortedTasks = [...loadedTasks].sort((a, b) => {
+      const aTime = (a as { createdAt?: number }).createdAt
+        ? Number((a as { createdAt?: number }).createdAt)
+        : a.status?.timestamp ? Date.parse(a.status.timestamp) / 1000 : 0
+      const bTime = (b as { createdAt?: number }).createdAt
+        ? Number((b as { createdAt?: number }).createdAt)
+        : b.status?.timestamp ? Date.parse(b.status.timestamp) / 1000 : 0
+      return aTime - bTime
+    })
+
+    for (const task of sortedTasks) {
+      if (!task?.id) continue
+      const taskTime = (task as { createdAt?: number }).createdAt
+        ? Number((task as { createdAt?: number }).createdAt)
+        : task.status?.timestamp ? Date.parse(task.status.timestamp) / 1000 : 0
+
+      const targetEntry = [...nextEntries]
+        .reverse()
+        .find((entry) => {
+          const anchor = entry.agent?.timestamp ?? entry.user.timestamp
+          return anchor <= taskTime + 1 // allow slight drift
+        }) ?? nextEntries[nextEntries.length - 1]
+
+      if (targetEntry) {
+        attachTaskToEntry(task, targetEntry)
+      }
+    }
+
+    setTimelineEntries(nextEntries)
+    setTaskLocations(nextTaskLocations)
+    activeEntryIdRef.current = null
   }, [initialChatData])
 
   // Scroll to bottom of messages
@@ -263,7 +408,7 @@ export default function ChatInterface({
 
   useEffect(() => {
     scrollToBottom()
-  }, [timeline.length, scrollToBottom])
+  }, [timelineEntries, scrollToBottom])
 
   // New chat now lives in Conversations panel; no local button here
 
@@ -274,13 +419,31 @@ export default function ChatInterface({
     setInput("")
     setIsLoading(true)
 
-    // Add user message
-    setMessages((prev) => [...prev, { role: "user", content: userMessage }])
+    const timestamp = Date.now() / 1000
+    const entryId = createEntryId()
 
-    // Add placeholder for agent response
-    setMessages(
-      (prev) => [...prev, { role: "agent", content: "", isLoading: true }],
-    )
+    appendEntry({
+      id: entryId,
+      user: {
+        content: userMessage,
+        timestamp,
+      },
+      agent: {
+        content: "",
+        timestamp,
+        isLoading: true,
+      },
+      tasks: [],
+    })
+
+    activeEntryIdRef.current = entryId
+
+    const resolveEntryIdForTask = (taskId?: string | null) => {
+      if (taskId && taskLocationsRef.current[taskId]) {
+        return taskLocationsRef.current[taskId].entryId
+      }
+      return activeEntryIdRef.current ?? entryId
+    }
 
     try {
       // Use A2A streaming
@@ -294,35 +457,37 @@ export default function ChatInterface({
         if (event.kind === "task") {
           // Initial task created
           const task = event as A2ATask
-          setCurrentTask(task)
-          setTasks((prev) => {
-            const exists = prev.some((t) => t.id === task.id)
-            return exists
-              ? prev.map((t) => (t.id === task.id ? task : t))
-              : [...prev, task]
-          })
-          // Record task start time on creation
-          setTaskStartTimes((prev) => ({
-            ...prev,
-            [task.id]: prev[task.id] ??
-              (task.status?.timestamp
-                ? Date.parse(task.status.timestamp) / 1000
-                : Date.now() / 1000),
-          }))
+          if (!task.id) {
+            console.warn("Received task event without id", task)
+            continue
+          }
+          const targetEntryId = resolveEntryIdForTask(task.id)
+          const mergedTask = upsertTask(
+            targetEntryId,
+            task.id,
+            (prevTask) => {
+              if (!prevTask) return task
+              return {
+                ...prevTask,
+                ...task,
+                history: Array.isArray(task.history) && task.history.length > 0
+                  ? task.history
+                  : prevTask.history,
+              }
+            },
+          )
           // Capture backend-assigned contextId on first response
           if (!contextId && task.contextId) {
             setContextId(task.contextId)
-            // Notify parent component that a new chat was created
-            if (onChatCreated) {
-              onChatCreated(task.contextId)
-            }
-          } else if (contextId && task.contextId !== contextId) {
+            if (onChatCreated) onChatCreated(task.contextId)
+          } else if (contextId && task.contextId && task.contextId !== contextId) {
             console.warn("Task contextId changed from expected contextId:", {
               expected: contextId,
               received: task.contextId,
             })
           }
           console.log("Task created:", task.id, "contextId:", task.contextId)
+            finalCapabilityCalls = extractCapabilityCalls(mergedTask)
         } else if (event.kind === "message" && event.role === "agent") {
           // Agent message response (could be streaming or final)
           const newText = extractResponseText(event)
@@ -330,15 +495,16 @@ export default function ChatInterface({
             currentResponseText = newText
 
             // Update the agent's message
-            setMessages((prev) => {
-              const updated = [...prev]
-              const lastMessage = updated[updated.length - 1]
-              if (lastMessage.role === "agent") {
-                lastMessage.content = currentResponseText
-                lastMessage.isLoading = false // Mark as complete when we get the message
-              }
-              return updated
-            })
+            const targetEntryId = activeEntryIdRef.current ?? entryId
+            updateEntry(targetEntryId, (entry) => ({
+              ...entry,
+              agent: {
+                content: currentResponseText,
+                isLoading: false,
+                capabilityCalls: entry.agent?.capabilityCalls,
+                timestamp: Date.now() / 1000,
+              },
+            }))
 
             // If no task was created, ensure we capture the contextId from the message
             if (!contextId && (event as { contextId?: string }).contextId) {
@@ -347,104 +513,46 @@ export default function ChatInterface({
                 onChatCreated((event as { contextId?: string }).contextId!)
               }
             }
-
-            // If no task was created, this is a simple message and we're done
-            if (currentTask === null) {
-              setIsLoading(false)
-              break
-            }
           }
         } else if (event.kind === "status-update") {
           // Handle status updates
           console.log("Status update:", event.status.state)
-
-          // Create or update the task using the event data directly (fixes race condition)
-          setCurrentTask((prev: A2ATask | null) => {
-            if (prev && prev.id === event.taskId) {
-              // Update existing task
-              const updated = {
-                ...prev,
+          const targetEntryId = resolveEntryIdForTask(event.taskId)
+          const nextTask = upsertTask(targetEntryId, event.taskId, (prevTask) => {
+            if (prevTask) {
+              return {
+                ...prevTask,
                 status: event.status,
               }
-              // Also update in tasks list
-              setTasks((list) =>
-                list.map((t) => (t.id === updated.id ? updated : t))
-              )
-              return updated
-            } else {
-              // Create task from status update event if not exists (race condition case)
-              const created: A2ATask = {
-                id: event.taskId,
-                kind: "task" as const,
-                contextId: event.contextId,
-                status: event.status,
-                history: [],
-              }
-              setTasks((list) => {
-                const exists = list.some((t) => t.id === created.id)
-                return exists
-                  ? list.map((t) => (t.id === created.id ? created : t))
-                  : [...list, created]
-              })
-              setTaskStartTimes((prevTimes) => ({
-                ...prevTimes,
-                [created.id]: prevTimes[created.id] ??
-                  (created.status?.timestamp
-                    ? Date.parse(created.status.timestamp) / 1000
-                    : Date.now() / 1000),
-              }))
-              return created
+            }
+            return {
+              id: event.taskId,
+              kind: "task",
+              contextId: event.contextId,
+              status: event.status,
+              history: [],
             }
           })
 
           if (event.final && event.status.state === "completed") {
-            // Final completion - extract capability calls from current task and store final task state
-            let completedTask: A2ATask | undefined
-            setCurrentTask((prev: A2ATask | null) => {
-              if (prev && prev.id === event.taskId) {
-                finalCapabilityCalls = extractCapabilityCalls(prev)
-                // Create final task state with completed status
-                completedTask = {
-                  ...prev,
-                  status: event.status,
+            if (nextTask) {
+              finalCapabilityCalls = extractCapabilityCalls(nextTask)
+            }
+            updateEntry(targetEntryId, (entry) => ({
+              ...entry,
+              agent: entry.agent
+                ? {
+                  ...entry.agent,
+                  capabilityCalls: finalCapabilityCalls.length > 0
+                    ? finalCapabilityCalls
+                    : entry.agent.capabilityCalls,
+                  isLoading: false,
                 }
-              }
-              return prev
-            })
-
-            // Update the last agent message with final capability calls and task info
-            setMessages((prev) => {
-              const updated = [...prev]
-              const lastMessage = updated[updated.length - 1]
-              if (lastMessage.role === "agent") {
-                // Keep existing content from the message event
-                lastMessage.capabilityCalls = finalCapabilityCalls.length > 0
-                  ? finalCapabilityCalls
-                  : undefined
-                lastMessage.task = completedTask
-                // Message should already be marked as not loading from message handler
-              }
-              return updated
-            })
-
-            // Clear current task since it's completed
-            // Update tasks with final status
-            setTasks((list) =>
-              list.map((
-                t,
-              ) => (t.id === event.taskId ? { ...t, status: event.status } : t))
-            )
-            setCurrentTask(null)
-            setIsLoading(false)
-            // Don't break here - continue processing in case final message comes after completion
+                : entry.agent,
+            }))
+            activeEntryIdRef.current = null
           } else if (event.final && event.status.state === "failed") {
-            // Clear task and handle failure
-            setTasks((list) =>
-              list.map((
-                t,
-              ) => (t.id === event.taskId ? { ...t, status: event.status } : t))
-            )
-            setCurrentTask(null)
+            activeEntryIdRef.current = null
             throw new Error(extractResponseText(event) || "Task failed")
           }
         }
@@ -469,15 +577,19 @@ export default function ChatInterface({
       })
 
       // Update with an error message
-      setMessages((prev) => {
-        const updated = [...prev]
-        const lastMessage = updated[updated.length - 1]
-        if (lastMessage.role === "agent") {
-          lastMessage.content = getErrorMessage(error)
-          lastMessage.isLoading = false
-        }
-        return updated
-      })
+      activeEntryIdRef.current = null
+      const targetEntryId = activeEntryIdRef.current ?? timelineEntriesRef.current.at(-1)?.id
+      if (targetEntryId) {
+        updateEntry(targetEntryId, (entry) => ({
+          ...entry,
+          agent: {
+            content: getErrorMessage(error),
+            isLoading: false,
+            timestamp: Date.now() / 1000,
+            capabilityCalls: entry.agent?.capabilityCalls,
+          },
+        }))
+      }
     } finally {
       setIsLoading(false)
     }
@@ -489,6 +601,8 @@ export default function ChatInterface({
       handleSendMessage()
     }
   }
+
+  const hasEntries = timelineEntries.length > 0
 
   return (
     <div ref={containerRef} className="relative h-full">
@@ -564,60 +678,100 @@ export default function ChatInterface({
                   />
                 </div>
               )}
-              {/* Render tasks and messages in a unified timeline */}
-              <div className="flex flex-col space-y-4">
-                {isLoadingChat
-                  ? (
-                    <div className="flex items-center justify-center h-full text-muted-foreground">
-                      <Loader2 className="h-6 w-6 animate-spin mr-2" />
-                      Loading conversation...
-                    </div>
-                  )
-                  : (tasks.length === 0 && currentTask === null && messages.length === 0)
-                  ? (
-                    <div className="flex items-center justify-center h-full text-muted-foreground">
-                      Send a message to start the conversation
-                    </div>
-                  )
-                  : (
-                    timeline.map((item, idx) => {
-                      if (item.kind === "task") {
-                        return (
-                          <div key={`task-${item.task.id}-${idx}`} className="w-full">
-                            <TaskStatusDisplay task={item.task} />
-                          </div>
-                        )
-                      }
-                      // Render a simple message bubble
-                      const isUser = item.message.role === "user"
-                      const bubbleClasses = [
-                        "max-w-[80%] rounded-lg px-3 py-2 text-sm whitespace-pre-wrap break-words border",
-                        isUser
-                          ? "bg-muted/50 border-muted-foreground/10"
-                          : "bg-primary/10 border-primary/20",
-                      ].join(" ")
-                      return (
-                        <div
-                          key={`msg-${idx}`}
-                          className={[
-                            "flex w-full",
-                            isUser ? "justify-start" : "justify-end",
-                          ].join(" ")}
-                        >
-                          <div className={bubbleClasses}>
-                            {item.message.isLoading ? (
-                              <span className="inline-flex items-center text-muted-foreground gap-2">
-                                <Loader2 className="h-3 w-3 animate-spin" />
-                                Thinking...
-                              </span>
-                            ) : (
-                              item.message.content || ""
-                            )}
-                          </div>
+              {/* Render unified timeline */}
+              <div className="flex flex-col space-y-6">
+                {isLoadingChat ? (
+                  <div className="flex items-center justify-center h-full text-muted-foreground">
+                    <Loader2 className="h-6 w-6 animate-spin mr-2" />
+                    Loading conversation...
+                  </div>
+                ) : !hasEntries ? (
+                  <div className="flex items-center justify-center h-full text-muted-foreground">
+                    Send a message to start the conversation
+                  </div>
+                ) : (
+                  timelineEntries.map((entry, index) => {
+                    const showConnector = index < timelineEntries.length - 1
+
+                    return (
+                      <div
+                        key={entry.id}
+                        className="grid grid-cols-[auto_minmax(0,1fr)] gap-4"
+                      >
+                        <div className="flex flex-col items-center">
+                          <div className="h-2 w-2 rounded-full bg-primary" />
+                          {showConnector && (
+                            <div className="mt-2 w-px flex-1 bg-border" />
+                          )}
                         </div>
-                      )
-                    })
-                  )}
+                        <div className="space-y-3">
+                          <Card className="border-muted/40 bg-muted/30">
+                            <CardHeader className="p-4 pb-2">
+                              <div className="flex items-center justify-between text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                                <span>You</span>
+                                <span>{formatTimestamp(entry.user.timestamp)}</span>
+                              </div>
+                            </CardHeader>
+                            <CardContent className="px-4 pb-4 text-sm whitespace-pre-wrap break-words">
+                              {entry.user.content || (
+                                <span className="text-muted-foreground">(empty message)</span>
+                              )}
+                            </CardContent>
+                          </Card>
+
+                          {entry.agent && (
+                            <Card className="border-primary/20 bg-primary/5">
+                              <CardHeader className="p-4 pb-2">
+                                <div className="flex items-center justify-between text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                                  <span>Agent</span>
+                                  <span>{formatTimestamp(entry.agent.timestamp)}</span>
+                                </div>
+                              </CardHeader>
+                              <CardContent className="px-4 pb-4 text-sm text-foreground">
+                                {entry.agent.isLoading ? (
+                                  <span className="inline-flex items-center gap-2 text-muted-foreground">
+                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                    Thinking...
+                                  </span>
+                                ) : entry.agent.content ? (
+                                  <div className="whitespace-pre-wrap break-words">
+                                    {entry.agent.content}
+                                  </div>
+                                ) : (
+                                  <span className="text-muted-foreground">No response</span>
+                                )}
+                                {!entry.agent.isLoading &&
+                                  entry.agent.capabilityCalls &&
+                                  entry.agent.capabilityCalls.length > 0 && (
+                                    <div className="mt-3 space-y-1 text-xs text-muted-foreground">
+                                      <div className="font-medium uppercase tracking-wide">
+                                        Capability Calls
+                                      </div>
+                                      <ul className="ml-4 list-disc space-y-1">
+                                        {entry.agent.capabilityCalls.map((call, idx) => (
+                                          <li key={`${call.name}-${idx}`}>
+                                            <span className="font-medium text-foreground/80">
+                                              {call.name}
+                                            </span>
+                                          </li>
+                                        ))}
+                                      </ul>
+                                    </div>
+                                  )}
+                              </CardContent>
+                            </Card>
+                          )}
+
+                          {entry.tasks.length > 0 && <Separator className="my-2" />}
+
+                          {entry.tasks.map((item) => (
+                            <TaskStatusDisplay key={item.id} task={item.task} />
+                          ))}
+                        </div>
+                      </div>
+                    )
+                  })
+                )}
                 <div ref={messagesEndRef} />
               </div>
             </div>
