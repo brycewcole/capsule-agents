@@ -599,10 +599,10 @@ export default function ChatInterface({
           console.log("Task event - id:", task.id, "contextId:", task.contextId, "history length:", task.history?.length ?? 0)
           if (mergedTask) {
             finalCapabilityCalls = extractCapabilityCalls(mergedTask)
-            console.log("Merged task history length:", mergedTask.history?.length ?? 0)
+            console.log("Merged task history length:", (mergedTask as A2ATask).history?.length ?? 0)
 
             // Update task updates whenever we receive task data with history
-            const taskHistory = mergedTask.history
+            const taskHistory = (mergedTask as A2ATask).history
             if (Array.isArray(taskHistory) && taskHistory.length > 0) {
               const taskUpdates = buildTaskUpdates(mergedTask)
               console.log("Built", taskUpdates.length, "task updates from history")
@@ -632,13 +632,18 @@ export default function ChatInterface({
 
               // Add message to task history and update task updates
               upsertTask(targetEntryId, messageTaskId, (prevTask) => {
-                const updatedTask = {
-                  ...prevTask,
+                const updatedTask: A2ATask = {
+                  ...(prevTask || {
+                    id: messageTaskId,
+                    kind: "task" as const,
+                    contextId: contextId || "",
+                    status: { state: "working" as const, timestamp: new Date().toISOString() }
+                  }),
                   history: [...(prevTask?.history || []), event],
                 }
 
                 // Rebuild and update task updates to include the new message
-                const taskUpdates = buildTaskUpdates(updatedTask as A2ATask)
+                const taskUpdates = buildTaskUpdates(updatedTask)
                 updateEntry(targetEntryId, (entry) => ({
                   ...entry,
                   agent: entry.agent ? {
