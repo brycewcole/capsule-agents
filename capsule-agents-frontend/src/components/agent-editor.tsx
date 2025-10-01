@@ -669,7 +669,9 @@ export default function AgentEditor() {
                                 ? "Agent (A2A)"
                                 : isMCPCapability(capability)
                                 ? "MCP Server"
-                                : capability.type}
+                                : isPrebuiltCapability(capability)
+                                ? "Prebuilt"
+                                : "Unknown"}
                             </TableCell>
                             <TableCell>
                               <span

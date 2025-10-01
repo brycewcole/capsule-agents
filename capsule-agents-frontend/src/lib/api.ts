@@ -4,6 +4,7 @@ import type {
   TaskArtifactUpdateEvent,
   TaskStatusUpdateEvent,
 } from "@a2a-js/sdk"
+import type * as A2A from "@a2a-js/sdk"
 import { A2AClient } from "@a2a-js/sdk/client"
 import { v4 as uuidv4 } from "uuid"
 
@@ -57,26 +58,7 @@ export async function testLogin(password: string): Promise<boolean> {
   }
 }
 
-// Types from backend
-type Content = {
-  role: string
-  parts: { text: string }[]
-}
-
-type TaskState =
-  | "submitted"
-  | "working"
-  | "input-required"
-  | "completed"
-  | "canceled"
-  | "failed"
-  | "unknown"
-
-type TaskStatus = {
-  state: TaskState
-  message?: Content
-  timestamp: string
-}
+// A2A Protocol types are now the primary types - legacy types removed
 
 // Vercel's GatewayModel format from gateway.getAvailableModels()
 export interface Model {
@@ -104,38 +86,7 @@ export interface ProvidersResponse {
   status: Record<string, boolean>
 }
 
-type Part = {
-  text?: string
-  function_call?: {
-    id: string
-    name: string
-    args: Record<string, unknown>
-  }
-  function_response?: {
-    id: string
-    name: string
-    response: unknown
-  }
-}
-
-type Artifact = {
-  name?: string
-  description?: string
-  parts: Part[]
-  metadata?: Record<string, unknown>
-  index: number
-  append?: boolean
-  lastChunk?: boolean
-}
-
-type Task = {
-  id: string
-  sessionId?: string
-  status: TaskStatus
-  artifacts?: Artifact[]
-  history?: unknown[]
-  metadata?: Record<string, unknown>
-}
+// Legacy Task type removed - using A2A.Task directly now
 
 // New capability type system
 export interface BaseCapability {
@@ -180,8 +131,7 @@ export function isMCPCapability(
   return capability.type === "mcp"
 }
 
-// Legacy Tool type for backward compatibility
-export type Tool = Capability
+// Legacy Tool type removed - use Capability directly
 
 // Type for capability calls (tool calls)
 export type CapabilityCall = {
@@ -190,8 +140,7 @@ export type CapabilityCall = {
   result?: unknown
 }
 
-// Legacy alias for backward compatibility
-export type ToolCall = CapabilityCall
+// Legacy alias removed - use CapabilityCall directly
 
 // Types for agent configuration
 export type AgentInfo = {
@@ -200,6 +149,36 @@ export type AgentInfo = {
   modelName: string
   modelParameters: Record<string, unknown>
   capabilities?: Capability[]
+}
+
+export async function fetchTaskById(
+  taskId: string,
+  options: { historyLength?: number } = {},
+): Promise<A2ATask> {
+  try {
+    const response = await a2aClient.getTask({
+      id: taskId,
+      ...(options.historyLength
+        ? { historyLength: options.historyLength }
+        : {}),
+    })
+
+    if ("error" in response && response.error) {
+      const message = typeof response.error.message === "string"
+        ? response.error.message
+        : "Failed to fetch task"
+      throw new Error(message)
+    }
+
+    if (!("result" in response) || !response.result) {
+      throw new Error("Task response is missing result data")
+    }
+
+    return response.result as A2ATask
+  } catch (error) {
+    console.error("Failed to fetch task:", error)
+    throw error
+  }
 }
 
 // Function to send a message to the agent using A2A SDK
@@ -214,7 +193,7 @@ export async function sendMessage(message: string, contextId?: string | null) {
       text: message,
     }],
     role: "user",
-    contextId: contextId || uuidv4(),
+    ...(contextId ? { contextId } : {}),
   }
 
   try {
@@ -255,7 +234,7 @@ export async function* streamMessage(
       text: message,
     }],
     role: "user",
-    contextId: contextId || uuidv4(),
+    ...(contextId ? { contextId } : {}),
   }
 
   try {
@@ -403,7 +382,7 @@ export async function updateAgentInfo(info: AgentInfo): Promise<AgentInfo> {
 
   if (!response.ok) {
     const errorText = await response.text()
-    let errorData
+    let errorData: { message: string }
 
     try {
       errorData = JSON.parse(errorText)
@@ -614,12 +593,12 @@ export function extractCapabilityCalls(
 
 // Helper function to extract text from A2A response
 export function extractResponseText(
-  taskOrEvent: A2ATask | A2AMessage | Task | A2AStreamEventType,
+  taskOrEvent: A2ATask | A2AMessage | A2AStreamEventType,
 ): string {
   // Handle A2A Message
   if ("kind" in taskOrEvent && taskOrEvent.kind === "message") {
     return taskOrEvent.parts
-      .filter((part) => part.kind === "text")
+      .filter((part): part is A2A.TextPart => part.kind === "text")
       .map((part) => part.text)
       .join("")
   }
@@ -655,28 +634,6 @@ export function extractResponseText(
   // Skip status update events - these should not provide chat message text
   if ("kind" in taskOrEvent && taskOrEvent.kind === "status-update") {
     return ""
-  }
-
-  // Handle legacy Task type for backward compatibility
-  const legacyTask = taskOrEvent as Task
-  if (legacyTask.artifacts && legacyTask.artifacts.length > 0) {
-    const textArtifact = legacyTask.artifacts.find((artifact) =>
-      artifact.parts && artifact.parts.some((part) => "text" in part)
-    )
-
-    if (textArtifact) {
-      return textArtifact.parts.map((part) => "text" in part ? part.text : "")
-        .join("")
-    }
-  }
-
-  if (
-    legacyTask.status && legacyTask.status.message &&
-    legacyTask.status.message.parts
-  ) {
-    return legacyTask.status.message.parts
-      .map((part) => "text" in part ? part.text : "")
-      .join("")
   }
 
   return ""

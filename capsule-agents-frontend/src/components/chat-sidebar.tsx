@@ -72,7 +72,6 @@ export function ChatSidebar({
       setIsLoading(true)
       console.log("ChatSidebar: Starting to load chats...")
       const chatsList = await getChatsList()
-      console.log("ChatSidebar: Received chats list:", chatsList)
       setChats(chatsList)
       console.log(
         "ChatSidebar: Set chats state with",

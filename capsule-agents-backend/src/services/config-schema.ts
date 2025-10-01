@@ -1,6 +1,6 @@
 import { z } from "zod"
 import type { AgentInfo } from "./agent-config.ts"
-import { Capability as AgentCapability } from "./capability-types.ts"
+import { Capability as AgentCapability } from "../lib/capability-types.ts"
 
 export const ModelConfigSchema = z.object({
   name: z.string().min(1, "Model name is required"),

@@ -4,10 +4,10 @@ import { openai } from "@ai-sdk/openai"
 import { loadApiKey } from "@ai-sdk/provider-utils"
 import * as log from "@std/log"
 import process from "node:process"
-import { getAllProviderConfigs, ModelEntry } from "./model-registry.ts"
+import { getAllProviderConfigs, ModelEntry } from "../lib/model-registry.ts"
 
 // Export types from model-registry for compatibility
-export type { ModelEntry, ProviderConfig } from "./model-registry.ts"
+export type { ModelEntry, ProviderConfig } from "../lib/model-registry.ts"
 
 export type ProviderInfo = {
   id: string

@@ -4,10 +4,14 @@ import {
   isA2ACapability,
   isMCPCapability,
   isPrebuiltCapability,
-} from "./capability-types.ts"
-import { getDb } from "./db.ts"
-import { selectDefaultModel } from "./model-registry.ts"
+} from "../lib/capability-types.ts"
+import { getDb } from "../infrastructure/db.ts"
+import { selectDefaultModel } from "../lib/model-registry.ts"
 import { ProviderService } from "./provider-service.ts"
+import {
+  AgentConfigSchema,
+  transformConfigToAgentInfo,
+} from "./config-schema.ts"
 
 // Types for agent configuration
 interface AgentInfoRow {
@@ -59,7 +63,7 @@ export class AgentConfigService {
       const row = stmt.get() as { model_name: string } | undefined
 
       if (!row) {
-        log.error("No agent info found for model validation")
+        log.debug("No agent info found yet, skipping model validation")
         return
       }
 
@@ -117,8 +121,23 @@ export class AgentConfigService {
 
       const row = stmt.get() as AgentInfoRow | undefined
       if (!row) {
-        log.error("No agent info found in database")
-        throw new Error("Agent info not found")
+        log.info("No agent info found, creating default configuration")
+
+        // Use Zod schema defaults to create clean default configuration
+        const defaultConfig = AgentConfigSchema.parse({})
+        const defaultAgentInfo = transformConfigToAgentInfo(defaultConfig)
+
+        log.info("Created default agent config:", {
+          name: defaultAgentInfo.name,
+          description: defaultAgentInfo.description,
+          capabilityCount: defaultAgentInfo.capabilities.length,
+        })
+
+        // Use existing updateAgentInfo logic to create defaults
+        this.updateAgentInfo(defaultAgentInfo)
+
+        // Recursive call to get the newly created info
+        return this.getAgentInfo()
       }
 
       const capabilities = JSON.parse(row.capabilities || "[]")
@@ -140,7 +159,13 @@ export class AgentConfigService {
 
       return result
     } catch (error) {
-      log.error("Error in AgentConfigService.getAgentInfo():", error)
+      log.error(
+        "Error in AgentConfigService.getAgentInfo():",
+        error instanceof Error ? error.message : String(error),
+      )
+      if (error instanceof Error && error.stack) {
+        log.error("Stack trace:", error.stack)
+      }
       throw error
     }
   }
@@ -160,15 +185,21 @@ export class AgentConfigService {
       stmt.run(
         info.name,
         info.description,
-        info.model_name,
-        JSON.stringify(info.model_parameters),
+        info.model_name || null,
+        JSON.stringify(info.model_parameters || {}),
         JSON.stringify(info.capabilities),
       )
 
       log.info("Database update completed successfully")
       return info
     } catch (error) {
-      log.error("Error in AgentConfigService.updateAgentInfo():", error)
+      log.error(
+        "Error in AgentConfigService.updateAgentInfo():",
+        error instanceof Error ? error.message : String(error),
+      )
+      if (error instanceof Error && error.stack) {
+        log.error("Stack trace:", error.stack)
+      }
       throw error
     }
   }
@@ -186,61 +217,13 @@ export class AgentConfigService {
     }
   }
 
-  // Validate capabilities using the new type system
   private validateCapabilities(capabilities: Capability[]): void {
-    for (const capability of capabilities) {
-      if (!capability.name || typeof capability.name !== "string") {
-        throw new Error(`Capability is missing a valid name`)
-      }
-
-      if (typeof capability.enabled !== "boolean") {
-        throw new Error(
-          `Capability '${capability.name}' is missing enabled state`,
-        )
-      }
-
-      if (isA2ACapability(capability)) {
-        log.info("Validating A2A capability:", capability.name)
-        if (!capability.agentUrl || typeof capability.agentUrl !== "string") {
-          throw new Error(
-            `A2A capability '${capability.name}' is missing or has invalid agentUrl`,
-          )
-        }
-        try {
-          new URL(capability.agentUrl)
-        } catch {
-          throw new Error(
-            `A2A capability '${capability.name}' has invalid URL: ${capability.agentUrl}`,
-          )
-        }
-      } else if (isMCPCapability(capability)) {
-        log.info("Validating MCP capability:", capability.name)
-        if (!capability.serverUrl || typeof capability.serverUrl !== "string") {
-          throw new Error(
-            `MCP capability '${capability.name}' is missing or has invalid serverUrl`,
-          )
-        }
-        try {
-          new URL(capability.serverUrl)
-        } catch {
-          throw new Error(
-            `MCP capability '${capability.name}' has invalid URL: ${capability.serverUrl}`,
-          )
-        }
-      } else if (isPrebuiltCapability(capability)) {
-        log.info("Validating prebuilt capability:", capability.name)
-        if (
-          !capability.subtype ||
-          !["file_access", "web_search", "memory"].includes(
-            capability.subtype,
-          )
-        ) {
-          throw new Error(
-            `Prebuilt capability '${capability.name}' has invalid subtype: ${capability.subtype}`,
-          )
-        }
-      } else {
-        throw new Error(`Capability '${capability}' has invalid type`)
+    for (const cap of capabilities) {
+      if (
+        !isPrebuiltCapability(cap) && !isA2ACapability(cap) &&
+        !isMCPCapability(cap)
+      ) {
+        throw new Error(`Unknown capability type: ${JSON.stringify(cap)}`)
       }
     }
   }

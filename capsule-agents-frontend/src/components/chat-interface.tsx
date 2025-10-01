@@ -1,8 +1,9 @@
 "use client"
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { Input } from "./ui/input.tsx"
 import { Button } from "@/components/ui/button.tsx"
+import Markdown from "react-markdown"
 import {
   ArrowRight,
   Loader2,
@@ -19,16 +20,13 @@ import {
 } from "./ui/card.tsx"
 import {
   type A2ATask,
-  type CapabilityCall as ApiCapabilityCall,
+  type CapabilityCall,
   type ChatWithHistory,
   checkHealth,
   extractCapabilityCalls,
   extractResponseText,
   streamMessage,
 } from "../lib/api.ts"
-import Markdown from "react-markdown"
-import { CapabilityCallDisplay } from "./capability-call-display.tsx"
-import { TaskStatusDisplay } from "./task-status-display.tsx"
 import {
   getErrorMessage,
   isRecoverableError,
@@ -38,15 +36,156 @@ import {
 import { ErrorDisplay } from "./ui/error-display.tsx"
 import { ChatSidebar } from "./chat-sidebar.tsx"
 
-type CapabilityCall = ApiCapabilityCall
+// CapabilityCall is not used in tasks-only rendering
+// type CapabilityCall = ApiCapabilityCall
 
 type Message = {
   role: "user" | "agent"
   content: string
   isLoading?: boolean
   capabilityCalls?: CapabilityCall[]
-  task?: A2ATask
+  task?: A2ATask | null
   timestamp?: number
+}
+
+type TimelineTask = {
+  id: string
+  task: A2ATask
+  createdAt: number
+}
+
+type TimelineEntry = {
+  id: string
+  user: {
+    content: string
+    timestamp: number
+  }
+  agent?: {
+    content: string
+    timestamp: number
+    isLoading: boolean
+    capabilityCalls?: CapabilityCall[]
+    taskUpdates?: Array<
+      { id: string; role: "user" | "agent" | "status"; text: string }
+    >
+  }
+  tasks: TimelineTask[]
+}
+
+const createEntryId = () =>
+  globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2)
+
+const toTimestampSeconds = (value?: string | number | null) => {
+  if (typeof value === "number") {
+    return value > 1e12 ? value / 1000 : value
+  }
+  if (typeof value === "string") {
+    const parsed = Date.parse(value)
+    return Number.isNaN(parsed) ? null : parsed / 1000
+  }
+  return null
+}
+
+const taskStatusMeta = {
+  submitted: {
+    label: "Submitted",
+    badgeClass: "border-blue-200/70 text-blue-700 bg-blue-100/60",
+  },
+  working: {
+    label: "Working",
+    badgeClass: "border-amber-200/70 text-amber-700 bg-amber-100/60",
+  },
+  "input-required": {
+    label: "Input Required",
+    badgeClass: "border-orange-200/70 text-orange-700 bg-orange-100/60",
+  },
+  completed: {
+    label: "Completed",
+    badgeClass: "border-emerald-200/70 text-emerald-700 bg-emerald-100/60",
+  },
+  failed: {
+    label: "Failed",
+    badgeClass: "border-rose-200/70 text-rose-700 bg-rose-100/60",
+  },
+  canceled: {
+    label: "Canceled",
+    badgeClass: "border-border text-muted-foreground bg-muted/50",
+  },
+  unknown: {
+    label: "Unknown",
+    badgeClass: "border-border text-muted-foreground bg-muted/50",
+  },
+} satisfies Record<string, { label: string; badgeClass: string }>
+
+const getTaskStatusInfo = (task: A2ATask) => {
+  const state =
+    (task.status?.state as keyof typeof taskStatusMeta | undefined) ?? "unknown"
+  return taskStatusMeta[state] ?? taskStatusMeta.unknown
+}
+
+const extractTextFromParts = (parts: unknown[]): string => {
+  if (!Array.isArray(parts)) return ""
+  return parts
+    .filter((part) => {
+      if (!part || typeof part !== "object") return false
+      const candidate = part as { kind?: string; type?: string }
+      return candidate.kind === "text" || candidate.type === "text"
+    })
+    .map((part) => {
+      if (!part || typeof part !== "object") return ""
+      const candidate = part as { text?: string }
+      return candidate.text ?? ""
+    })
+    .filter(Boolean)
+    .join("\n\n")
+    .trim()
+}
+
+const buildTaskUpdates = (task: A2ATask) => {
+  const updates: Array<
+    { id: string; role: "user" | "agent" | "status"; text: string }
+  > = []
+  const seenIds = new Set<string>()
+
+  if (Array.isArray(task.history)) {
+    for (const message of task.history) {
+      if (!message || typeof message !== "object") continue
+      const role = (message as { role?: string }).role
+      const metadata = (message as { metadata?: { kind?: string } }).metadata
+
+      // Determine if this is a status message or regular agent/user message
+      const isStatusMessage = metadata?.kind === "status-message"
+
+      if (
+        !isStatusMessage && role !== "user" && role !== "assistant" &&
+        role !== "agent"
+      ) continue
+
+      const normalizedRole = isStatusMessage
+        ? "status"
+        : (role === "user" ? "user" : "agent")
+      const parts = (message as { parts?: unknown[] }).parts ?? []
+      const text = extractTextFromParts(parts)
+      if (!text) continue
+
+      const messageId = (message as { messageId?: string }).messageId ??
+        `${task.id ?? "task"}-history-${updates.length}`
+
+      // Skip duplicates based on message ID
+      if (seenIds.has(messageId)) continue
+      seenIds.add(messageId)
+
+      updates.push({
+        id: messageId,
+        role: normalizedRole,
+        text,
+      })
+    }
+  }
+
+  // Note: We don't add task.status?.message here because it's already in history
+
+  return updates
 }
 
 interface ChatInterfaceProps {
@@ -74,84 +213,129 @@ export default function ChatInterface({
   onChatSelect,
   chatsRefreshKey,
 }: ChatInterfaceProps) {
-  const [messages, setMessages] = useState<Message[]>([])
+  const [timelineEntries, setTimelineEntries] = useState<TimelineEntry[]>([])
+  const [taskLocations, setTaskLocations] = useState<
+    Record<string, { entryId: string; index: number }>
+  >({})
   const [input, setInput] = useState("")
   const [isLoading, setIsLoading] = useState(false)
   const [isBackendConnected, setIsBackendConnected] = useState(false)
   const [connectionError, setConnectionError] = useState<
     JSONRPCError | Error | string | null
   >(null)
-  const [currentTask, setCurrentTask] = useState<A2ATask | null>(null)
-  const [tasks, setTasks] = useState<A2ATask[]>([])
-  const [taskStartTimes, setTaskStartTimes] = useState<Record<string, number>>(
-    {},
-  )
   // Use prop contextId if provided, otherwise defer assignment to backend on first message
   const [contextId, setContextId] = useState<string | null>(
     propContextId || null,
   )
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
+  const activeEntryIdRef = useRef<string | null>(null)
+  const taskLocationsRef = useRef(taskLocations)
+  const timelineEntriesRef = useRef<TimelineEntry[]>([])
+
+  const formatTimestamp = useCallback((seconds: number) => {
+    return new Intl.DateTimeFormat(undefined, {
+      hour: "numeric",
+      minute: "numeric",
+    }).format(new Date(seconds * 1000))
+  }, [])
+
+  useEffect(() => {
+    taskLocationsRef.current = taskLocations
+  }, [taskLocations])
+
+  useEffect(() => {
+    timelineEntriesRef.current = timelineEntries
+  }, [timelineEntries])
+
+  const appendEntry = useCallback((entry: TimelineEntry) => {
+    setTimelineEntries((prev) => [...prev, entry])
+  }, [])
+
+  const updateEntry = useCallback(
+    (entryId: string, updater: (entry: TimelineEntry) => TimelineEntry) => {
+      setTimelineEntries((prev) =>
+        prev.map((entry) => entry.id === entryId ? updater(entry) : entry)
+      )
+    },
+    [],
+  )
+
+  const upsertTask = useCallback(
+    (
+      entryId: string,
+      taskId: string,
+      buildTask: (previous: A2ATask | null) => A2ATask,
+    ) => {
+      let nextTaskRef: A2ATask | null = null
+      let updatedIndex = 0
+
+      const sortTasksByTime = (tasks: TimelineTask[]) =>
+        tasks.slice().sort((a, b) => a.createdAt - b.createdAt)
+
+      setTimelineEntries((prev) =>
+        prev.map((entry) => {
+          if (entry.id !== entryId) return entry
+
+          const existingIndex = entry.tasks.findIndex((item) =>
+            item.id === taskId
+          )
+          const previousTask = existingIndex >= 0
+            ? entry.tasks[existingIndex].task
+            : null
+          const nextTask = buildTask(previousTask)
+          nextTaskRef = nextTask
+
+          const createdAt = (nextTask as { createdAt?: number }).createdAt
+            ? Number((nextTask as { createdAt?: number }).createdAt)
+            : nextTask.status?.timestamp
+            ? Date.parse(nextTask.status.timestamp) / 1000
+            : Date.now() / 1000
+
+          if (existingIndex >= 0) {
+            const nextTasks = [...entry.tasks]
+            nextTasks[existingIndex] = { id: taskId, task: nextTask, createdAt }
+            const sortedTasks = sortTasksByTime(nextTasks)
+            updatedIndex = sortedTasks.findIndex((item) => item.id === taskId)
+            return { ...entry, tasks: sortedTasks }
+          }
+
+          const appendedTasks = [...entry.tasks, {
+            id: taskId,
+            task: nextTask,
+            createdAt,
+          }]
+          const sortedTasks = sortTasksByTime(appendedTasks)
+          updatedIndex = sortedTasks.findIndex((item) => item.id === taskId)
+          return {
+            ...entry,
+            tasks: sortedTasks,
+          }
+        })
+      )
+
+      setTaskLocations((prev) => ({
+        ...prev,
+        [taskId]: { entryId, index: updatedIndex },
+      }))
+
+      return nextTaskRef
+    },
+    [],
+  )
 
   // Start a fresh chat locally and notify parent
   const startNewChat = useCallback(() => {
     // Clear all local UI state immediately so old messages/tasks disappear
-    setMessages([])
-    setCurrentTask(null)
-    setTasks([])
-    setTaskStartTimes({})
+    setTimelineEntries([])
+    setTaskLocations({})
+    activeEntryIdRef.current = null
+    timelineEntriesRef.current = []
+    taskLocationsRef.current = {}
     setContextId(null)
     // Inform parent to clear its selected chat
     if (onNewChat) onNewChat()
   }, [onNewChat])
-
-  // Build merged timeline of tasks + messages, de-duplicating tasks by id
-  const timeline = useMemo(() => {
-    type TimelineItem =
-      | { kind: "message"; time: number; message: Message }
-      | { kind: "task"; time: number; task: A2ATask }
-
-    const msgTime = (
-      m: Message,
-    ) => (typeof m.timestamp === "number" ? m.timestamp : Date.now() / 1000)
-    const taskTime = (t: A2ATask) => {
-      const id = t.id
-      if (id && taskStartTimes[id] != null) return taskStartTimes[id]
-      const created = (t as { createdAt?: number }).createdAt
-      if (typeof created === "number") return created
-      if (t.status?.timestamp) return Date.parse(t.status.timestamp) / 1000
-      return Date.now() / 1000
-    }
-
-    const items: TimelineItem[] = []
-    for (const m of messages) {
-      items.push({ kind: "message", time: msgTime(m), message: m })
-    }
-
-    // Deduplicate tasks by id, prefer the most recent by status timestamp
-    const byId = new Map<string, A2ATask>()
-    const consider = (t: A2ATask | null | undefined) => {
-      if (!t || !t.id) return
-      const prev = byId.get(t.id)
-      if (!prev) {
-        byId.set(t.id, t)
-        return
-      }
-      const prevTime = prev.status?.timestamp
-        ? Date.parse(prev.status.timestamp)
-        : 0
-      const nextTime = t.status?.timestamp ? Date.parse(t.status.timestamp) : 0
-      if (nextTime >= prevTime) byId.set(t.id, t)
-    }
-    for (const t of tasks) consider(t)
-    consider(currentTask)
-    for (const t of byId.values()) {
-      items.push({ kind: "task", time: taskTime(t), task: t })
-    }
-
-    items.sort((a, b) => a.time - b.time)
-    return items
-  }, [messages, tasks, currentTask, taskStartTimes])
 
   // Initialize state - check backend connection
   useEffect(() => {
@@ -179,76 +363,182 @@ export default function ChatInterface({
 
   // Load initial chat data when provided
   useEffect(() => {
-    if (initialChatData) {
-      console.log("Loading initial chat data:", initialChatData)
-
-      // Convert backend messages to frontend Message format
-      const convertedMessages: Message[] = (initialChatData.messages as Array<
-        {
-          role?: string
-          content?: string
-          parts?: Array<{ text?: string }>
-          capabilityCalls?: unknown
-          timestamp?: number
-        }
-      >).map(
-        (msg) => {
-          // Normalize role: backend stores 'assistant', UI expects 'agent' for assistant messages
-          const role: "user" | "agent" = msg.role === "assistant"
-            ? "agent"
-            : (msg.role as "user" | "agent")
-          // Normalize content: either legacy msg.content or Vercel UIMessage parts array
-          const content: string = typeof msg.content === "string"
-            ? msg.content
-            : Array.isArray(msg.parts)
-            ? msg.parts.map((
-              p: { text?: string },
-            ) => (typeof p?.text === "string" ? p.text : "")).join("")
-            : ""
-          return {
-            role,
-            content,
-            capabilityCalls: msg.capabilityCalls || undefined,
-            timestamp: typeof msg.timestamp === "number"
-              ? msg.timestamp
-              : undefined,
-          } as Message
-        },
-      ).filter((m) => m.content && m.content.trim().length > 0)
-
-      setMessages(convertedMessages)
-      // Attach most recent task as current task so status is visible on load
-      const loadedTasks = (initialChatData.tasks || []) as Array<
-        { id?: string; createdAt?: number; updatedAt?: number }
-      >
-      setTasks(loadedTasks as unknown as A2ATask[])
-      // Seed task start times from createdAt
-      setTaskStartTimes((prev) => {
-        const next = { ...prev }
-        for (const t of loadedTasks) {
-          const id = t.id
-          const createdAt = t.createdAt
-          if (id && typeof createdAt === "number" && next[id] == null) {
-            next[id] = createdAt
-          }
-        }
-        return next
-      })
-      if (loadedTasks.length > 0) {
-        // Pick latest by updatedAt if present, else by createdAt
-        const latest = [...loadedTasks].sort((a, b) =>
-          (b.updatedAt || 0) - (a.updatedAt || 0)
-        )[0]
-        setCurrentTask(latest as unknown as A2ATask)
-      } else {
-        setCurrentTask(null)
-      }
-    } else {
-      // Clear messages for new chat
-      setMessages([])
-      setCurrentTask(null)
-      setTasks([])
+    if (!initialChatData) {
+      setTimelineEntries([])
+      setTaskLocations({})
+      activeEntryIdRef.current = null
+      return
     }
+
+    console.log("Loading initial chat data:", initialChatData)
+
+    const normalizeTimestamp = (value?: string | number | null) => {
+      const seconds = toTimestampSeconds(value ?? null)
+      return seconds ?? Date.now() / 1000
+    }
+
+    const normalizeMessage = (msg: {
+      role?: string
+      content?: string
+      parts?: Array<{ text?: string }>
+      capabilityCalls?: CapabilityCall[]
+      metadata?: { timestamp?: string | number }
+    }): Message | null => {
+      const role: "user" | "agent" = msg.role === "assistant"
+        ? "agent"
+        : (msg.role as "user" | "agent")
+      const rawContent = typeof msg.content === "string"
+        ? msg.content
+        : Array.isArray(msg.parts)
+        ? msg.parts.map((part) => part?.text ?? "").join("")
+        : ""
+      const content = rawContent.trim()
+      if (!content) return null
+
+      return {
+        role,
+        content,
+        capabilityCalls: Array.isArray(msg.capabilityCalls)
+          ? msg.capabilityCalls as CapabilityCall[]
+          : undefined,
+        timestamp: msg.metadata?.timestamp
+          ? normalizeTimestamp(msg.metadata.timestamp)
+          : undefined,
+      }
+    }
+
+    const convertedMessages: Message[] = (initialChatData.messages as Array<
+      {
+        role?: string
+        content?: string
+        parts?: Array<{ text?: string }>
+        capabilityCalls?: CapabilityCall[]
+        metadata?: { timestamp?: string | number }
+      }
+    >).map(normalizeMessage).filter((m): m is Message => Boolean(m))
+
+    const nextEntries: TimelineEntry[] = []
+    let currentEntry: TimelineEntry | null = null
+
+    for (const message of convertedMessages) {
+      const timestamp = message.timestamp ?? Date.now() / 1000
+      if (message.role === "user") {
+        currentEntry = {
+          id: createEntryId(),
+          user: {
+            content: message.content,
+            timestamp,
+          },
+          agent: undefined,
+          tasks: [],
+        }
+        nextEntries.push(currentEntry)
+      } else {
+        if (!currentEntry) {
+          currentEntry = {
+            id: createEntryId(),
+            user: {
+              content: "",
+              timestamp,
+            },
+            tasks: [],
+          }
+          nextEntries.push(currentEntry)
+        }
+        currentEntry.agent = {
+          content: message.content,
+          timestamp,
+          isLoading: false,
+          capabilityCalls: message.capabilityCalls,
+        }
+      }
+    }
+
+    for (const entry of nextEntries) {
+      if (!entry.agent) {
+        entry.agent = {
+          content: "",
+          timestamp: entry.user.timestamp,
+          isLoading: false,
+        }
+      }
+    }
+
+    const nextTaskLocations: Record<
+      string,
+      { entryId: string; index: number }
+    > = {}
+    const attachTaskToEntry = (task: A2ATask, entry: TimelineEntry) => {
+      if (!task.id) return
+      const createdAt = (task as { createdAt?: number }).createdAt
+        ? Number((task as { createdAt?: number }).createdAt)
+        : task.status?.timestamp
+        ? Date.parse(task.status.timestamp) / 1000
+        : Date.now() / 1000
+
+      const existingIndex = entry.tasks.findIndex((item) => item.id === task.id)
+      if (existingIndex >= 0) {
+        entry.tasks[existingIndex] = {
+          id: task.id,
+          task,
+          createdAt,
+        }
+        nextTaskLocations[task.id] = { entryId: entry.id, index: existingIndex }
+        return
+      }
+
+      entry.tasks.push({
+        id: task.id,
+        task,
+        createdAt,
+      })
+      nextTaskLocations[task.id] = {
+        entryId: entry.id,
+        index: entry.tasks.length - 1,
+      }
+    }
+
+    const loadedTasks = ((initialChatData.tasks || []) as A2ATask[]).filter(
+      (task) => task && typeof task === "object",
+    )
+
+    const sortedTasks = [...loadedTasks].sort((a, b) => {
+      const aTime = (a as { createdAt?: number }).createdAt
+        ? Number((a as { createdAt?: number }).createdAt)
+        : a.status?.timestamp
+        ? Date.parse(a.status.timestamp) / 1000
+        : 0
+      const bTime = (b as { createdAt?: number }).createdAt
+        ? Number((b as { createdAt?: number }).createdAt)
+        : b.status?.timestamp
+        ? Date.parse(b.status.timestamp) / 1000
+        : 0
+      return aTime - bTime
+    })
+
+    for (const task of sortedTasks) {
+      if (!task?.id) continue
+      const taskTime = (task as { createdAt?: number }).createdAt
+        ? Number((task as { createdAt?: number }).createdAt)
+        : task.status?.timestamp
+        ? Date.parse(task.status.timestamp) / 1000
+        : 0
+
+      const targetEntry = [...nextEntries]
+        .reverse()
+        .find((entry) => {
+          const anchor = entry.agent?.timestamp ?? entry.user.timestamp
+          return anchor <= taskTime + 1 // allow slight drift
+        }) ?? nextEntries[nextEntries.length - 1]
+
+      if (targetEntry) {
+        attachTaskToEntry(task, targetEntry)
+      }
+    }
+
+    setTimelineEntries(nextEntries)
+    setTaskLocations(nextTaskLocations)
+    activeEntryIdRef.current = null
   }, [initialChatData])
 
   // Scroll to bottom of messages
@@ -258,7 +548,7 @@ export default function ChatInterface({
 
   useEffect(() => {
     scrollToBottom()
-  }, [timeline.length, scrollToBottom])
+  }, [timelineEntries, scrollToBottom])
 
   // New chat now lives in Conversations panel; no local button here
 
@@ -269,13 +559,31 @@ export default function ChatInterface({
     setInput("")
     setIsLoading(true)
 
-    // Add user message
-    setMessages((prev) => [...prev, { role: "user", content: userMessage }])
+    const timestamp = Date.now() / 1000
+    const entryId = createEntryId()
 
-    // Add placeholder for agent response
-    setMessages(
-      (prev) => [...prev, { role: "agent", content: "", isLoading: true }],
-    )
+    appendEntry({
+      id: entryId,
+      user: {
+        content: userMessage,
+        timestamp,
+      },
+      agent: {
+        content: "",
+        timestamp,
+        isLoading: true,
+      },
+      tasks: [],
+    })
+
+    activeEntryIdRef.current = entryId
+
+    const resolveEntryIdForTask = (taskId?: string | null) => {
+      if (taskId && taskLocationsRef.current[taskId]) {
+        return taskLocationsRef.current[taskId].entryId
+      }
+      return activeEntryIdRef.current ?? entryId
+    }
 
     try {
       // Use A2A streaming
@@ -289,157 +597,236 @@ export default function ChatInterface({
         if (event.kind === "task") {
           // Initial task created
           const task = event as A2ATask
-          setCurrentTask(task)
-          setTasks((prev) => {
-            const exists = prev.some((t) => t.id === task.id)
-            return exists
-              ? prev.map((t) => (t.id === task.id ? task : t))
-              : [...prev, task]
-          })
-          // Record task start time on creation
-          setTaskStartTimes((prev) => ({
-            ...prev,
-            [task.id]: prev[task.id] ??
-              (task.status?.timestamp
-                ? Date.parse(task.status.timestamp) / 1000
-                : Date.now() / 1000),
-          }))
+          if (!task.id) {
+            console.warn("Received task event without id", task)
+            continue
+          }
+          const targetEntryId = resolveEntryIdForTask(task.id)
+          const mergedTask = upsertTask(
+            targetEntryId,
+            task.id,
+            (prevTask) => {
+              if (!prevTask) {
+                console.log(
+                  "New task created, history length:",
+                  task.history?.length ?? 0,
+                )
+                return task
+              }
+              console.log(
+                "Merging task - prev history:",
+                prevTask.history?.length ?? 0,
+                "new history:",
+                task.history?.length ?? 0,
+              )
+              // Merge new task data into previous task, preserving history
+              const merged = {
+                ...prevTask,
+                ...task,
+                // Preserve history if new task doesn't have it
+                history:
+                  (Array.isArray(task.history) && task.history.length > 0)
+                    ? task.history
+                    : (prevTask.history || []),
+              }
+              console.log(
+                "After merge, history length:",
+                merged.history?.length ?? 0,
+              )
+              return merged
+            },
+          )
           // Capture backend-assigned contextId on first response
           if (!contextId && task.contextId) {
             setContextId(task.contextId)
-            // Notify parent component that a new chat was created
-            if (onChatCreated) {
-              onChatCreated(task.contextId)
-            }
-          } else if (contextId && task.contextId !== contextId) {
+            if (onChatCreated) onChatCreated(task.contextId)
+          } else if (
+            contextId && task.contextId && task.contextId !== contextId
+          ) {
             console.warn("Task contextId changed from expected contextId:", {
               expected: contextId,
               received: task.contextId,
             })
           }
-          console.log("Task created:", task.id, "contextId:", task.contextId)
+          console.log(
+            "Task event - id:",
+            task.id,
+            "contextId:",
+            task.contextId,
+            "history length:",
+            task.history?.length ?? 0,
+          )
+          if (mergedTask) {
+            finalCapabilityCalls = extractCapabilityCalls(mergedTask)
+            console.log(
+              "Merged task history length:",
+              (mergedTask as A2ATask).history?.length ?? 0,
+            )
+
+            // Update task updates whenever we receive task data with history
+            const taskHistory = (mergedTask as A2ATask).history
+            if (Array.isArray(taskHistory) && taskHistory.length > 0) {
+              const taskUpdates = buildTaskUpdates(mergedTask)
+              console.log(
+                "Built",
+                taskUpdates.length,
+                "task updates from history",
+              )
+              updateEntry(targetEntryId, (entry) => {
+                return {
+                  ...entry,
+                  agent: entry.agent
+                    ? {
+                      ...entry.agent,
+                      taskUpdates,
+                    }
+                    : entry.agent,
+                }
+              })
+            }
+          }
         } else if (event.kind === "message" && event.role === "agent") {
           // Agent message response (could be streaming or final)
           const newText = extractResponseText(event)
           if (newText) {
             currentResponseText = newText
+            const messageTaskId = (event as { taskId?: string }).taskId
 
-            // Update the agent's message
-            setMessages((prev) => {
-              const updated = [...prev]
-              const lastMessage = updated[updated.length - 1]
-              if (lastMessage.role === "agent") {
-                lastMessage.content = currentResponseText
-                lastMessage.isLoading = false // Mark as complete when we get the message
-              }
-              return updated
-            })
+            // If this message is associated with a task, add it to task history
+            if (messageTaskId) {
+              const targetEntryId = resolveEntryIdForTask(messageTaskId)
 
-            // If no task was created, ensure we capture the contextId from the message
+              // Add message to task history and update task updates
+              upsertTask(targetEntryId, messageTaskId, (prevTask) => {
+                const updatedTask: A2ATask = {
+                  ...(prevTask || {
+                    id: messageTaskId,
+                    kind: "task" as const,
+                    contextId: contextId || "",
+                    status: {
+                      state: "working" as const,
+                      timestamp: new Date().toISOString(),
+                    },
+                  }),
+                  history: [...(prevTask?.history || []), event],
+                }
+
+                // Rebuild and update task updates to include the new message
+                const taskUpdates = buildTaskUpdates(updatedTask)
+                updateEntry(targetEntryId, (entry) => ({
+                  ...entry,
+                  agent: entry.agent
+                    ? {
+                      ...entry.agent,
+                      taskUpdates,
+                    }
+                    : entry.agent,
+                }))
+
+                return updatedTask
+              })
+            } else {
+              // No task - update agent content directly
+              const targetEntryId = activeEntryIdRef.current ?? entryId
+              updateEntry(targetEntryId, (entry) => ({
+                ...entry,
+                agent: entry.agent
+                  ? {
+                    ...entry.agent,
+                    content: currentResponseText,
+                    isLoading: false,
+                    timestamp: Date.now() / 1000,
+                  }
+                  : {
+                    content: currentResponseText,
+                    isLoading: false,
+                    timestamp: Date.now() / 1000,
+                  },
+              }))
+            }
+
+            // Capture contextId from message if needed
             if (!contextId && (event as { contextId?: string }).contextId) {
               setContextId((event as { contextId?: string }).contextId!)
               if (onChatCreated) {
                 onChatCreated((event as { contextId?: string }).contextId!)
               }
             }
-
-            // If no task was created, this is a simple message and we're done
-            if (currentTask === null) {
-              setIsLoading(false)
-              break
-            }
           }
         } else if (event.kind === "status-update") {
           // Handle status updates
-          console.log("Status update:", event.status.state)
+          const targetEntryId = resolveEntryIdForTask(event.taskId)
 
-          // Create or update the task using the event data directly (fixes race condition)
-          setCurrentTask((prev: A2ATask | null) => {
-            if (prev && prev.id === event.taskId) {
-              // Update existing task
-              const updated = {
-                ...prev,
-                status: event.status,
-              }
-              // Also update in tasks list
-              setTasks((list) =>
-                list.map((t) => (t.id === updated.id ? updated : t))
-              )
-              return updated
-            } else {
-              // Create task from status update event if not exists (race condition case)
-              const created: A2ATask = {
-                id: event.taskId,
-                kind: "task" as const,
-                contextId: event.contextId,
-                status: event.status,
-                history: [],
-              }
-              setTasks((list) => {
-                const exists = list.some((t) => t.id === created.id)
-                return exists
-                  ? list.map((t) => (t.id === created.id ? created : t))
-                  : [...list, created]
-              })
-              setTaskStartTimes((prevTimes) => ({
-                ...prevTimes,
-                [created.id]: prevTimes[created.id] ??
-                  (created.status?.timestamp
-                    ? Date.parse(created.status.timestamp) / 1000
-                    : Date.now() / 1000),
-              }))
-              return created
-            }
-          })
+          const nextTask = upsertTask(
+            targetEntryId,
+            event.taskId,
+            (prevTask) => {
+              // Build updated history
+              const prevHistory = prevTask?.history || []
+              const newHistory = event.status.message
+                ? [...prevHistory, event.status.message]
+                : prevHistory
 
-          if (event.final && event.status.state === "completed") {
-            // Final completion - extract capability calls from current task and store final task state
-            let completedTask: A2ATask | undefined
-            setCurrentTask((prev: A2ATask | null) => {
-              if (prev && prev.id === event.taskId) {
-                finalCapabilityCalls = extractCapabilityCalls(prev)
-                // Create final task state with completed status
-                completedTask = {
-                  ...prev,
+              if (prevTask) {
+                return {
+                  ...prevTask,
                   status: event.status,
+                  history: newHistory,
                 }
               }
-              return prev
-            })
-
-            // Update the last agent message with final capability calls and task info
-            setMessages((prev) => {
-              const updated = [...prev]
-              const lastMessage = updated[updated.length - 1]
-              if (lastMessage.role === "agent") {
-                // Keep existing content from the message event
-                lastMessage.capabilityCalls = finalCapabilityCalls.length > 0
-                  ? finalCapabilityCalls
-                  : undefined
-                lastMessage.task = completedTask
-                // Message should already be marked as not loading from message handler
+              return {
+                id: event.taskId,
+                kind: "task",
+                contextId: event.contextId,
+                status: event.status,
+                history: newHistory,
               }
-              return updated
-            })
+            },
+          )
 
-            // Clear current task since it's completed
-            // Update tasks with final status
-            setTasks((list) =>
-              list.map((
-                t,
-              ) => (t.id === event.taskId ? { ...t, status: event.status } : t))
-            )
-            setCurrentTask(null)
-            setIsLoading(false)
-            // Don't break here - continue processing in case final message comes after completion
+          // Update task updates in the UI whenever history changes
+          if (
+            nextTask && "history" in nextTask &&
+            (nextTask as A2ATask).history &&
+            (nextTask as A2ATask).history!.length > 0
+          ) {
+            const taskUpdates = buildTaskUpdates(nextTask)
+            updateEntry(targetEntryId, (entry) => {
+              return {
+                ...entry,
+                agent: entry.agent
+                  ? {
+                    ...entry.agent,
+                    taskUpdates,
+                  }
+                  : entry.agent,
+              }
+            })
+          }
+
+          if (event.final && event.status.state === "completed") {
+            updateEntry(targetEntryId, (entry) => {
+              const updates = nextTask ? buildTaskUpdates(nextTask) : []
+              const newCapabilities = nextTask
+                ? extractCapabilityCalls(nextTask)
+                : finalCapabilityCalls
+              return {
+                ...entry,
+                agent: entry.agent
+                  ? {
+                    ...entry.agent,
+                    capabilityCalls: newCapabilities.length > 0
+                      ? newCapabilities
+                      : entry.agent.capabilityCalls,
+                    isLoading: false,
+                    taskUpdates: updates,
+                  }
+                  : entry.agent,
+              }
+            })
+            activeEntryIdRef.current = null
           } else if (event.final && event.status.state === "failed") {
-            // Clear task and handle failure
-            setTasks((list) =>
-              list.map((
-                t,
-              ) => (t.id === event.taskId ? { ...t, status: event.status } : t))
-            )
-            setCurrentTask(null)
+            activeEntryIdRef.current = null
             throw new Error(extractResponseText(event) || "Task failed")
           }
         }
@@ -464,15 +851,20 @@ export default function ChatInterface({
       })
 
       // Update with an error message
-      setMessages((prev) => {
-        const updated = [...prev]
-        const lastMessage = updated[updated.length - 1]
-        if (lastMessage.role === "agent") {
-          lastMessage.content = getErrorMessage(error)
-          lastMessage.isLoading = false
-        }
-        return updated
-      })
+      activeEntryIdRef.current = null
+      const targetEntryId = activeEntryIdRef.current ??
+        timelineEntriesRef.current.at(-1)?.id
+      if (targetEntryId) {
+        updateEntry(targetEntryId, (entry) => ({
+          ...entry,
+          agent: {
+            content: getErrorMessage(error),
+            isLoading: false,
+            timestamp: Date.now() / 1000,
+            capabilityCalls: entry.agent?.capabilityCalls,
+          },
+        }))
+      }
     } finally {
       setIsLoading(false)
     }
@@ -484,6 +876,8 @@ export default function ChatInterface({
       handleSendMessage()
     }
   }
+
+  const hasEntries = timelineEntries.length > 0
 
   return (
     <div ref={containerRef} className="relative h-full">
@@ -559,8 +953,8 @@ export default function ChatInterface({
                   />
                 </div>
               )}
-              {/* Build merged timeline of tasks + messages */}
-              <div className="flex flex-col space-y-4">
+              {/* Render unified timeline */}
+              <div className="flex flex-col space-y-6">
                 {isLoadingChat
                   ? (
                     <div className="flex items-center justify-center h-full text-muted-foreground">
@@ -568,60 +962,238 @@ export default function ChatInterface({
                       Loading conversation...
                     </div>
                   )
-                  : messages.length === 0
+                  : !hasEntries
                   ? (
                     <div className="flex items-center justify-center h-full text-muted-foreground">
                       Send a message to start the conversation
                     </div>
                   )
                   : (
-                    timeline.map((item, index) => {
-                      if (item.kind === "task") {
-                        return (
-                          <div key={`task-${item.task.id}`} className="w-full">
-                            <TaskStatusDisplay task={item.task} />
-                          </div>
-                        )
-                      }
-                      const message = item.message
+                    timelineEntries.map((entry, index) => {
+                      const showConnector = index < timelineEntries.length - 1
+                      const hasTasks = entry.tasks.length > 0
+                      const capabilityCalls = entry.agent?.capabilityCalls ?? []
+                      // Only show agent card if there are NO tasks
+                      const showAgentCard = entry.agent && !hasTasks
+
                       return (
                         <div
-                          key={`msg-${index}`}
-                          className={`flex ${
-                            message.role === "user"
-                              ? "justify-end"
-                              : "justify-start"
-                          }`}
+                          key={entry.id}
+                          className="grid grid-cols-[auto_minmax(0,1fr)] gap-4"
                         >
-                          <div className={`max-w-[80%]`}>
-                            <div
-                              className={`inline-block w-fit align-top rounded-2xl px-4 py-2 break-words max-w-full ${
-                                message.role === "user"
-                                  ? "bg-primary text-primary-foreground"
-                                  : "bg-muted text-left"
-                              }`}
-                            >
-                              {message.role === "agent"
+                          <div className="flex flex-col items-center">
+                            <div className="h-2 w-2 rounded-full bg-primary" />
+                            {showConnector && (
+                              <div className="mt-2 w-px flex-1 bg-border" />
+                            )}
+                          </div>
+                          <div className="space-y-3">
+                            <div className="rounded-2xl border border-sky-400/60 bg-sky-200/70 px-4 py-3 text-sm text-slate-900 shadow-sm dark:border-sky-900/70 dark:bg-sky-900/40 dark:text-sky-50">
+                              <div className="mb-2 flex items-center justify-between text-xs font-semibold uppercase tracking-wide text-slate-700/80 dark:text-sky-200/80">
+                                <span>You</span>
+                                <span>
+                                  {formatTimestamp(entry.user.timestamp)}
+                                </span>
+                              </div>
+                              {entry.user.content
                                 ? (
-                                  <div className="space-y-2">
-                                    {message.capabilityCalls && (
-                                      <CapabilityCallDisplay
-                                        capabilityCalls={message
-                                          .capabilityCalls}
-                                      />
-                                    )}
-                                    <div className="markdown">
-                                      <Markdown>{message.content}</Markdown>
-                                    </div>
+                                  <div className="prose prose-sm text-slate-900 dark:prose-invert max-w-none">
+                                    <Markdown>{entry.user.content}</Markdown>
                                   </div>
                                 )
                                 : (
-                                  message.content
+                                  <span className="text-slate-600/80 dark:text-slate-300/80">
+                                    (empty message)
+                                  </span>
                                 )}
-                              {message.isLoading && (
-                                <Loader2 className="h-4 w-4 ml-1 inline animate-spin" />
-                              )}
                             </div>
+
+                            {showAgentCard && entry.agent && (
+                              <div className="rounded-2xl border border-violet-400/60 bg-violet-200/70 px-4 py-3 text-sm text-slate-900 shadow-sm dark:border-violet-900/70 dark:bg-violet-900/40 dark:text-violet-50">
+                                <div className="mb-2 flex items-center justify-between text-xs font-semibold uppercase tracking-wide text-slate-700/80 dark:text-violet-200/80">
+                                  <span>Agent</span>
+                                  <span>
+                                    {formatTimestamp(entry.agent.timestamp)}
+                                  </span>
+                                </div>
+                                {entry.agent.isLoading
+                                  ? (
+                                    <span className="inline-flex items-center gap-2 text-muted-foreground">
+                                      <Loader2 className="h-4 w-4 animate-spin" />
+                                      {hasTasks
+                                        ? "Working on task..."
+                                        : "Thinking..."}
+                                    </span>
+                                  )
+                                  : entry.agent.content
+                                  ? (
+                                    <div className="prose prose-sm text-slate-900 dark:prose-invert max-w-none">
+                                      <Markdown>{entry.agent.content}</Markdown>
+                                    </div>
+                                  )
+                                  : !hasTasks
+                                  ? (
+                                    <span className="text-slate-600/80 dark:text-slate-300/80">
+                                      No response
+                                    </span>
+                                  )
+                                  : null}
+                                {!entry.agent.isLoading && !hasTasks &&
+                                  entry.agent.capabilityCalls &&
+                                  entry.agent.capabilityCalls.length > 0 && (
+                                  <div className="mt-3 space-y-1 text-xs text-muted-foreground">
+                                    <div className="font-medium uppercase tracking-wide">
+                                      Capability Calls
+                                    </div>
+                                    <ul className="ml-4 list-disc space-y-1">
+                                      {entry.agent.capabilityCalls.map((
+                                        call,
+                                        idx,
+                                      ) => (
+                                        <li key={`${call.name}-${idx}`}>
+                                          <span className="font-medium text-foreground/80">
+                                            {call.name}
+                                          </span>
+                                        </li>
+                                      ))}
+                                    </ul>
+                                  </div>
+                                )}
+                              </div>
+                            )}
+
+                            {entry.tasks.map((item, taskIndex) => {
+                              const task = item.task
+                              const statusInfo = getTaskStatusInfo(task)
+                              const updates = entry.agent?.taskUpdates ??
+                                buildTaskUpdates(task)
+                              const hasUpdates = updates.length > 0
+                              const shortId = item.id.slice(-8)
+                              const statusTimestampSeconds = toTimestampSeconds(
+                                task.status?.timestamp ?? null,
+                              )
+                              const statusTimestamp =
+                                statusTimestampSeconds != null
+                                  ? formatTimestamp(statusTimestampSeconds)
+                                  : null
+                              const capabilityCallsForTask = taskIndex === 0
+                                ? capabilityCalls
+                                : []
+
+                              return (
+                                <div
+                                  key={item.id}
+                                  className="relative mt-6 space-y-4"
+                                >
+                                  <div
+                                    className={`inline-flex items-center gap-3 rounded-full border px-4 py-1.5 text-xs font-semibold shadow-sm ${
+                                      task.status?.state === "submitted"
+                                        ? "border-blue-500/40 bg-blue-200/80 text-blue-900 dark:border-blue-900/60 dark:bg-blue-950/60 dark:text-blue-100"
+                                        : task.status?.state === "working"
+                                        ? "border-amber-500/40 bg-amber-200/80 text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/60 dark:text-amber-100"
+                                        : task.status?.state ===
+                                            "input-required"
+                                        ? "border-orange-500/40 bg-orange-200/80 text-orange-900 dark:border-orange-900/60 dark:bg-orange-950/60 dark:text-orange-100"
+                                        : task.status?.state === "completed"
+                                        ? "border-emerald-500/40 bg-emerald-200/80 text-emerald-900 dark:border-emerald-900/60 dark:bg-emerald-950/60 dark:text-emerald-100"
+                                        : task.status?.state === "failed"
+                                        ? "border-rose-500/40 bg-rose-200/80 text-rose-900 dark:border-rose-900/60 dark:bg-rose-950/60 dark:text-rose-100"
+                                        : "border-slate-500/40 bg-slate-200/80 text-slate-900 dark:border-slate-900/60 dark:bg-slate-950/60 dark:text-slate-100"
+                                    }`}
+                                  >
+                                    {task.status?.state === "working" && (
+                                      <Loader2 className="h-3 w-3 animate-spin" />
+                                    )}
+                                    <span>{statusInfo.label}</span>
+                                    <span
+                                      className={task.status?.state ===
+                                          "submitted"
+                                        ? "text-blue-700/90 dark:text-blue-200/80"
+                                        : task.status?.state === "working"
+                                        ? "text-amber-700/90 dark:text-amber-200/80"
+                                        : task.status?.state ===
+                                            "input-required"
+                                        ? "text-orange-700/90 dark:text-orange-200/80"
+                                        : task.status?.state === "completed"
+                                        ? "text-emerald-700/90 dark:text-emerald-200/80"
+                                        : task.status?.state === "failed"
+                                        ? "text-rose-700/90 dark:text-rose-200/80"
+                                        : "text-slate-700/90 dark:text-slate-200/80"}
+                                    >
+                                      Task {shortId}
+                                    </span>
+                                    {statusTimestamp && (
+                                      <span
+                                        className={task.status?.state ===
+                                            "submitted"
+                                          ? "text-blue-700/70 dark:text-blue-300/70"
+                                          : task.status?.state === "working"
+                                          ? "text-amber-700/70 dark:text-amber-300/70"
+                                          : task.status?.state ===
+                                              "input-required"
+                                          ? "text-orange-700/70 dark:text-orange-300/70"
+                                          : task.status?.state === "completed"
+                                          ? "text-emerald-700/70 dark:text-emerald-300/70"
+                                          : task.status?.state === "failed"
+                                          ? "text-rose-700/70 dark:text-rose-300/70"
+                                          : "text-slate-700/70 dark:text-slate-300/70"}
+                                      >
+                                        • {statusTimestamp}
+                                      </span>
+                                    )}
+                                  </div>
+                                  {hasUpdates && (
+                                    <div className="pointer-events-none absolute left-[22px] top-16 bottom-6 w-[2px] bg-border/70" />
+                                  )}
+                                  <div className="space-y-3 pl-6">
+                                    {!hasUpdates
+                                      ? (
+                                        <p className="text-xs text-emerald-800/80 dark:text-emerald-100/80">
+                                          No task updates yet.
+                                        </p>
+                                      )
+                                      : (
+                                        updates.map((update) => (
+                                          <div
+                                            key={update.id}
+                                            className="relative pl-8"
+                                          >
+                                            <div className="absolute left-0 top-3 h-2 w-2 rounded-full border border-emerald-500/70 bg-emerald-600" />
+                                            <div className="rounded-lg border border-border/60 bg-card/95 px-4 py-3 shadow-sm dark:border-border/70 dark:bg-slate-950/50">
+                                              <div className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-emerald-800/80 dark:text-emerald-100/80">
+                                                {update.role === "user"
+                                                  ? "User input"
+                                                  : update.role === "agent"
+                                                  ? "Agent update"
+                                                  : "Status update"}
+                                              </div>
+                                              <div className="prose prose-sm text-slate-900 dark:prose-invert max-w-none">
+                                                <Markdown>
+                                                  {update.text}
+                                                </Markdown>
+                                              </div>
+                                            </div>
+                                          </div>
+                                        ))
+                                      )}
+                                    {capabilityCallsForTask.length > 0 && (
+                                      <ul className="ml-6 list-disc space-y-1 text-xs text-emerald-800/90 dark:text-emerald-100">
+                                        {capabilityCallsForTask.map((
+                                          call,
+                                          idx,
+                                        ) => (
+                                          <li key={`${call.name}-${idx}`}>
+                                            <span className="font-semibold text-foreground">
+                                              {call.name}
+                                            </span>
+                                          </li>
+                                        ))}
+                                      </ul>
+                                    )}
+                                  </div>
+                                </div>
+                              )
+                            })}
                           </div>
                         </div>
                       )
