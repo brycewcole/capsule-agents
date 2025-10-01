@@ -456,7 +456,6 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
             statusUpdateQueue.push(this.taskService.transitionState(
               currentTask,
               "completed",
-              `Completed`,
             ))
           }
 
@@ -509,7 +508,6 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
               statusUpdateQueue.push(this.taskService.transitionState(
                 currentTask,
                 "working",
-                `Preparing ${e.toolName}`,
               ))
             }
             break
@@ -522,7 +520,6 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
               statusUpdateQueue.push(this.taskService.transitionState(
                 currentTask,
                 "working",
-                `Executing ${e.toolName}`,
               ))
             }
             break
@@ -532,7 +529,6 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
               statusUpdateQueue.push(this.taskService.transitionState(
                 currentTask,
                 "working",
-                `Completed ${e.toolName}`,
               ))
             }
             break

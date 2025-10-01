@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { Input } from "./ui/input.tsx"
 import { Button } from "@/components/ui/button.tsx"
-import { Badge } from "./ui/badge.tsx"
+import Markdown from "react-markdown"
 import {
   ArrowRight,
   Loader2,
@@ -87,31 +87,31 @@ const toTimestampSeconds = (value?: string | number | null) => {
 const taskStatusMeta = {
   submitted: {
     label: "Submitted",
-    badgeClass: "border-blue-200 text-blue-700 bg-blue-50",
+    badgeClass: "border-blue-200/70 text-blue-700 bg-blue-100/60",
   },
   working: {
     label: "Working",
-    badgeClass: "border-yellow-200 text-yellow-800 bg-yellow-50",
+    badgeClass: "border-amber-200/70 text-amber-700 bg-amber-100/60",
   },
   "input-required": {
     label: "Input Required",
-    badgeClass: "border-orange-200 text-orange-800 bg-orange-50",
+    badgeClass: "border-orange-200/70 text-orange-700 bg-orange-100/60",
   },
   completed: {
     label: "Completed",
-    badgeClass: "border-green-200 text-green-700 bg-green-50",
+    badgeClass: "border-emerald-200/70 text-emerald-700 bg-emerald-100/60",
   },
   failed: {
     label: "Failed",
-    badgeClass: "border-red-200 text-red-700 bg-red-50",
+    badgeClass: "border-rose-200/70 text-rose-700 bg-rose-100/60",
   },
   canceled: {
     label: "Canceled",
-    badgeClass: "border-border text-muted-foreground bg-muted/40",
+    badgeClass: "border-border text-muted-foreground bg-muted/50",
   },
   unknown: {
     label: "Unknown",
-    badgeClass: "border-border text-muted-foreground bg-muted/40",
+    badgeClass: "border-border text-muted-foreground bg-muted/50",
   },
 } satisfies Record<string, { label: string; badgeClass: string }>
 
@@ -140,35 +140,39 @@ const extractTextFromParts = (parts: unknown[]): string => {
 
 const buildTaskUpdates = (task: A2ATask) => {
   const updates: Array<{ id: string; role: "user" | "agent" | "status"; text: string }> = []
+  const seenIds = new Set<string>()
 
   if (Array.isArray(task.history)) {
     for (const message of task.history) {
       if (!message || typeof message !== "object") continue
       const role = (message as { role?: string }).role
-      if (role !== "user" && role !== "assistant" && role !== "agent") continue
-      const normalizedRole = role === "user" ? "user" : "agent"
+      const metadata = (message as { metadata?: { kind?: string } }).metadata
+
+      // Determine if this is a status message or regular agent/user message
+      const isStatusMessage = metadata?.kind === "status-message"
+
+      if (!isStatusMessage && role !== "user" && role !== "assistant" && role !== "agent") continue
+
+      const normalizedRole = isStatusMessage ? "status" : (role === "user" ? "user" : "agent")
       const parts = (message as { parts?: unknown[] }).parts ?? []
       const text = extractTextFromParts(parts)
       if (!text) continue
+
+      const messageId = (message as { messageId?: string }).messageId ?? `${task.id ?? "task"}-history-${updates.length}`
+
+      // Skip duplicates based on message ID
+      if (seenIds.has(messageId)) continue
+      seenIds.add(messageId)
+
       updates.push({
-        id: (message as { messageId?: string }).messageId ?? `${task.id ?? "task"}-history-${updates.length}`,
+        id: messageId,
         role: normalizedRole,
         text,
       })
     }
   }
 
-  const statusText = task.status?.message?.parts
-    ? extractTextFromParts(task.status.message.parts as unknown[])
-    : ""
-
-  if (statusText) {
-    updates.push({
-      id: `${task.id ?? "task"}-status`,
-      role: "status",
-      text: statusText,
-    })
-  }
+  // Note: We don't add task.status?.message here because it's already in history
 
   return updates
 }
@@ -564,14 +568,22 @@ export default function ChatInterface({
             targetEntryId,
             task.id,
             (prevTask) => {
-              if (!prevTask) return task
-              return {
+              if (!prevTask) {
+                console.log("New task created, history length:", task.history?.length ?? 0)
+                return task
+              }
+              console.log("Merging task - prev history:", prevTask.history?.length ?? 0, "new history:", task.history?.length ?? 0)
+              // Merge new task data into previous task, preserving history
+              const merged = {
                 ...prevTask,
                 ...task,
-                history: Array.isArray(task.history) && task.history.length > 0
+                // Preserve history if new task doesn't have it
+                history: (Array.isArray(task.history) && task.history.length > 0)
                   ? task.history
-                  : prevTask.history,
+                  : (prevTask.history || []),
               }
+              console.log("After merge, history length:", merged.history?.length ?? 0)
+              return merged
             },
           )
           // Capture backend-assigned contextId on first response
@@ -584,27 +596,78 @@ export default function ChatInterface({
               received: task.contextId,
             })
           }
-          console.log("Task created:", task.id, "contextId:", task.contextId)
+          console.log("Task event - id:", task.id, "contextId:", task.contextId, "history length:", task.history?.length ?? 0)
+          if (mergedTask) {
             finalCapabilityCalls = extractCapabilityCalls(mergedTask)
+            console.log("Merged task history length:", mergedTask.history?.length ?? 0)
+
+            // Update task updates whenever we receive task data with history
+            const taskHistory = mergedTask.history
+            if (Array.isArray(taskHistory) && taskHistory.length > 0) {
+              const taskUpdates = buildTaskUpdates(mergedTask)
+              console.log("Built", taskUpdates.length, "task updates from history")
+              updateEntry(targetEntryId, (entry) => {
+                return {
+                  ...entry,
+                  agent: entry.agent
+                    ? {
+                      ...entry.agent,
+                      taskUpdates,
+                    }
+                    : entry.agent,
+                }
+              })
+            }
+          }
         } else if (event.kind === "message" && event.role === "agent") {
           // Agent message response (could be streaming or final)
           const newText = extractResponseText(event)
           if (newText) {
             currentResponseText = newText
+            const messageTaskId = (event as { taskId?: string }).taskId
 
-            // Update the agent's message
-            const targetEntryId = activeEntryIdRef.current ?? entryId
-            updateEntry(targetEntryId, (entry) => ({
-              ...entry,
-              agent: {
-                content: currentResponseText,
-                isLoading: false,
-                capabilityCalls: entry.agent?.capabilityCalls,
-                timestamp: Date.now() / 1000,
-              },
-            }))
+            // If this message is associated with a task, add it to task history
+            if (messageTaskId) {
+              const targetEntryId = resolveEntryIdForTask(messageTaskId)
 
-            // If no task was created, ensure we capture the contextId from the message
+              // Add message to task history and update task updates
+              upsertTask(targetEntryId, messageTaskId, (prevTask) => {
+                const updatedTask = {
+                  ...prevTask,
+                  history: [...(prevTask?.history || []), event],
+                }
+
+                // Rebuild and update task updates to include the new message
+                const taskUpdates = buildTaskUpdates(updatedTask as A2ATask)
+                updateEntry(targetEntryId, (entry) => ({
+                  ...entry,
+                  agent: entry.agent ? {
+                    ...entry.agent,
+                    taskUpdates,
+                  } : entry.agent,
+                }))
+
+                return updatedTask
+              })
+            } else {
+              // No task - update agent content directly
+              const targetEntryId = activeEntryIdRef.current ?? entryId
+              updateEntry(targetEntryId, (entry) => ({
+                ...entry,
+                agent: entry.agent ? {
+                  ...entry.agent,
+                  content: currentResponseText,
+                  isLoading: false,
+                  timestamp: Date.now() / 1000,
+                } : {
+                  content: currentResponseText,
+                  isLoading: false,
+                  timestamp: Date.now() / 1000,
+                },
+              }))
+            }
+
+            // Capture contextId from message if needed
             if (!contextId && (event as { contextId?: string }).contextId) {
               setContextId((event as { contextId?: string }).contextId!)
               if (onChatCreated) {
@@ -614,13 +677,20 @@ export default function ChatInterface({
           }
         } else if (event.kind === "status-update") {
           // Handle status updates
-          console.log("Status update:", event.status.state)
           const targetEntryId = resolveEntryIdForTask(event.taskId)
+
           const nextTask = upsertTask(targetEntryId, event.taskId, (prevTask) => {
+            // Build updated history
+            const prevHistory = prevTask?.history || []
+            const newHistory = event.status.message
+              ? [...prevHistory, event.status.message]
+              : prevHistory
+
             if (prevTask) {
               return {
                 ...prevTask,
                 status: event.status,
+                history: newHistory,
               }
             }
             return {
@@ -628,9 +698,25 @@ export default function ChatInterface({
               kind: "task",
               contextId: event.contextId,
               status: event.status,
-              history: [],
+              history: newHistory,
             }
           })
+
+          // Update task updates in the UI whenever history changes
+          if (nextTask && "history" in nextTask && (nextTask as A2ATask).history && (nextTask as A2ATask).history!.length > 0) {
+            const taskUpdates = buildTaskUpdates(nextTask)
+            updateEntry(targetEntryId, (entry) => {
+              return {
+                ...entry,
+                agent: entry.agent
+                  ? {
+                    ...entry.agent,
+                    taskUpdates,
+                  }
+                  : entry.agent,
+              }
+            })
+          }
 
           if (event.final && event.status.state === "completed") {
             updateEntry(targetEntryId, (entry) => {
@@ -796,7 +882,8 @@ export default function ChatInterface({
                     const showConnector = index < timelineEntries.length - 1
                     const hasTasks = entry.tasks.length > 0
                     const capabilityCalls = entry.agent?.capabilityCalls ?? []
-                    const showAgentCard = entry.agent && (!hasTasks || entry.agent.isLoading)
+                    // Only show agent card if there are NO tasks
+                    const showAgentCard = entry.agent && !hasTasks
 
                     return (
                       <div
@@ -810,63 +897,59 @@ export default function ChatInterface({
                           )}
                         </div>
                         <div className="space-y-3">
-                          <Card className="border-muted/40 bg-muted/30">
-                            <CardHeader className="p-4 pb-2">
-                              <div className="flex items-center justify-between text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                                <span>You</span>
-                                <span>{formatTimestamp(entry.user.timestamp)}</span>
-                              </div>
-                            </CardHeader>
-                            <CardContent className="px-4 pb-4 text-sm whitespace-pre-wrap break-words">
-                              {entry.user.content || (
-                                <span className="text-muted-foreground">(empty message)</span>
+                          <div className="rounded-2xl border border-sky-400/60 bg-sky-200/70 px-4 py-3 text-sm text-slate-900 shadow-sm dark:border-sky-900/70 dark:bg-sky-900/40 dark:text-sky-50">
+                            <div className="mb-2 flex items-center justify-between text-xs font-semibold uppercase tracking-wide text-slate-700/80 dark:text-sky-200/80">
+                              <span>You</span>
+                              <span>{formatTimestamp(entry.user.timestamp)}</span>
+                            </div>
+                            {entry.user.content
+                              ? (
+                                <div className="prose prose-sm text-slate-900 dark:prose-invert max-w-none">
+                                  <Markdown>{entry.user.content}</Markdown>
+                                </div>
+                              )
+                              : (
+                                <span className="text-slate-600/80 dark:text-slate-300/80">(empty message)</span>
                               )}
-                            </CardContent>
-                          </Card>
+                          </div>
 
                           {showAgentCard && entry.agent && (
-                            <Card className="border-primary/20 bg-primary/5">
-                              <CardHeader className="p-4 pb-2">
-                                <div className="flex items-center justify-between text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                                  <span>Agent</span>
-                                  <span>{formatTimestamp(entry.agent.timestamp)}</span>
+                            <div className="rounded-2xl border border-violet-400/60 bg-violet-200/70 px-4 py-3 text-sm text-slate-900 shadow-sm dark:border-violet-900/70 dark:bg-violet-900/40 dark:text-violet-50">
+                              <div className="mb-2 flex items-center justify-between text-xs font-semibold uppercase tracking-wide text-slate-700/80 dark:text-violet-200/80">
+                                <span>Agent</span>
+                                <span>{formatTimestamp(entry.agent.timestamp)}</span>
+                              </div>
+                              {entry.agent.isLoading ? (
+                                <span className="inline-flex items-center gap-2 text-muted-foreground">
+                                  <Loader2 className="h-4 w-4 animate-spin" />
+                                  {hasTasks ? "Working on task..." : "Thinking..."}
+                                </span>
+                              ) : entry.agent.content ? (
+                                <div className="prose prose-sm text-slate-900 dark:prose-invert max-w-none">
+                                  <Markdown>{entry.agent.content}</Markdown>
                                 </div>
-                              </CardHeader>
-                              <CardContent className="px-4 pb-4 text-sm text-foreground">
-                                {entry.agent.isLoading ? (
-                                  <span className="inline-flex items-center gap-2 text-muted-foreground">
-                                    <Loader2 className="h-4 w-4 animate-spin" />
-                                    {hasTasks ? "Working on task..." : "Thinking..."}
-                                  </span>
-                                ) : !hasTasks ? (
-                                  entry.agent.content ? (
-                                    <div className="whitespace-pre-wrap break-words">
-                                      {entry.agent.content}
+                              ) : !hasTasks ? (
+                                <span className="text-slate-600/80 dark:text-slate-300/80">No response</span>
+                              ) : null}
+                              {!entry.agent.isLoading && !hasTasks &&
+                                entry.agent.capabilityCalls &&
+                                entry.agent.capabilityCalls.length > 0 && (
+                                  <div className="mt-3 space-y-1 text-xs text-muted-foreground">
+                                    <div className="font-medium uppercase tracking-wide">
+                                      Capability Calls
                                     </div>
-                                  ) : (
-                                    <span className="text-muted-foreground">No response</span>
-                                  )
-                                ) : null}
-                                {!entry.agent.isLoading && !hasTasks &&
-                                  entry.agent.capabilityCalls &&
-                                  entry.agent.capabilityCalls.length > 0 && (
-                                    <div className="mt-3 space-y-1 text-xs text-muted-foreground">
-                                      <div className="font-medium uppercase tracking-wide">
-                                        Capability Calls
-                                      </div>
-                                      <ul className="ml-4 list-disc space-y-1">
-                                        {entry.agent.capabilityCalls.map((call, idx) => (
-                                          <li key={`${call.name}-${idx}`}>
-                                            <span className="font-medium text-foreground/80">
-                                              {call.name}
-                                            </span>
-                                          </li>
-                                        ))}
-                                      </ul>
-                                    </div>
-                                  )}
-                              </CardContent>
-                            </Card>
+                                    <ul className="ml-4 list-disc space-y-1">
+                                      {entry.agent.capabilityCalls.map((call, idx) => (
+                                        <li key={`${call.name}-${idx}`}>
+                                          <span className="font-medium text-foreground/80">
+                                            {call.name}
+                                          </span>
+                                        </li>
+                                      ))}
+                                    </ul>
+                                  </div>
+                                )}
+                            </div>
                           )}
 
                           {entry.tasks.map((item, taskIndex) => {
@@ -884,66 +967,56 @@ export default function ChatInterface({
                             return (
                               <div
                                 key={item.id}
-                                className="relative mt-4 rounded-lg border border-border/60 bg-background/60 p-4"
+                                className="relative mt-6 space-y-4"
                               >
-                                {hasUpdates && (
-                                  <div className="absolute left-4 top-10 bottom-4 w-px bg-border/60" />
-                                )}
-                                <div className="flex flex-wrap items-center gap-2">
-                                  <Badge
-                                    variant="outline"
-                                    className={`text-xs font-medium ${statusInfo.badgeClass}`}
-                                  >
-                                    {statusInfo.label}
-                                  </Badge>
-                                  <span className="text-xs text-muted-foreground">
+                                <div className="inline-flex items-center gap-3 rounded-full border border-emerald-500/40 bg-emerald-200/80 px-4 py-1.5 text-xs font-semibold text-emerald-900 shadow-sm dark:border-emerald-900/60 dark:bg-emerald-950/60 dark:text-emerald-100">
+                                  <span>{statusInfo.label}</span>
+                                  <span className="text-emerald-700/90 dark:text-emerald-200/80">
                                     Task {shortId}
                                   </span>
                                   {statusTimestamp && (
-                                    <span className="text-xs text-muted-foreground">
+                                    <span className="text-emerald-700/70 dark:text-emerald-300/70">
                                       • {statusTimestamp}
                                     </span>
                                   )}
                                 </div>
-                                <div className="mt-3 space-y-3 text-sm text-foreground">
+                                {hasUpdates && (
+                                  <div className="pointer-events-none absolute left-[22px] top-16 bottom-6 w-[2px] bg-border/70" />
+                                )}
+                                <div className="space-y-3 pl-6">
                                   {!hasUpdates ? (
-                                    <p className="text-xs text-muted-foreground">
+                                    <p className="text-xs text-emerald-800/80 dark:text-emerald-100/80">
                                       No task updates yet.
                                     </p>
                                   ) : (
                                     updates.map((update) => (
-                                      <div key={update.id} className="relative pl-5">
-                                        <div className="absolute left-0 top-2 h-2 w-2 rounded-full bg-primary" />
-                                        <div className="rounded-md border border-border/60 bg-background px-3 py-2">
-                                          <div className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                                      <div key={update.id} className="relative pl-8">
+                                        <div className="absolute left-0 top-3 h-2 w-2 rounded-full border border-emerald-500/70 bg-emerald-600" />
+                                        <div className="rounded-lg border border-border/60 bg-card/95 px-4 py-3 shadow-sm dark:border-border/70 dark:bg-slate-950/50">
+                                          <div className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-emerald-800/80 dark:text-emerald-100/80">
                                             {update.role === "user"
                                               ? "User input"
                                               : update.role === "agent"
                                               ? "Agent update"
                                               : "Status update"}
                                           </div>
-                                          <div className="mt-1 whitespace-pre-wrap break-words">
-                                            {update.text}
+                                          <div className="prose prose-sm text-slate-900 dark:prose-invert max-w-none">
+                                            <Markdown>{update.text}</Markdown>
                                           </div>
                                         </div>
                                       </div>
                                     ))
                                   )}
                                   {capabilityCallsForTask.length > 0 && (
-                                    <div className="space-y-1 text-xs text-muted-foreground">
-                                      <div className="font-medium uppercase tracking-wide">
-                                        Capability Calls
-                                      </div>
-                                      <ul className="ml-4 list-disc space-y-1">
-                                        {capabilityCallsForTask.map((call, idx) => (
-                                          <li key={`${call.name}-${idx}`}>
-                                            <span className="font-medium text-foreground/80">
-                                              {call.name}
-                                            </span>
-                                          </li>
-                                        ))}
-                                      </ul>
-                                    </div>
+                                    <ul className="ml-6 list-disc space-y-1 text-xs text-emerald-800/90 dark:text-emerald-100">
+                                      {capabilityCallsForTask.map((call, idx) => (
+                                        <li key={`${call.name}-${idx}`}>
+                                          <span className="font-semibold text-foreground">
+                                            {call.name}
+                                          </span>
+                                        </li>
+                                      ))}
+                                    </ul>
                                   )}
                                 </div>
                               </div>
