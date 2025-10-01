@@ -164,6 +164,8 @@ function ensureMessagesMetadataColumn(db: Database) {
 
   const hasMetadata = columns.some((column) => column.name === "metadata")
   if (!hasMetadata) {
-    db.exec("ALTER TABLE messages ADD COLUMN metadata TEXT NOT NULL DEFAULT '{}'")
+    db.exec(
+      "ALTER TABLE messages ADD COLUMN metadata TEXT NOT NULL DEFAULT '{}'",
+    )
   }
 }

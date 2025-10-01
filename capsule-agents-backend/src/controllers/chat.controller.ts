@@ -60,4 +60,3 @@ export function createChatController(chatService: ChatService) {
 
   return router
 }
-

@@ -135,4 +135,3 @@ export class ProviderService {
     return availableModels.some((model: ModelEntry) => model.id === modelName)
   }
 }
-

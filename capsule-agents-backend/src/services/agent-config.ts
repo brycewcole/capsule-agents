@@ -8,7 +8,10 @@ import {
 import { getDb } from "../infrastructure/db.ts"
 import { selectDefaultModel } from "../lib/model-registry.ts"
 import { ProviderService } from "./provider-service.ts"
-import { AgentConfigSchema, transformConfigToAgentInfo } from "./config-schema.ts"
+import {
+  AgentConfigSchema,
+  transformConfigToAgentInfo,
+} from "./config-schema.ts"
 
 // Types for agent configuration
 interface AgentInfoRow {
@@ -119,20 +122,20 @@ export class AgentConfigService {
       const row = stmt.get() as AgentInfoRow | undefined
       if (!row) {
         log.info("No agent info found, creating default configuration")
-        
+
         // Use Zod schema defaults to create clean default configuration
         const defaultConfig = AgentConfigSchema.parse({})
         const defaultAgentInfo = transformConfigToAgentInfo(defaultConfig)
-        
+
         log.info("Created default agent config:", {
           name: defaultAgentInfo.name,
           description: defaultAgentInfo.description,
-          capabilityCount: defaultAgentInfo.capabilities.length
+          capabilityCount: defaultAgentInfo.capabilities.length,
         })
-        
+
         // Use existing updateAgentInfo logic to create defaults
         this.updateAgentInfo(defaultAgentInfo)
-        
+
         // Recursive call to get the newly created info
         return this.getAgentInfo()
       }
@@ -156,7 +159,10 @@ export class AgentConfigService {
 
       return result
     } catch (error) {
-      log.error("Error in AgentConfigService.getAgentInfo():", error instanceof Error ? error.message : String(error))
+      log.error(
+        "Error in AgentConfigService.getAgentInfo():",
+        error instanceof Error ? error.message : String(error),
+      )
       if (error instanceof Error && error.stack) {
         log.error("Stack trace:", error.stack)
       }
@@ -187,7 +193,10 @@ export class AgentConfigService {
       log.info("Database update completed successfully")
       return info
     } catch (error) {
-      log.error("Error in AgentConfigService.updateAgentInfo():", error instanceof Error ? error.message : String(error))
+      log.error(
+        "Error in AgentConfigService.updateAgentInfo():",
+        error instanceof Error ? error.message : String(error),
+      )
       if (error instanceof Error && error.stack) {
         log.error("Stack trace:", error.stack)
       }
@@ -211,11 +220,11 @@ export class AgentConfigService {
   private validateCapabilities(capabilities: Capability[]): void {
     for (const cap of capabilities) {
       if (
-        !isPrebuiltCapability(cap) && !isA2ACapability(cap) && !isMCPCapability(cap)
+        !isPrebuiltCapability(cap) && !isA2ACapability(cap) &&
+        !isMCPCapability(cap)
       ) {
         throw new Error(`Unknown capability type: ${JSON.stringify(cap)}`)
       }
     }
   }
 }
-

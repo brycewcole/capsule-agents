@@ -158,7 +158,9 @@ export async function fetchTaskById(
   try {
     const response = await a2aClient.getTask({
       id: taskId,
-      ...(options.historyLength ? { historyLength: options.historyLength } : {}),
+      ...(options.historyLength
+        ? { historyLength: options.historyLength }
+        : {}),
     })
 
     if ("error" in response && response.error) {

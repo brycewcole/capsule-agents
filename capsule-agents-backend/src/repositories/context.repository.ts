@@ -13,14 +13,18 @@ export class ContextRepository {
     const db = getDb()
     const contextId = id || crypto.randomUUID()
     const now = Date.now() / 1000
-    const stmt = db.prepare(`INSERT INTO contexts (id, metadata, created_at, updated_at) VALUES (?, ?, ?, ?)`)
+    const stmt = db.prepare(
+      `INSERT INTO contexts (id, metadata, created_at, updated_at) VALUES (?, ?, ?, ?)`,
+    )
     stmt.run(contextId, JSON.stringify(metadata), now, now)
     return contextId
   }
 
   getContext(id: string): StoredContext | undefined {
     const db = getDb()
-    const row = db.prepare(`SELECT id, metadata, created_at, updated_at FROM contexts WHERE id = ?`).get(id) as
+    const row = db.prepare(
+      `SELECT id, metadata, created_at, updated_at FROM contexts WHERE id = ?`,
+    ).get(id) as
       | { id: string; metadata: string; created_at: number; updated_at: number }
       | undefined
     if (!row) return undefined
@@ -35,7 +39,9 @@ export class ContextRepository {
   updateContext(id: string, metadata: Record<string, unknown>): boolean {
     const db = getDb()
     const now = Date.now() / 1000
-    const res = db.prepare(`UPDATE contexts SET metadata = ?, updated_at = ? WHERE id = ?`).run(
+    const res = db.prepare(
+      `UPDATE contexts SET metadata = ?, updated_at = ? WHERE id = ?`,
+    ).run(
       JSON.stringify(metadata),
       now,
       id,
@@ -51,8 +57,14 @@ export class ContextRepository {
 
   getAllContexts(): StoredContext[] {
     const db = getDb()
-    const rows = db.prepare(`SELECT id, metadata, created_at, updated_at FROM contexts ORDER BY updated_at DESC`).all() as
-      { id: string; metadata: string; created_at: number; updated_at: number }[]
+    const rows = db.prepare(
+      `SELECT id, metadata, created_at, updated_at FROM contexts ORDER BY updated_at DESC`,
+    ).all() as {
+      id: string
+      metadata: string
+      created_at: number
+      updated_at: number
+    }[]
     return rows.map((row) => ({
       id: row.id,
       metadata: JSON.parse(row.metadata),

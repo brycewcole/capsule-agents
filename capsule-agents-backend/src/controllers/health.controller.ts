@@ -5,4 +5,3 @@ export function createHealthController() {
   router.get("/health", (c) => c.json({ status: "ok" }))
   return router
 }
-

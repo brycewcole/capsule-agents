@@ -2,11 +2,15 @@ import type * as A2A from "@a2a-js/sdk"
 import { getDb } from "../infrastructure/db.ts"
 import { getChanges } from "./sqlite-utils.ts"
 
-const parseMetadata = (metadataJson: string | null | undefined): Record<string, unknown> => {
+const parseMetadata = (
+  metadataJson: string | null | undefined,
+): Record<string, unknown> => {
   if (!metadataJson) return {}
   try {
     const parsed = JSON.parse(metadataJson)
-    return parsed && typeof parsed === "object" ? parsed as Record<string, unknown> : {}
+    return parsed && typeof parsed === "object"
+      ? parsed as Record<string, unknown>
+      : {}
   } catch (_error) {
     return {}
   }
@@ -84,7 +88,10 @@ export class A2AMessageRepository {
       }
       | undefined
     if (!row) return undefined
-    const metadata = addTimestampToMetadata(parseMetadata(row.metadata), row.timestamp)
+    const metadata = addTimestampToMetadata(
+      parseMetadata(row.metadata),
+      row.timestamp,
+    )
     return {
       kind: "message",
       messageId: row.id,
@@ -122,7 +129,10 @@ export class A2AMessageRepository {
       taskId: row.task_id || undefined,
       role: row.role,
       parts: JSON.parse(row.parts),
-      metadata: addTimestampToMetadata(parseMetadata(row.metadata), row.timestamp),
+      metadata: addTimestampToMetadata(
+        parseMetadata(row.metadata),
+        row.timestamp,
+      ),
     }))
   }
 
@@ -146,7 +156,10 @@ export class A2AMessageRepository {
       taskId: row.task_id || undefined,
       role: row.role,
       parts: JSON.parse(row.parts),
-      metadata: addTimestampToMetadata(parseMetadata(row.metadata), row.timestamp),
+      metadata: addTimestampToMetadata(
+        parseMetadata(row.metadata),
+        row.timestamp,
+      ),
     }))
   }
 

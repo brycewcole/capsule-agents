@@ -21,7 +21,14 @@ export class ArtifactRepository {
     const id = `artifact_${crypto.randomUUID()}`
     db.prepare(
       `INSERT INTO artifacts (id, task_id, name, description, parts, created_at) VALUES (?, ?, ?, ?, ?, ?)`,
-    ).run(id, taskId, artifact.name ?? null, artifact.description ?? null, JSON.stringify(artifact.parts), now)
+    ).run(
+      id,
+      taskId,
+      artifact.name ?? null,
+      artifact.description ?? null,
+      JSON.stringify(artifact.parts),
+      now,
+    )
 
     return {
       id,
@@ -38,7 +45,14 @@ export class ArtifactRepository {
     const row = db.prepare(
       `SELECT id, task_id, name, description, parts, created_at FROM artifacts WHERE id = ?`,
     ).get(id) as
-      | { id: string; task_id: string; name: string | null; description: string | null; parts: string; created_at: number }
+      | {
+        id: string
+        task_id: string
+        name: string | null
+        description: string | null
+        parts: string
+        created_at: number
+      }
       | undefined
     if (!row) return undefined
     return {
@@ -90,11 +104,15 @@ export class ArtifactRepository {
     }
     if (Object.prototype.hasOwnProperty.call(updates, "parts")) {
       fields.push("parts = ?")
-      values.push((updates.parts ? JSON.stringify(updates.parts) : "[]") as string)
+      values.push(
+        (updates.parts ? JSON.stringify(updates.parts) : "[]") as string,
+      )
     }
     if (fields.length === 0) return false
     values.push(id)
-    const res = db.prepare(`UPDATE artifacts SET ${fields.join(", ")} WHERE id = ?`).run(
+    const res = db.prepare(
+      `UPDATE artifacts SET ${fields.join(", ")} WHERE id = ?`,
+    ).run(
       ...values,
     )
     return getChanges(res) > 0
@@ -108,7 +126,9 @@ export class ArtifactRepository {
 
   deleteArtifactsByTask(taskId: string): number {
     const db = getDb()
-    const res = db.prepare(`DELETE FROM artifacts WHERE task_id = ?`).run(taskId)
+    const res = db.prepare(`DELETE FROM artifacts WHERE task_id = ?`).run(
+      taskId,
+    )
     return getChanges(res)
   }
 

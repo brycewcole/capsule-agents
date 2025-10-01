@@ -178,4 +178,3 @@ export function transformAgentInfoToConfig(agentInfo: AgentInfo): AgentConfig {
 
   return result
 }
-

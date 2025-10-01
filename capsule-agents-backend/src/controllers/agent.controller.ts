@@ -45,7 +45,11 @@ export function createAgentController(agentConfigService: AgentConfigService) {
       return c.json(response)
     } catch (error) {
       log.error("Error updating agent info:", error)
-      return c.json({ error: error instanceof Error ? error.message : "Failed to update agent configuration" }, 400)
+      return c.json({
+        error: error instanceof Error
+          ? error.message
+          : "Failed to update agent configuration",
+      }, 400)
     }
   })
 
@@ -71,4 +75,3 @@ export function createAgentController(agentConfigService: AgentConfigService) {
 
   return router
 }
-
