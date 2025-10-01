@@ -5,6 +5,7 @@ import {
   mapDBPartToUIMessagePart,
   mapUIMessagePartsToDBParts,
 } from "../lib/vercel-message-mapping.ts"
+import { getChanges } from "./sqlite-utils.ts"
 
 export interface StoredVercelMessage {
   id: string
@@ -225,7 +226,7 @@ export class VercelMessageRepository {
     const result = db.prepare(`DELETE FROM vercel_messages WHERE id = ?`).run(
       id,
     )
-    return result.changes > 0
+    return getChanges(result) > 0
   }
 
   deleteContextMessages(contextId: string): number {
@@ -233,7 +234,7 @@ export class VercelMessageRepository {
     const result = db.prepare(
       `DELETE FROM vercel_messages WHERE context_id = ?`,
     ).run(contextId)
-    return result.changes
+    return getChanges(result)
   }
 
   deleteTaskMessages(taskId: string): number {
@@ -241,7 +242,7 @@ export class VercelMessageRepository {
     const result = db.prepare(
       `DELETE FROM vercel_messages WHERE task_id = ?`,
     ).run(taskId)
-    return result.changes
+    return getChanges(result)
   }
 }
 

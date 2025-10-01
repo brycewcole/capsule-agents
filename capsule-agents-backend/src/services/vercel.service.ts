@@ -12,8 +12,8 @@ export class VercelService {
     private vercelMessageRepository: VercelMessageRepository,
   ) {}
 
-  upsertMessage(params: CreateVercelMessageParams): Promise<void> {
-    return this.vercelMessageRepository.upsertMessage(params)
+  upsertMessage(params: CreateVercelMessageParams): void {
+    this.vercelMessageRepository.upsertMessage(params)
   }
 
   createMessage(params: CreateVercelMessageParams): StoredVercelMessage {
