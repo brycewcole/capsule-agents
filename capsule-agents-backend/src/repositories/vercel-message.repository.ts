@@ -21,7 +21,7 @@ export interface CreateVercelMessageParams {
 }
 
 export class VercelMessageRepository {
-  async upsertMessage(params: CreateVercelMessageParams): Promise<void> {
+  upsertMessage(params: CreateVercelMessageParams): void {
     const db = getDb()
     const now = Date.now() / 1000
 
