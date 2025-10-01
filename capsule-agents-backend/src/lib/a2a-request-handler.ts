@@ -25,6 +25,16 @@ interface MCPToolsDisposable {
   [Symbol.asyncDispose](): Promise<void>
 }
 
+type StreamEmitUnion =
+  | A2A.Task
+  | A2A.Message
+  | A2A.TaskStatusUpdateEvent
+  | A2A.TaskArtifactUpdateEvent
+
+type StatusUpdateHandler = (
+  event: StreamEmitUnion,
+) => void
+
 export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
   private taskStorage = new TaskRepository()
   private a2aMessageRepository = new A2AMessageRepository()
@@ -266,10 +276,306 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
     }
   }
 
-  sendMessage(
-    _params: A2A.MessageSendParams,
+  private async saveUserMessage(
+    message: A2A.Message,
+    contextId: string,
+  ): Promise<void> {
+    this.a2aMessageRepository.createMessage(message)
+    await this.vercelService.upsertMessage({
+      message: this.vercelService.fromA2AToUIMessage(message),
+      contextId,
+    })
+  }
+
+  private async prepareStreamContext(contextId: string): Promise<{
+    tools: Record<string, Vercel.Tool>
+    mcpTools: MCPToolsDisposable
+    model: Vercel.LanguageModel
+    agentInfo: ReturnType<AgentConfigService["getAgentInfo"]>
+    cleanedMessages: Vercel.UIMessage[]
+  }> {
+    let tools = await this.getAvailableTools()
+    const mcpTools = await this.getMCPServers()
+    tools = Object.assign(tools, mcpTools.tools)
+
+    const model = this.getConfiguredModel()
+    const agentInfo = this.agentConfigService.getAgentInfo()
+    const vercelMessages = this.vercelService.fromContext(contextId)
+
+    const cleanedMessages = vercelMessages.map((msg) => ({
+      ...msg,
+      parts: msg.parts.filter((part) =>
+        part.type !== "reasoning" && part.type !== "step-start"
+      ),
+    }))
+
+    return { tools, mcpTools, model, agentInfo, cleanedMessages }
+  }
+
+  private createOnStepFinishHandler(
+    params: A2A.MessageSendParams,
+    currentTaskRef: { current: A2A.Task | null },
+    statusHandler: StatusUpdateHandler,
+  ): (stepResult: Vercel.StepResult<Record<string, Vercel.Tool>>) => void {
+    return (stepResult) => {
+      const { text, toolCalls, toolResults, finishReason } = stepResult
+      log.info(
+        `Step finished - text: "${this.truncateForLog(text)}", toolCalls: ${
+          this.truncateForLog(toolCalls)
+        }, toolResults: ${this.truncateForLog(toolResults)}`,
+      )
+
+      if (finishReason === "tool-calls") {
+        if (!currentTaskRef.current) {
+          currentTaskRef.current = this.taskService.createTask(
+            params.message.contextId!,
+            params.metadata,
+          )
+          statusHandler(currentTaskRef.current)
+          // Move user message into task context
+          this.taskService.addExistingMessageToHistory(
+            currentTaskRef.current,
+            params.message,
+          )
+        }
+        const pendingToolCalls = this.checkForPendingToolCalls(
+          toolCalls || [],
+          toolResults || [],
+        )
+        if (pendingToolCalls.length > 0) {
+          throw new Error(
+            `Tool calls returned without matching results: ${
+              this.truncateForLog(pendingToolCalls)
+            }`,
+          )
+        }
+        const statusUpdate = this.taskService.transitionState(
+          currentTaskRef.current,
+          "working",
+          `Used ${toolCalls.map((tc) => tc.toolName).join(", ")}`,
+        )
+        statusHandler(statusUpdate)
+      }
+    }
+  }
+
+  private createOnFinishHandler(
+    contextId: string,
+    currentTaskRef: { current: A2A.Task | null },
+    finalMessageHolder: { message: A2A.Message | null },
+    statusHandler: StatusUpdateHandler,
+  ): (params: { responseMessage: Vercel.UIMessage }) => Promise<void> {
+    return async ({ responseMessage }) => {
+      log.info(
+        `Stream finished - responseMessage: ${
+          this.truncateForLog(responseMessage)
+        }`,
+      )
+
+      if (currentTaskRef.current) {
+        const statusUpdate = this.taskService.transitionState(
+          currentTaskRef.current,
+          "completed",
+        )
+        statusHandler(statusUpdate)
+      }
+
+      // Ensure the message has a valid ID
+      if (!responseMessage.id) {
+        responseMessage.id = crypto.randomUUID()
+      }
+
+      // Save to Vercel storage
+      await this.vercelService.upsertMessage({
+        message: responseMessage,
+        contextId,
+      })
+
+      // Convert to A2A message and save
+      const a2aMessage = this.vercelService.fromUIMessageToA2A(
+        responseMessage,
+        contextId,
+        currentTaskRef.current?.id,
+      )
+      this.a2aMessageRepository.createMessage(a2aMessage)
+
+      // Store for yielding after fullStream completes
+      finalMessageHolder.message = a2aMessage
+
+      log.info("Saved assistant message to both Vercel and A2A storage")
+    }
+  }
+
+  private consumeUIStream(
+    uiMessageStream: AsyncIterable<unknown>,
+  ): void {
+    // Consume in background to ensure onFinish fires
+    ;(async () => {
+      try {
+        for await (const _ of uiMessageStream) {
+          // Just consume to ensure onFinish fires
+        }
+        log.info("UI message stream consumed successfully")
+      } catch (error) {
+        console.log(error)
+        log.error(
+          "Error stack:",
+          error instanceof Error ? error.stack : "No stack available",
+        )
+      }
+    })()
+  }
+
+  private async processStreamEvents(
+    fullStream: AsyncIterable<
+      Vercel.TextStreamPart<Record<string, Vercel.Tool>>
+    >,
+    currentTaskRef: { current: A2A.Task | null },
+    statusHandler: StatusUpdateHandler,
+  ): Promise<void> {
+    log.info("StreamText initialized, consuming stream...")
+    for await (const e of fullStream) {
+      switch (e.type) {
+        case "tool-input-start":
+          log.info(`Tool input starting: ${e.toolName}`)
+          if (currentTaskRef.current) {
+            const statusUpdate = this.taskService.transitionState(
+              currentTaskRef.current,
+              "working",
+            )
+            statusHandler(statusUpdate)
+          }
+          break
+        case "tool-input-end":
+          log.info(`Tool input ready: ${e.id}`)
+          break
+        case "tool-call":
+          log.info(`Tool called: ${e.toolName}`)
+          if (currentTaskRef.current) {
+            const statusUpdate = this.taskService.transitionState(
+              currentTaskRef.current,
+              "working",
+            )
+            statusHandler(statusUpdate)
+          }
+          break
+        case "tool-result":
+          log.info(`Tool completed: ${e.toolName}`)
+          if (currentTaskRef.current) {
+            const statusUpdate = this.taskService.transitionState(
+              currentTaskRef.current,
+              "working",
+            )
+            statusHandler(statusUpdate)
+          }
+          break
+        case "finish-step":
+          log.info("Step finished")
+          break
+        case "finish":
+          log.info(`Finish event in stream: ${this.truncateForLog(e)}`)
+          break
+        default:
+          break
+      }
+    }
+  }
+
+  private handleStreamError(error: unknown): never {
+    log.error("🚨 STREAM MESSAGE ERROR:", this.truncateForLog(error))
+    log.error(
+      "Error stack:",
+      error instanceof Error ? error.stack : "No stack available",
+    )
+    throw error
+  }
+
+  private ensureContext(contextId?: string): string {
+    if (contextId == null) {
+      const newContextId = crypto.randomUUID()
+      contextRepository.createContext(newContextId)
+      return newContextId
+    }
+
+    if (!contextRepository.getContext(contextId)) {
+      contextRepository.createContext(contextId)
+    }
+
+    return contextId
+  }
+
+  async sendMessage(
+    params: A2A.MessageSendParams,
   ): Promise<A2A.Message | A2A.Task> {
-    throw new Error("Not yet implemented")
+    params.message.contextId = this.ensureContext(params.message.contextId)
+    const contextId = params.message.contextId
+
+    await this.saveUserMessage(params.message, contextId)
+
+    try {
+      const { tools, mcpTools, model, agentInfo, cleanedMessages } = await this
+        .prepareStreamContext(contextId)
+
+      await using _mcpTools = mcpTools
+
+      const currentTaskRef = { current: null as A2A.Task | null }
+      const finalMessageHolder = { message: null as A2A.Message | null }
+
+      log.debug("Sending message to model:", {
+        contextId: params.message.contextId,
+        messages: Vercel.convertToModelMessages(cleanedMessages),
+        tools: Object.keys(tools),
+        systemPrompt: agentInfo.description,
+      })
+
+      const result = Vercel.streamText({
+        experimental_telemetry: {
+          isEnabled: true,
+          functionId: "chat-complete",
+        },
+        system: agentInfo.description,
+        model,
+        messages: Vercel.convertToModelMessages(cleanedMessages),
+        tools: tools,
+        stopWhen: Vercel.stepCountIs(10),
+        onStepFinish: this.createOnStepFinishHandler(
+          params,
+          currentTaskRef,
+          () => {},
+        ),
+      })
+
+      const uiMessageStream = result.toUIMessageStream({
+        originalMessages: cleanedMessages,
+        onFinish: this.createOnFinishHandler(
+          contextId,
+          currentTaskRef,
+          finalMessageHolder,
+          () => {},
+        ),
+      })
+
+      this.consumeUIStream(uiMessageStream)
+
+      await this.processStreamEvents(
+        result.fullStream,
+        currentTaskRef,
+        () => {},
+      )
+
+      // Wait a moment for onFinish to complete
+      await new Promise((resolve) => setTimeout(resolve, 100))
+
+      if (currentTaskRef.current) {
+        return currentTaskRef.current
+      } else if (finalMessageHolder.message) {
+        return finalMessageHolder.message
+      } else {
+        throw new Error("No task or message generated from sendMessage")
+      }
+    } catch (error) {
+      this.handleStreamError(error)
+    }
   }
 
   getTask(params: A2A.TaskQueryParams): Promise<A2A.Task> {
@@ -340,45 +646,28 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
     void,
     undefined
   > {
-    if (params.message.contextId == null) {
-      params.message.contextId = crypto.randomUUID()
-      contextRepository.createContext(params.message.contextId)
-    }
-    if (!contextRepository.getContext(params.message.contextId)) {
-      throw new Error("Invalid contextId: " + params.message.contextId)
-    }
+    params.message.contextId = this.ensureContext(params.message.contextId)
     const contextId = params.message.contextId
 
-    // Save the user message (both A2A and Vercel format)
-    this.a2aMessageRepository.createMessage(params.message)
-    await this.vercelService.upsertMessage({
-      message: this.vercelService.fromA2AToUIMessage(params.message),
-      contextId: params.message.contextId,
-    })
+    await this.saveUserMessage(params.message, contextId)
 
     // Queue for status updates that need to be yielded progressively
-    const statusUpdateQueue: A2A.TaskStatusUpdateEvent[] = []
+    const eventUpdateQueue: StreamEmitUnion[] = []
 
     try {
-      let tools = await this.getAvailableTools()
-      await using mcpTools = await this.getMCPServers()
-      tools = Object.assign(tools, mcpTools.tools)
+      const { tools, mcpTools, model, agentInfo, cleanedMessages } = await this
+        .prepareStreamContext(contextId)
 
-      const model = this.getConfiguredModel()
+      await using _mcpTools = mcpTools
 
-      const agentInfo = this.agentConfigService.getAgentInfo()
-      const vercelMessages = this.vercelService.fromContext(contextId)
+      const currentTaskRef = { current: null as A2A.Task | null }
+      const finalMessageHolder = { message: null as A2A.Message | null }
 
-      // Filter out reasoning and step-start parts that shouldn't be sent back to the model
-      // These are metadata parts that can cause API errors when included in subsequent requests
-      const cleanedMessages = vercelMessages.map((msg) => ({
-        ...msg,
-        parts: msg.parts.filter((part) =>
-          part.type !== "reasoning" && part.type !== "step-start"
-        ),
-      }))
+      // Queue-based status handler for streaming version
+      const queueStatusHandler: StatusUpdateHandler = (event) => {
+        eventUpdateQueue.push(event)
+      }
 
-      let currentTask: A2A.Task | null = null
       log.info(cleanedMessages)
 
       log.debug("Sending message to model:", {
@@ -398,117 +687,36 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
         messages: Vercel.convertToModelMessages(cleanedMessages),
         tools: tools,
         stopWhen: Vercel.stepCountIs(10),
-        onStepFinish: (stepResult) => {
-          const { text, toolCalls, toolResults, finishReason } = stepResult
-          log.info(
-            `Step finished - text: "${this.truncateForLog(text)}", toolCalls: ${
-              this.truncateForLog(toolCalls)
-            }, toolResults: ${this.truncateForLog(toolResults)}`,
-          )
-
-          if (finishReason === "tool-calls") {
-            if (!currentTask) {
-              currentTask = this.taskService.createTask(
-                params.message.contextId!,
-                params.metadata,
-              )
-              // Move user message into task context
-              this.taskService.addExistingMessageToHistory(
-                currentTask,
-                params.message,
-              )
-            }
-            const pendingToolCalls = this.checkForPendingToolCalls(
-              toolCalls || [],
-              toolResults || [],
-            )
-            if (pendingToolCalls.length > 0) {
-              throw new Error(
-                `Tool calls returned without matching results: ${
-                  this.truncateForLog(pendingToolCalls)
-                }`,
-              )
-            }
-            statusUpdateQueue.push(this.taskService.transitionState(
-              currentTask,
-              "working",
-              `Used ${toolCalls.map((tc) => tc.toolName).join(", ")}`,
-            ))
-          }
-        },
+        onStepFinish: this.createOnStepFinishHandler(
+          params,
+          currentTaskRef,
+          queueStatusHandler,
+        ),
       })
 
-      // Queue to hold the final A2A message to yield after stream completes
-      let finalA2AMessage: A2A.Message | null = null
-
-      // Consume the UI message stream in background to trigger onFinish
-      // This ensures onFinish callback fires with UIMessage format
       const uiMessageStream = result.toUIMessageStream({
         originalMessages: cleanedMessages,
-        onFinish: async ({ responseMessage }) => {
-          log.info(
-            `Stream finished - responseMessage: ${
-              this.truncateForLog(responseMessage)
-            }`,
-          )
-
-          if (currentTask) {
-            statusUpdateQueue.push(this.taskService.transitionState(
-              currentTask,
-              "completed",
-            ))
-          }
-
-          // Ensure the message has a valid ID
-          if (!responseMessage.id) {
-            responseMessage.id = crypto.randomUUID()
-          }
-
-          // Save to Vercel storage
-          await this.vercelService.upsertMessage({
-            message: responseMessage,
-            contextId,
-          })
-
-          // Convert to A2A message and save
-          const a2aMessage = this.vercelService.fromUIMessageToA2A(
-            responseMessage,
-            contextId,
-            currentTask?.id,
-          )
-          this.a2aMessageRepository.createMessage(a2aMessage)
-
-          // Store for yielding after fullStream completes
-          finalA2AMessage = a2aMessage
-
-          log.info("Saved assistant message to both Vercel and A2A storage")
-        },
+        onFinish: this.createOnFinishHandler(
+          contextId,
+          currentTaskRef,
+          finalMessageHolder,
+          queueStatusHandler,
+        ),
       })
-      ;(async () => {
-        try {
-          for await (const _ of uiMessageStream) {
-            // Just consume to ensure onFinish fires
-          }
-          log.info("UI message stream consumed successfully")
-        } catch (error) {
-          console.log(error)
-          log.error(
-            "Error stack:",
-            error instanceof Error ? error.stack : "No stack available",
-          )
-        }
-      })()
+
+      this.consumeUIStream(uiMessageStream)
 
       log.info("StreamText initialized, consuming stream...")
       for await (const e of result.fullStream) {
         switch (e.type) {
           case "tool-input-start":
             log.info(`Tool input starting: ${e.toolName}`)
-            if (currentTask) {
-              statusUpdateQueue.push(this.taskService.transitionState(
-                currentTask,
+            if (currentTaskRef.current) {
+              const statusUpdate = this.taskService.transitionState(
+                currentTaskRef.current,
                 "working",
-              ))
+              )
+              queueStatusHandler(statusUpdate)
             }
             break
           case "tool-input-end":
@@ -516,20 +724,22 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
             break
           case "tool-call":
             log.info(`Tool called: ${e.toolName}`)
-            if (currentTask) {
-              statusUpdateQueue.push(this.taskService.transitionState(
-                currentTask,
+            if (currentTaskRef.current) {
+              const statusUpdate = this.taskService.transitionState(
+                currentTaskRef.current,
                 "working",
-              ))
+              )
+              queueStatusHandler(statusUpdate)
             }
             break
           case "tool-result":
             log.info(`Tool completed: ${e.toolName}`)
-            if (currentTask) {
-              statusUpdateQueue.push(this.taskService.transitionState(
-                currentTask,
+            if (currentTaskRef.current) {
+              const statusUpdate = this.taskService.transitionState(
+                currentTaskRef.current,
                 "working",
-              ))
+              )
+              queueStatusHandler(statusUpdate)
             }
             break
           case "finish-step":
@@ -543,40 +753,34 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
         }
 
         // Drain and yield queued status updates as they arrive
-        while (statusUpdateQueue.length > 0) {
-          const statusUpdate = statusUpdateQueue.shift()!
+        while (eventUpdateQueue.length > 0) {
+          const statusUpdate = eventUpdateQueue.shift()!
           yield statusUpdate
         }
       }
 
       // Final drain in case onFinish enqueued after the final event
-      while (statusUpdateQueue.length > 0) {
-        const statusUpdate = statusUpdateQueue.shift()!
+      while (eventUpdateQueue.length > 0) {
+        const statusUpdate = eventUpdateQueue.shift()!
         yield statusUpdate
       }
 
       // Wait a moment for onFinish to complete
-      // Small delay to ensure onFinish callback has executed
       await new Promise((resolve) => setTimeout(resolve, 100))
 
       // Drain any status updates added by onFinish (e.g., "completed" status)
-      while (statusUpdateQueue.length > 0) {
-        const statusUpdate = statusUpdateQueue.shift()!
+      while (eventUpdateQueue.length > 0) {
+        const statusUpdate = eventUpdateQueue.shift()!
         yield statusUpdate
       }
 
       // Yield the final A2A message
-      if (finalA2AMessage) {
+      if (finalMessageHolder.message) {
         log.info("Yielding final A2A message")
-        yield finalA2AMessage
+        yield finalMessageHolder.message
       }
     } catch (error) {
-      log.error("🚨 STREAM MESSAGE ERROR:", this.truncateForLog(error))
-      log.error(
-        "Error stack:",
-        error instanceof Error ? error.stack : "No stack available",
-      )
-      throw error
+      this.handleStreamError(error)
     }
   }
 

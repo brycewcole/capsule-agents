@@ -974,13 +974,52 @@ export default function ChatInterface({
                                 key={item.id}
                                 className="relative mt-6 space-y-4"
                               >
-                                <div className="inline-flex items-center gap-3 rounded-full border border-emerald-500/40 bg-emerald-200/80 px-4 py-1.5 text-xs font-semibold text-emerald-900 shadow-sm dark:border-emerald-900/60 dark:bg-emerald-950/60 dark:text-emerald-100">
+                                <div className={`inline-flex items-center gap-3 rounded-full border px-4 py-1.5 text-xs font-semibold shadow-sm ${
+                                  task.status?.state === "submitted"
+                                    ? "border-blue-500/40 bg-blue-200/80 text-blue-900 dark:border-blue-900/60 dark:bg-blue-950/60 dark:text-blue-100"
+                                    : task.status?.state === "working"
+                                    ? "border-amber-500/40 bg-amber-200/80 text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/60 dark:text-amber-100"
+                                    : task.status?.state === "input-required"
+                                    ? "border-orange-500/40 bg-orange-200/80 text-orange-900 dark:border-orange-900/60 dark:bg-orange-950/60 dark:text-orange-100"
+                                    : task.status?.state === "completed"
+                                    ? "border-emerald-500/40 bg-emerald-200/80 text-emerald-900 dark:border-emerald-900/60 dark:bg-emerald-950/60 dark:text-emerald-100"
+                                    : task.status?.state === "failed"
+                                    ? "border-rose-500/40 bg-rose-200/80 text-rose-900 dark:border-rose-900/60 dark:bg-rose-950/60 dark:text-rose-100"
+                                    : "border-slate-500/40 bg-slate-200/80 text-slate-900 dark:border-slate-900/60 dark:bg-slate-950/60 dark:text-slate-100"
+                                }`}>
+                                  {task.status?.state === "working" && (
+                                    <Loader2 className="h-3 w-3 animate-spin" />
+                                  )}
                                   <span>{statusInfo.label}</span>
-                                  <span className="text-emerald-700/90 dark:text-emerald-200/80">
+                                  <span className={
+                                    task.status?.state === "submitted"
+                                      ? "text-blue-700/90 dark:text-blue-200/80"
+                                      : task.status?.state === "working"
+                                      ? "text-amber-700/90 dark:text-amber-200/80"
+                                      : task.status?.state === "input-required"
+                                      ? "text-orange-700/90 dark:text-orange-200/80"
+                                      : task.status?.state === "completed"
+                                      ? "text-emerald-700/90 dark:text-emerald-200/80"
+                                      : task.status?.state === "failed"
+                                      ? "text-rose-700/90 dark:text-rose-200/80"
+                                      : "text-slate-700/90 dark:text-slate-200/80"
+                                  }>
                                     Task {shortId}
                                   </span>
                                   {statusTimestamp && (
-                                    <span className="text-emerald-700/70 dark:text-emerald-300/70">
+                                    <span className={
+                                      task.status?.state === "submitted"
+                                        ? "text-blue-700/70 dark:text-blue-300/70"
+                                        : task.status?.state === "working"
+                                        ? "text-amber-700/70 dark:text-amber-300/70"
+                                        : task.status?.state === "input-required"
+                                        ? "text-orange-700/70 dark:text-orange-300/70"
+                                        : task.status?.state === "completed"
+                                        ? "text-emerald-700/70 dark:text-emerald-300/70"
+                                        : task.status?.state === "failed"
+                                        ? "text-rose-700/70 dark:text-rose-300/70"
+                                        : "text-slate-700/70 dark:text-slate-300/70"
+                                    }>
                                       • {statusTimestamp}
                                     </span>
                                   )}
