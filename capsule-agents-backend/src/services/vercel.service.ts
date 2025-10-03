@@ -92,13 +92,14 @@ export class VercelService {
   ): A2A.Message {
     const a2aParts: A2A.Part[] = []
 
-    for (const part of uiMessage.parts) {
-      if (part.type === "text") {
-        a2aParts.push({
-          kind: "text",
-          text: part.text,
-        })
-      }
+    const textParts = uiMessage.parts.filter((part) => part.type === "text")
+    const lastTextPart = textParts[textParts.length - 1]
+
+    if (lastTextPart) {
+      a2aParts.push({
+        kind: "text",
+        text: lastTextPart.text,
+      })
     }
 
     return {

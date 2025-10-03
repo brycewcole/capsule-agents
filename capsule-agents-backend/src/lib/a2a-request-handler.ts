@@ -349,10 +349,13 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
             }`,
           )
         }
+        const toolPreamble = text
+          ? text
+          : `Used ${toolCalls.map((tc) => tc.toolName).join(", ")}`
         const statusUpdate = this.taskService.transitionState(
           currentTaskRef.current,
           "working",
-          `Used ${toolCalls.map((tc) => tc.toolName).join(", ")}`,
+          toolPreamble,
         )
         statusHandler(statusUpdate)
       }
