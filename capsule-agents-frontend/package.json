@@ -2,7 +2,8 @@
   "name": "capsule-frontend",
   "private": true,
   "dependencies": {
-    "@ai-sdk/gateway": "^1.0.15"
+    "@ai-sdk/gateway": "^1.0.15",
+    "@radix-ui/react-tooltip": "^1.2.8"
   },
   "devDependencies": {
     "vite": "^6",
