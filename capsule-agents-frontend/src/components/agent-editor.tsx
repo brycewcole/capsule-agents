@@ -4,18 +4,16 @@ import { useEffect, useState } from "react"
 import { Input } from "./ui/input.tsx"
 import { Textarea } from "./ui/textarea.tsx"
 import { Label } from "./ui/label.tsx"
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from "./ui/card.tsx"
+import { Card, CardContent, CardHeader, CardTitle } from "./ui/card.tsx"
 import { Button } from "./ui/button.tsx"
 import { Edit, HelpCircle, Loader2, Plus, Save, Trash } from "lucide-react"
-import { Separator } from "./ui/separator.tsx"
 import { toast } from "sonner"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "./ui/tooltip.tsx"
 import { ModelPicker } from "./model-picker.tsx"
 import { Switch } from "./ui/switch.tsx"
 import {
@@ -87,20 +85,7 @@ export default function AgentEditor() {
   const [webSearchEnabled, setWebSearchEnabled] = useState(false)
   const [memoryEnabled, setMemoryEnabled] = useState(false)
 
-  // Function to check if there are any changes
-  const hasChanges = (): boolean => {
-    if (!originalState) return false
-
-    return (
-      name !== originalState.name ||
-      description !== originalState.description ||
-      selectedModel?.id !== originalState.modelName ||
-      JSON.stringify(capabilities) !==
-        JSON.stringify(originalState.capabilities)
-    )
-  }
-
-  const handleSave = async () => {
+  const handleSaveNameDescription = async () => {
     // Validate agent name before saving
     if (nameError) {
       toast.error("Invalid agent name", {
@@ -130,7 +115,7 @@ export default function AgentEditor() {
       })
 
       toast.success("Agent saved", {
-        description: "Agent configuration has been updated successfully.",
+        description: "Name and description updated successfully.",
       })
     } catch (error) {
       console.error("Error saving agent:", error)
@@ -143,6 +128,32 @@ export default function AgentEditor() {
         await new Promise((res) => setTimeout(res, 500 - elapsed))
       }
       setIsSaving(false)
+    }
+  }
+
+  const autoSaveAgent = async () => {
+    try {
+      const agentInfo: AgentInfo = {
+        name,
+        description,
+        modelName: selectedModel?.id || "",
+        modelParameters: {},
+        capabilities: capabilities,
+      }
+      await updateAgentInfo(agentInfo)
+
+      // Update original state after successful save
+      setOriginalState({
+        name,
+        description,
+        modelName: selectedModel?.id || "",
+        capabilities: [...capabilities],
+      })
+    } catch (error) {
+      console.error("Error auto-saving agent:", error)
+      toast.error("Error auto-saving", {
+        description: "Failed to save changes automatically.",
+      })
     }
   }
 
@@ -214,66 +225,15 @@ export default function AgentEditor() {
     fetchData()
   }, [])
 
-  const handleModelChange = (model: Model) => setSelectedModel(model)
+  const handleModelChange = (model: Model) => {
+    setSelectedModel(model)
+    // Auto-save when model changes
+    setTimeout(() => autoSaveAgent(), 0)
+  }
   const handleModelSelect = (modelId: string) => {
     const model = availableModels.find((m) => m.id === modelId)
     if (model) {
       handleModelChange(model)
-    }
-  }
-
-  const handleReset = async () => {
-    try {
-      setIsLoading(true)
-      const agentInfo = await getAgentInfo()
-      setName(agentInfo.name)
-      setNameError("") // Clear any validation errors
-      setDescription(agentInfo.description)
-      const selectedModelFromBackend = availableModels.find((m) =>
-        m.id === agentInfo.modelName
-      )
-      setSelectedModel(selectedModelFromBackend || null)
-      setCapabilities(agentInfo.capabilities || [])
-
-      // Reset prebuilt capability states
-      const currentCapabilities = agentInfo.capabilities || []
-      setFileAccessEnabled(
-        currentCapabilities.some((capability) =>
-          isPrebuiltCapability(capability) &&
-          capability.subtype === "file_access" && capability.enabled
-        ),
-      )
-      setWebSearchEnabled(
-        currentCapabilities.some((capability) =>
-          isPrebuiltCapability(capability) &&
-          capability.subtype === "web_search" && capability.enabled
-        ),
-      )
-      setMemoryEnabled(
-        currentCapabilities.some((capability) =>
-          isPrebuiltCapability(capability) && capability.subtype === "memory" &&
-          capability.enabled
-        ),
-      )
-
-      // Reset original state for change detection
-      setOriginalState({
-        name: agentInfo.name,
-        description: agentInfo.description,
-        modelName: agentInfo.modelName,
-        capabilities: currentCapabilities,
-      })
-
-      toast.success("Reset successful", {
-        description: "Agent data has been reset to saved values.",
-      })
-    } catch (error) {
-      console.error("Failed to fetch agent info:", error)
-      toast.error("Error resetting data", {
-        description: "Could not load saved agent data from server.",
-      })
-    } finally {
-      setIsLoading(false)
     }
   }
 
@@ -357,6 +317,9 @@ export default function AgentEditor() {
 
       // Reset form
       resetCapabilityForm()
+
+      // Auto-save when custom capability is added/updated
+      setTimeout(() => autoSaveAgent(), 0)
     } catch (error) {
       console.error("Error adding capability:", error)
       toast.error("Error adding capability", {
@@ -413,6 +376,9 @@ export default function AgentEditor() {
     toast.success("Capability removed", {
       description: `Capability "${capabilityName}" has been removed.`,
     })
+
+    // Auto-save when custom capability is deleted
+    setTimeout(() => autoSaveAgent(), 0)
   }
 
   const resetCapabilityForm = () => {
@@ -500,6 +466,9 @@ export default function AgentEditor() {
         }.`,
       },
     )
+
+    // Auto-save when capability toggles change
+    setTimeout(() => autoSaveAgent(), 0)
   }
 
   if (isLoading) {
@@ -514,323 +483,366 @@ export default function AgentEditor() {
   }
 
   return (
-    <Card className="shadow-md h-fit">
-      <CardHeader>
-        <CardTitle className="text-xl">Edit Agent</CardTitle>
-        <CardDescription>
-          Configure your containerized A2A protocol agent
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-6">
-        <div className="space-y-2">
-          <Label htmlFor="agent-name">Agent Name</Label>
-          <Input
-            id="agent-name"
-            value={name}
-            onChange={(e) => {
-              const value =
-                (e.target as HTMLInputElement | HTMLTextAreaElement).value
-              if (value.includes(" ")) {
-                setNameError("Agent name cannot contain spaces")
-              } else {
-                setNameError("")
-              }
-              setName(value)
-            }}
-            className={nameError ? "border-red-500" : ""}
-          />
-          {nameError && <p className="text-sm text-red-600">{nameError}</p>}
-        </div>
-        <div className="space-y-2">
-          <Label htmlFor="agent-description">Description</Label>
-          <Textarea
-            id="agent-description"
-            value={description}
-            onChange={(e) =>
-              setDescription(
-                (e.target as HTMLInputElement | HTMLTextAreaElement).value,
-              )}
-          />
-        </div>
-        <div className="space-y-2">
-          <Label htmlFor="model-select">Model</Label>
-          <ModelPicker
-            providers={providerInfo}
-            value={selectedModel?.id || ""}
-            onChange={handleModelSelect}
-            placeholder="Select a model"
-          />
-        </div>
+    <TooltipProvider>
+      <div className="space-y-4">
+        {/* Agent Information Card */}
+        <Card className="shadow-md h-fit">
+          <CardHeader>
+            <div className="flex items-center gap-2">
+              <CardTitle className="text-xl">Agent Information</CardTitle>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Configure your agent's name and description</p>
+                </TooltipContent>
+              </Tooltip>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="agent-name">Name</Label>
+              <Input
+                id="agent-name"
+                value={name}
+                onChange={(e) => {
+                  const value =
+                    (e.target as HTMLInputElement | HTMLTextAreaElement).value
+                  if (value.includes(" ")) {
+                    setNameError("Name cannot contain spaces")
+                  } else {
+                    setNameError("")
+                  }
+                  setName(value)
+                }}
+                className={nameError ? "border-red-500" : ""}
+              />
+              {nameError && <p className="text-sm text-red-600">{nameError}</p>}
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="agent-description">Description</Label>
+              <Textarea
+                id="agent-description"
+                value={description}
+                onChange={(e) =>
+                  setDescription(
+                    (e.target as HTMLInputElement | HTMLTextAreaElement).value,
+                  )}
+              />
+            </div>
+            <div className="flex justify-end">
+              <Button
+                onClick={handleSaveNameDescription}
+                size="sm"
+                disabled={isSaving || !!nameError ||
+                  (name === originalState?.name &&
+                    description === originalState?.description)}
+              >
+                {isSaving
+                  ? (
+                    <>
+                      <Loader2 className="animate-spin mr-2" />Saving...
+                    </>
+                  )
+                  : (
+                    <>
+                      <Save className="mr-2" />Save
+                    </>
+                  )}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
 
-        {/* Capabilities Section */}
-        <div className="space-y-4">
-          <div className="flex justify-between items-center">
-            <Label>Capabilities</Label>
-          </div>
+        {/* Model Configuration Card */}
+        <Card className="shadow-md h-fit">
+          <CardHeader>
+            <div className="flex items-center gap-2">
+              <CardTitle className="text-xl">Model</CardTitle>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Select the AI model for your agent</p>
+                </TooltipContent>
+              </Tooltip>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            <ModelPicker
+              providers={providerInfo}
+              value={selectedModel?.id || ""}
+              onChange={handleModelSelect}
+              placeholder="Select a model"
+            />
+          </CardContent>
+        </Card>
 
-          {/* Prebuilt Capabilities Toggles */}
-          <div className="space-y-3 p-4 bg-muted/50 rounded-lg">
-            <Label className="text-sm font-medium">Prebuilt Capabilities</Label>
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <div className="space-y-0.5">
-                  <Label className="text-sm">File Access</Label>
-                  <p className="text-xs text-muted-foreground">
-                    Allows the agent to read and write files
-                  </p>
+        {/* Capabilities Card */}
+        <Card className="shadow-md h-fit">
+          <CardHeader>
+            <div className="flex items-center gap-2">
+              <CardTitle className="text-xl">Capabilities</CardTitle>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Configure tools and integrations for your agent</p>
+                </TooltipContent>
+              </Tooltip>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {/* Prebuilt Capabilities Toggles */}
+            <div className="space-y-3 p-4 bg-muted/50 rounded-lg">
+              <Label className="text-sm font-medium">
+                Prebuilt Capabilities
+              </Label>
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="space-y-0.5">
+                    <Label className="text-sm">File Access</Label>
+                    <p className="text-xs text-muted-foreground">
+                      Allows the agent to read and write files
+                    </p>
+                  </div>
+                  <Switch
+                    checked={fileAccessEnabled}
+                    onCheckedChange={(checked) =>
+                      handlePrebuiltCapabilityToggle("file_access", checked)}
+                  />
                 </div>
-                <Switch
-                  checked={fileAccessEnabled}
-                  onCheckedChange={(checked) =>
-                    handlePrebuiltCapabilityToggle("file_access", checked)}
-                />
-              </div>
-              <div className="flex items-center justify-between">
-                <div className="space-y-0.5">
-                  <Label className="text-sm">Web Search</Label>
-                  <p className="text-xs text-muted-foreground">
-                    Enables web search capabilities using Brave Search
-                  </p>
+                <div className="flex items-center justify-between">
+                  <div className="space-y-0.5">
+                    <Label className="text-sm">Web Search</Label>
+                    <p className="text-xs text-muted-foreground">
+                      Enables web search capabilities using Brave Search
+                    </p>
+                  </div>
+                  <Switch
+                    checked={webSearchEnabled}
+                    onCheckedChange={(checked) =>
+                      handlePrebuiltCapabilityToggle("web_search", checked)}
+                  />
                 </div>
-                <Switch
-                  checked={webSearchEnabled}
-                  onCheckedChange={(checked) =>
-                    handlePrebuiltCapabilityToggle("web_search", checked)}
-                />
-              </div>
-              <div className="flex items-center justify-between">
-                <div className="space-y-0.5">
-                  <Label className="text-sm">Memory</Label>
-                  <p className="text-xs text-muted-foreground">
-                    Enables persistent memory storage for the agent
-                  </p>
+                <div className="flex items-center justify-between">
+                  <div className="space-y-0.5">
+                    <Label className="text-sm">Memory</Label>
+                    <p className="text-xs text-muted-foreground">
+                      Enables persistent memory storage for the agent
+                    </p>
+                  </div>
+                  <Switch
+                    checked={memoryEnabled}
+                    onCheckedChange={(checked) =>
+                      handlePrebuiltCapabilityToggle("memory", checked)}
+                  />
                 </div>
-                <Switch
-                  checked={memoryEnabled}
-                  onCheckedChange={(checked) =>
-                    handlePrebuiltCapabilityToggle("memory", checked)}
-                />
               </div>
             </div>
-          </div>
 
-          <CapabilityDialog
-            open={showCapabilityForm}
-            onOpenChange={(open) => {
-              setShowCapabilityForm(open)
-              if (!open) resetCapabilityForm()
-            }}
-            capabilityName={capabilityName}
-            setCapabilityName={setCapabilityName}
-            capabilityType={capabilityType}
-            setCapabilityType={setCapabilityType}
-            capabilityEnabled={capabilityEnabled}
-            setCapabilityEnabled={setCapabilityEnabled}
-            agentUrl={agentUrl}
-            setAgentUrl={setAgentUrl}
-            mcpServerUrl={mcpServerUrl}
-            setMcpServerUrl={setMcpServerUrl}
-            editIndex={editIndex}
-            onSubmit={addCapability}
-            onCancel={() => setShowCapabilityForm(false)}
-          />
+            <CapabilityDialog
+              open={showCapabilityForm}
+              onOpenChange={(open) => {
+                setShowCapabilityForm(open)
+                if (!open) resetCapabilityForm()
+              }}
+              capabilityName={capabilityName}
+              setCapabilityName={setCapabilityName}
+              capabilityType={capabilityType}
+              setCapabilityType={setCapabilityType}
+              capabilityEnabled={capabilityEnabled}
+              setCapabilityEnabled={setCapabilityEnabled}
+              agentUrl={agentUrl}
+              setAgentUrl={setAgentUrl}
+              mcpServerUrl={mcpServerUrl}
+              setMcpServerUrl={setMcpServerUrl}
+              editIndex={editIndex}
+              onSubmit={addCapability}
+              onCancel={() => setShowCapabilityForm(false)}
+            />
 
-          {/* Custom Capabilities Table */}
-          {capabilities.filter((capability) =>
-              !isPrebuiltCapability(capability)
-            ).length > 0
-            ? (
-              <div className="space-y-2">
-                <Label className="text-sm font-medium">
-                  Custom Capabilities
-                </Label>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Name</TableHead>
-                      <TableHead>Type</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead className="w-20">Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {capabilities.filter((capability) =>
-                      !isPrebuiltCapability(capability)
-                    ).map(
-                      (capability, _originalIndex) => {
-                        const actualIndex = capabilities.findIndex((t) =>
-                          t === capability
-                        )
-                        return (
-                          <TableRow key={actualIndex}>
-                            <TableCell>{capability.name}</TableCell>
-                            <TableCell>
-                              {isA2ACapability(capability)
-                                ? "Agent (A2A)"
-                                : isMCPCapability(capability)
-                                ? "MCP Server"
-                                : isPrebuiltCapability(capability)
-                                ? "Prebuilt"
-                                : "Unknown"}
-                            </TableCell>
-                            <TableCell>
-                              <span
-                                className={`px-2 py-1 rounded-full text-xs ${
-                                  capability.enabled
-                                    ? "bg-green-100 text-green-800"
-                                    : "bg-gray-100 text-gray-600"
-                                }`}
-                              >
-                                {capability.enabled ? "Enabled" : "Disabled"}
-                              </span>
-                            </TableCell>
-                            <TableCell className="flex gap-1">
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => editCapability(actualIndex)}
-                                title="Edit capability"
-                              >
-                                <Edit className="h-4 w-4" />
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => deleteCapability(actualIndex)}
-                                title="Remove capability"
-                              >
-                                <Trash className="h-4 w-4" />
-                              </Button>
-                            </TableCell>
-                          </TableRow>
-                        )
-                      },
-                    )}
-                  </TableBody>
-                </Table>
-              </div>
-            )
-            : (
-              <div className="space-y-2">
-                <Label className="text-sm font-medium">
-                  Custom Capabilities
-                </Label>
-                <div className="text-center p-4 text-muted-foreground border border-dashed rounded-md">
-                  No custom capabilities configured. Add custom capabilities
-                  like Agent (A2A) connections and remote MCP servers.
-                </div>
-              </div>
-            )}
-
-          {/* Add Custom Capability Button */}
-          <div className="flex justify-end">
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={handleAddNewCapabilityClick}
-            >
-              <Plus className="mr-2 h-4 w-4" />
-              Add Custom Capability
-            </Button>
-          </div>
-        </div>
-      </CardContent>
-      <Separator />
-      <CardFooter className="flex justify-end gap-2">
-        <Button variant="outline" size="sm" onClick={handleReset}>Reset</Button>
-        <Button
-          onClick={handleSave}
-          size="sm"
-          disabled={isSaving || !!nameError || !hasChanges()}
-        >
-          {isSaving
-            ? (
-              <>
-                <Loader2 className="animate-spin mr-2" />Saving...
-              </>
-            )
-            : (
-              <>
-                <Save className="mr-2" />Save Agent
-              </>
-            )}
-        </Button>
-      </CardFooter>
-
-      {/* No Models Available Modal */}
-      <Dialog open={showNoModelsModal} onOpenChange={setShowNoModelsModal}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <HelpCircle className="h-5 w-5 text-orange-500" />
-              No AI Models Available
-            </DialogTitle>
-            <DialogDescription>
-              To use this agent, you need to configure at least one AI provider
-              by setting the appropriate environment variables.
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="space-y-4">
-            <div className="text-sm">
-              <p className="font-medium mb-3">Available Providers:</p>
-              {providerInfo?.providers.map((provider) => (
-                <div key={provider.id} className="mb-3 p-3 border rounded-lg">
-                  <div className="flex items-center gap-2 mb-2">
-                    <span className="font-medium">{provider.name}</span>
-                    {provider.available
-                      ? (
-                        <span className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded">
-                          ✓ Available
-                        </span>
-                      )
-                      : (
-                        <span className="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded">
-                          Not Configured
-                        </span>
+            {/* Custom Capabilities Table */}
+            {capabilities.filter((capability) =>
+                !isPrebuiltCapability(capability)
+              ).length > 0
+              ? (
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium">
+                    Custom Capabilities
+                  </Label>
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Name</TableHead>
+                        <TableHead>Type</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead className="w-20">Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {capabilities.filter((capability) =>
+                        !isPrebuiltCapability(capability)
+                      ).map(
+                        (capability, _originalIndex) => {
+                          const actualIndex = capabilities.findIndex((t) =>
+                            t === capability
+                          )
+                          return (
+                            <TableRow key={actualIndex}>
+                              <TableCell>{capability.name}</TableCell>
+                              <TableCell>
+                                {isA2ACapability(capability)
+                                  ? "Agent (A2A)"
+                                  : isMCPCapability(capability)
+                                  ? "MCP Server"
+                                  : isPrebuiltCapability(capability)
+                                  ? "Prebuilt"
+                                  : "Unknown"}
+                              </TableCell>
+                              <TableCell>
+                                <span
+                                  className={`px-2 py-1 rounded-full text-xs ${
+                                    capability.enabled
+                                      ? "bg-green-100 text-green-800"
+                                      : "bg-gray-100 text-gray-600"
+                                  }`}
+                                >
+                                  {capability.enabled ? "Enabled" : "Disabled"}
+                                </span>
+                              </TableCell>
+                              <TableCell className="flex gap-1">
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => editCapability(actualIndex)}
+                                  title="Edit capability"
+                                >
+                                  <Edit className="h-4 w-4" />
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => deleteCapability(actualIndex)}
+                                  title="Remove capability"
+                                >
+                                  <Trash className="h-4 w-4" />
+                                </Button>
+                              </TableCell>
+                            </TableRow>
+                          )
+                        },
                       )}
-                  </div>
-                  <div className="text-xs text-gray-600">
-                    <p className="mb-1">
-                      {provider.models.length} models available
-                    </p>
-                    <p>
-                      <strong>Required:</strong>{" "}
-                      Set one of these environment variables:
-                    </p>
-                    <ul className="list-disc list-inside ml-2 mt-1">
-                      {provider.requiredEnvVars.map((envVar) => (
-                        <li key={envVar} className="font-mono text-xs">
-                          {envVar}
-                        </li>
-                      ))}
-                    </ul>
+                    </TableBody>
+                  </Table>
+                </div>
+              )
+              : (
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium">
+                    Custom Capabilities
+                  </Label>
+                  <div className="text-center p-4 text-muted-foreground border border-dashed rounded-md">
+                    No custom capabilities configured. Add custom capabilities
+                    like Agent (A2A) connections and remote MCP servers.
                   </div>
                 </div>
-              ))}
+              )}
+
+            {/* Add Custom Capability Button */}
+            <div className="flex justify-end">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={handleAddNewCapabilityClick}
+              >
+                <Plus className="mr-2 h-4 w-4" />
+                Add
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* No Models Available Modal */}
+        <Dialog open={showNoModelsModal} onOpenChange={setShowNoModelsModal}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <HelpCircle className="h-5 w-5 text-orange-500" />
+                No AI Models Available
+              </DialogTitle>
+              <DialogDescription>
+                To use this agent, you need to configure at least one AI
+                provider by setting the appropriate environment variables.
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-4">
+              <div className="text-sm">
+                <p className="font-medium mb-3">Available Providers:</p>
+                {providerInfo?.providers.map((provider) => (
+                  <div key={provider.id} className="mb-3 p-3 border rounded-lg">
+                    <div className="flex items-center gap-2 mb-2">
+                      <span className="font-medium">{provider.name}</span>
+                      {provider.available
+                        ? (
+                          <span className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded">
+                            ✓ Available
+                          </span>
+                        )
+                        : (
+                          <span className="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded">
+                            Not Configured
+                          </span>
+                        )}
+                    </div>
+                    <div className="text-xs text-gray-600">
+                      <p className="mb-1">
+                        {provider.models.length} models available
+                      </p>
+                      <p>
+                        <strong>Required:</strong>{" "}
+                        Set one of these environment variables:
+                      </p>
+                      <ul className="list-disc list-inside ml-2 mt-1">
+                        {provider.requiredEnvVars.map((envVar) => (
+                          <li key={envVar} className="font-mono text-xs">
+                            {envVar}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="bg-blue-50 p-3 rounded-lg text-sm">
+                <p className="font-medium text-blue-900 mb-2">
+                  💡 Quick Setup:
+                </p>
+                <ol className="list-decimal list-inside text-blue-800 space-y-1">
+                  <li>Get API keys from your preferred AI provider(s)</li>
+                  <li>Set the environment variable(s) in your deployment</li>
+                  <li>Restart the application</li>
+                  <li>Refresh this page to see available models</li>
+                </ol>
+              </div>
             </div>
 
-            <div className="bg-blue-50 p-3 rounded-lg text-sm">
-              <p className="font-medium text-blue-900 mb-2">💡 Quick Setup:</p>
-              <ol className="list-decimal list-inside text-blue-800 space-y-1">
-                <li>Get API keys from your preferred AI provider(s)</li>
-                <li>Set the environment variable(s) in your deployment</li>
-                <li>Restart the application</li>
-                <li>Refresh this page to see available models</li>
-              </ol>
+            <div className="flex justify-end mt-4">
+              <Button
+                variant="outline"
+                onClick={() => setShowNoModelsModal(false)}
+              >
+                Got it
+              </Button>
             </div>
-          </div>
-
-          <div className="flex justify-end mt-4">
-            <Button
-              variant="outline"
-              onClick={() => setShowNoModelsModal(false)}
-            >
-              Got it
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
-    </Card>
+          </DialogContent>
+        </Dialog>
+      </div>
+    </TooltipProvider>
   )
 }

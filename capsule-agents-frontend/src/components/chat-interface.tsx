@@ -976,12 +976,14 @@ export default function ChatInterface({
                       const showAgentCard = entry.agent && !hasTasks
 
                       // Check if user message exists in any task history
-                      const userMessageInTaskHistory = hasTasks && entry.tasks.some(item => {
-                        const updates = buildTaskUpdates(item.task)
-                        return updates.some(update =>
-                          update.role === "user" && update.text === entry.user.content
-                        )
-                      })
+                      const userMessageInTaskHistory = hasTasks &&
+                        entry.tasks.some((item) => {
+                          const updates = buildTaskUpdates(item.task)
+                          return updates.some((update) =>
+                            update.role === "user" &&
+                            update.text === entry.user.content
+                          )
+                        })
 
                       return (
                         <div
@@ -990,7 +992,7 @@ export default function ChatInterface({
                         >
                           <div className="space-y-3">
                             {!userMessageInTaskHistory && (
-                              <div className="rounded-2xl border border-sky-400/60 bg-sky-200/70 px-4 py-3 text-sm text-slate-900 shadow-sm dark:border-sky-900/70 dark:bg-sky-900/40 dark:text-sky-50">
+                              <div className="rounded-2xl border border-sky-400/60 bg-sky-200/70 px-4 py-3 text-slate-900 shadow-sm dark:border-sky-900/70 dark:bg-sky-900/40 dark:text-sky-50">
                                 <div className="mb-2 flex items-center justify-between text-xs font-semibold uppercase tracking-wide text-slate-700/80 dark:text-sky-200/80">
                                   <span>You</span>
                                   <span>
@@ -1012,7 +1014,7 @@ export default function ChatInterface({
                             )}
 
                             {showAgentCard && entry.agent && (
-                              <div className="rounded-2xl border border-violet-400/60 bg-violet-200/70 px-4 py-3 text-sm text-slate-900 shadow-sm dark:border-violet-900/70 dark:bg-violet-900/40 dark:text-violet-50">
+                              <div className="rounded-2xl border border-violet-400/60 bg-violet-200/70 px-4 py-3 text-slate-900 shadow-sm dark:border-violet-900/70 dark:bg-violet-900/40 dark:text-violet-50">
                                 <div className="mb-2 flex items-center justify-between text-xs font-semibold uppercase tracking-wide text-slate-700/80 dark:text-violet-200/80">
                                   <span>Agent</span>
                                   <span>
@@ -1161,20 +1163,24 @@ export default function ChatInterface({
                                             key={update.id}
                                             className="pl-2"
                                           >
-                                            <div className={`rounded-lg border px-4 py-3 shadow-sm ${
-                                              update.role === "user"
-                                                ? "border-sky-400/60 bg-sky-200/70 dark:border-sky-900/70 dark:bg-sky-900/40"
-                                                : update.role === "agent"
-                                                ? "border-violet-400/60 bg-violet-200/70 dark:border-violet-900/70 dark:bg-violet-900/40"
-                                                : "border-border/60 bg-card/95 dark:border-border/70 dark:bg-slate-950/50"
-                                            }`}>
-                                              <div className={`mb-2 text-[11px] font-semibold uppercase tracking-wide ${
+                                            <div
+                                              className={`rounded-lg border px-4 py-3 shadow-sm ${
                                                 update.role === "user"
-                                                  ? "text-slate-700/80 dark:text-sky-200/80"
+                                                  ? "border-sky-400/60 bg-sky-200/70 dark:border-sky-900/70 dark:bg-sky-900/40"
                                                   : update.role === "agent"
-                                                  ? "text-slate-700/80 dark:text-violet-200/80"
-                                                  : "text-emerald-800/80 dark:text-emerald-100/80"
-                                              }`}>
+                                                  ? "border-violet-400/60 bg-violet-200/70 dark:border-violet-900/70 dark:bg-violet-900/40"
+                                                  : "border-border/60 bg-card/95 dark:border-border/70 dark:bg-slate-950/50"
+                                              }`}
+                                            >
+                                              <div
+                                                className={`mb-2 text-[11px] font-semibold uppercase tracking-wide ${
+                                                  update.role === "user"
+                                                    ? "text-slate-700/80 dark:text-sky-200/80"
+                                                    : update.role === "agent"
+                                                    ? "text-slate-700/80 dark:text-violet-200/80"
+                                                    : "text-emerald-800/80 dark:text-emerald-100/80"
+                                                }`}
+                                              >
                                                 {update.role === "user"
                                                   ? "You"
                                                   : update.role === "agent"

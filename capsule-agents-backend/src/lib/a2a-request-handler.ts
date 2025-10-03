@@ -337,7 +337,9 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
             params.message,
           )
           // Reload task from repository to get populated history
-          const taskWithHistory = this.taskStorage.getTask(currentTaskRef.current.id)
+          const taskWithHistory = this.taskStorage.getTask(
+            currentTaskRef.current.id,
+          )
           if (taskWithHistory) {
             currentTaskRef.current = taskWithHistory
           }
