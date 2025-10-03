@@ -331,12 +331,17 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
             params.message.contextId!,
             params.metadata,
           )
-          statusHandler(currentTaskRef.current)
           // Move user message into task context
           this.taskService.addExistingMessageToHistory(
             currentTaskRef.current,
             params.message,
           )
+          // Reload task from repository to get populated history
+          const taskWithHistory = this.taskStorage.getTask(currentTaskRef.current.id)
+          if (taskWithHistory) {
+            currentTaskRef.current = taskWithHistory
+          }
+          statusHandler(currentTaskRef.current)
         }
         const pendingToolCalls = this.checkForPendingToolCalls(
           toolCalls || [],
