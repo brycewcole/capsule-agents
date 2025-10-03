@@ -969,44 +969,47 @@ export default function ChatInterface({
                     </div>
                   )
                   : (
-                    timelineEntries.map((entry, index) => {
-                      const showConnector = index < timelineEntries.length - 1
+                    timelineEntries.map((entry) => {
                       const hasTasks = entry.tasks.length > 0
                       const capabilityCalls = entry.agent?.capabilityCalls ?? []
                       // Only show agent card if there are NO tasks
                       const showAgentCard = entry.agent && !hasTasks
 
+                      // Check if user message exists in any task history
+                      const userMessageInTaskHistory = hasTasks && entry.tasks.some(item => {
+                        const updates = buildTaskUpdates(item.task)
+                        return updates.some(update =>
+                          update.role === "user" && update.text === entry.user.content
+                        )
+                      })
+
                       return (
                         <div
                           key={entry.id}
-                          className="grid grid-cols-[auto_minmax(0,1fr)] gap-4"
+                          className="space-y-3"
                         >
-                          <div className="flex flex-col items-center">
-                            <div className="h-2 w-2 rounded-full bg-primary" />
-                            {showConnector && (
-                              <div className="mt-2 w-px flex-1 bg-border" />
-                            )}
-                          </div>
                           <div className="space-y-3">
-                            <div className="rounded-2xl border border-sky-400/60 bg-sky-200/70 px-4 py-3 text-sm text-slate-900 shadow-sm dark:border-sky-900/70 dark:bg-sky-900/40 dark:text-sky-50">
-                              <div className="mb-2 flex items-center justify-between text-xs font-semibold uppercase tracking-wide text-slate-700/80 dark:text-sky-200/80">
-                                <span>You</span>
-                                <span>
-                                  {formatTimestamp(entry.user.timestamp)}
-                                </span>
-                              </div>
-                              {entry.user.content
-                                ? (
-                                  <div className="prose prose-sm text-slate-900 dark:prose-invert max-w-none">
-                                    <Markdown>{entry.user.content}</Markdown>
-                                  </div>
-                                )
-                                : (
-                                  <span className="text-slate-600/80 dark:text-slate-300/80">
-                                    (empty message)
+                            {!userMessageInTaskHistory && (
+                              <div className="rounded-2xl border border-sky-400/60 bg-sky-200/70 px-4 py-3 text-sm text-slate-900 shadow-sm dark:border-sky-900/70 dark:bg-sky-900/40 dark:text-sky-50">
+                                <div className="mb-2 flex items-center justify-between text-xs font-semibold uppercase tracking-wide text-slate-700/80 dark:text-sky-200/80">
+                                  <span>You</span>
+                                  <span>
+                                    {formatTimestamp(entry.user.timestamp)}
                                   </span>
-                                )}
-                            </div>
+                                </div>
+                                {entry.user.content
+                                  ? (
+                                    <div className="prose prose-sm text-slate-900 dark:prose-invert max-w-none">
+                                      <Markdown>{entry.user.content}</Markdown>
+                                    </div>
+                                  )
+                                  : (
+                                    <span className="text-slate-600/80 dark:text-slate-300/80">
+                                      (empty message)
+                                    </span>
+                                  )}
+                              </div>
+                            )}
 
                             {showAgentCard && entry.agent && (
                               <div className="rounded-2xl border border-violet-400/60 bg-violet-200/70 px-4 py-3 text-sm text-slate-900 shadow-sm dark:border-violet-900/70 dark:bg-violet-900/40 dark:text-violet-50">
@@ -1143,9 +1146,9 @@ export default function ChatInterface({
                                     )}
                                   </div>
                                   {hasUpdates && (
-                                    <div className="pointer-events-none absolute left-[22px] top-16 bottom-6 w-[2px] bg-border/70" />
+                                    <div className="pointer-events-none absolute left-0 top-12 bottom-4 w-[2px] bg-border/70" />
                                   )}
-                                  <div className="space-y-3 pl-6">
+                                  <div className="space-y-3 pl-4">
                                     {!hasUpdates
                                       ? (
                                         <p className="text-xs text-emerald-800/80 dark:text-emerald-100/80">
@@ -1156,16 +1159,27 @@ export default function ChatInterface({
                                         updates.map((update) => (
                                           <div
                                             key={update.id}
-                                            className="relative pl-8"
+                                            className="pl-2"
                                           >
-                                            <div className="absolute left-0 top-3 h-2 w-2 rounded-full border border-emerald-500/70 bg-emerald-600" />
-                                            <div className="rounded-lg border border-border/60 bg-card/95 px-4 py-3 shadow-sm dark:border-border/70 dark:bg-slate-950/50">
-                                              <div className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-emerald-800/80 dark:text-emerald-100/80">
-                                                {update.role === "user"
-                                                  ? "User input"
+                                            <div className={`rounded-lg border px-4 py-3 shadow-sm ${
+                                              update.role === "user"
+                                                ? "border-sky-400/60 bg-sky-200/70 dark:border-sky-900/70 dark:bg-sky-900/40"
+                                                : update.role === "agent"
+                                                ? "border-violet-400/60 bg-violet-200/70 dark:border-violet-900/70 dark:bg-violet-900/40"
+                                                : "border-border/60 bg-card/95 dark:border-border/70 dark:bg-slate-950/50"
+                                            }`}>
+                                              <div className={`mb-2 text-[11px] font-semibold uppercase tracking-wide ${
+                                                update.role === "user"
+                                                  ? "text-slate-700/80 dark:text-sky-200/80"
                                                   : update.role === "agent"
-                                                  ? "Agent update"
-                                                  : "Status update"}
+                                                  ? "text-slate-700/80 dark:text-violet-200/80"
+                                                  : "text-emerald-800/80 dark:text-emerald-100/80"
+                                              }`}>
+                                                {update.role === "user"
+                                                  ? "You"
+                                                  : update.role === "agent"
+                                                  ? "Agent"
+                                                  : "Status"}
                                               </div>
                                               <div className="prose prose-sm text-slate-900 dark:prose-invert max-w-none">
                                                 <Markdown>
