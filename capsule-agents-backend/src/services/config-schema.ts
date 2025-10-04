@@ -21,15 +21,6 @@ export const CapabilitiesConfigSchema = z.object({
   }),
 })
 
-export const McpServerConfigSchema = z.object({
-  url: z.string().url("Invalid MCP server URL"),
-  name: z.string().min(1, "MCP server name is required"),
-  enabled: z.boolean().default(true),
-})
-
-export const McpConfigSchema = z.object({
-  servers: z.array(McpServerConfigSchema).default([]),
-})
 
 export const A2AAgentConfigSchema = z.object({
   name: z.string().min(1, "A2A agent name is required"),
@@ -42,7 +33,6 @@ export const AgentConfigSchema = z.object({
   description: z.string().default(""),
   model: ModelConfigSchema.optional(),
   tools: CapabilitiesConfigSchema.optional().default({}),
-  mcp: McpConfigSchema.optional().default({ servers: [] }),
   a2a: z.array(A2AAgentConfigSchema).optional().default([]),
 })
 
@@ -55,9 +45,20 @@ export const ConfigFileSchema = z.object({
       memory: { enabled: false },
       file_access: { enabled: false },
     },
-    mcp: { servers: [] },
     a2a: [],
   }),
+  // Support top-level mcpServers format (standard MCP config format)
+  mcpServers: z.record(
+    z.object({
+      type: z.enum(["http", "sse"], {
+        errorMap: () => ({
+          message: "MCP server type must be 'http' or 'sse'",
+        }),
+      }),
+      url: z.string().min(1, "MCP server URL is required"),
+      headers: z.record(z.string()).optional(),
+    }),
+  ).optional().default({}),
 })
 
 // TypeScript types derived from schemas
@@ -66,8 +67,6 @@ export type BuiltInCapabilityConfig = z.infer<
   typeof BuiltInCapabilityConfigSchema
 >
 export type CapabilitiesConfig = z.infer<typeof CapabilitiesConfigSchema>
-export type McpServerConfig = z.infer<typeof McpServerConfigSchema>
-export type McpConfig = z.infer<typeof McpConfigSchema>
 export type A2AAgentConfig = z.infer<typeof A2AAgentConfigSchema>
 export type AgentConfig = z.infer<typeof AgentConfigSchema>
 export type ConfigFile = z.infer<typeof ConfigFileSchema>
@@ -80,7 +79,10 @@ export const BUILTIN_CAPABILITIES = [
 export type BuiltInCapabilityName = typeof BUILTIN_CAPABILITIES[number]
 
 // Utility function to transform config file format to internal AgentInfo format
-export function transformConfigToAgentInfo(config: AgentConfig): AgentInfo {
+export function transformConfigToAgentInfo(
+  config: AgentConfig,
+  mcpServers?: Record<string, { type: "http" | "sse"; url: string; headers?: Record<string, string> }>,
+): AgentInfo {
   const capabilities: AgentCapability[] = []
 
   if (config.tools) {
@@ -97,13 +99,16 @@ export function transformConfigToAgentInfo(config: AgentConfig): AgentInfo {
     }
   }
 
-  if (config.mcp?.servers) {
-    for (const server of config.mcp.servers) {
+  // Add MCP servers from top-level mcpServers
+  if (mcpServers) {
+    for (const [name, config] of Object.entries(mcpServers)) {
       capabilities.push({
-        name: server.name,
-        enabled: server.enabled,
+        name,
+        enabled: true,
         type: "mcp",
-        serverUrl: server.url,
+        serverUrl: config.url,
+        serverType: config.type,
+        headers: config.headers,
       })
     }
   }
@@ -129,13 +134,16 @@ export function transformConfigToAgentInfo(config: AgentConfig): AgentInfo {
 }
 
 // Utility function to transform internal AgentInfo format back to config file format
-export function transformAgentInfoToConfig(agentInfo: AgentInfo): AgentConfig {
+export function transformAgentInfoToConfig(agentInfo: AgentInfo): {
+  agent: AgentConfig
+  mcpServers: Record<string, { type: "http" | "sse"; url: string; headers?: Record<string, string> }>
+} {
   const tools: CapabilitiesConfig = {
     web_search: { enabled: false },
     memory: { enabled: false },
     file_access: { enabled: false },
   }
-  const mcpServers: McpServerConfig[] = []
+  const mcpServers: Record<string, { type: "http" | "sse"; url: string; headers?: Record<string, string> }> = {}
   const a2aAgents: A2AAgentConfig[] = []
 
   for (const capability of agentInfo.capabilities) {
@@ -147,11 +155,11 @@ export function transformAgentInfoToConfig(agentInfo: AgentInfo): AgentConfig {
         enabled: capability.enabled,
       }
     } else if (capability.type === "mcp") {
-      mcpServers.push({
-        name: capability.name,
+      mcpServers[capability.name] = {
+        type: capability.serverType,
         url: capability.serverUrl,
-        enabled: capability.enabled,
-      })
+        ...(capability.headers && { headers: capability.headers }),
+      }
     } else if (capability.type === "a2a") {
       a2aAgents.push({
         name: capability.name,
@@ -161,20 +169,22 @@ export function transformAgentInfoToConfig(agentInfo: AgentInfo): AgentConfig {
     }
   }
 
-  const result = {
+  const agentConfig: AgentConfig = {
     name: agentInfo.name,
     description: agentInfo.description,
     tools,
-    mcp: { servers: mcpServers },
     a2a: a2aAgents,
   }
 
   if (agentInfo.model_name) {
-    result["model"] = {
+    agentConfig.model = {
       name: agentInfo.model_name,
       parameters: agentInfo.model_parameters || {},
     }
   }
 
-  return result
+  return {
+    agent: agentConfig,
+    mcpServers,
+  }
 }
