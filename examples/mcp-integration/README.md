@@ -5,6 +5,7 @@ This example demonstrates how to configure Capsule Agents with MCP (Model Contex
 ## Configuration
 
 The `agent.config.json` file uses the standard `mcpServers` format with support for:
+
 - **HTTP and SSE server types**
 - **Environment variable expansion** using `${VAR}` syntax
 - **Optional headers** for authentication
@@ -12,6 +13,7 @@ The `agent.config.json` file uses the standard `mcpServers` format with support 
 ### Environment Variables
 
 Environment variables are expanded using these formats:
+
 - `${VAR}` - Expands to the value of VAR (throws error if not set)
 - `${VAR:-default}` - Expands to VAR if set, otherwise uses default value
 
@@ -20,12 +22,14 @@ Environment variables are expanded using these formats:
 This example includes two MCP servers:
 
 ### Context7
+
 - **Type**: HTTP
 - **URL**: https://mcp.context7.com/mcp
 - **Authentication**: Requires `CONTEXT_7_API_KEY` environment variable
 - **Purpose**: Access to Context7 documentation and code examples
 
 ### Remote MCP
+
 - **Type**: HTTP
 - **URL**: https://mcp.remote-mcp.com
 - **Authentication**: None
@@ -48,6 +52,7 @@ This example includes two MCP servers:
 ## Alternative: Using .env File
 
 Create a `.env` file in this directory:
+
 ```env
 CONTEXT_7_API_KEY=your-api-key-here
 ```

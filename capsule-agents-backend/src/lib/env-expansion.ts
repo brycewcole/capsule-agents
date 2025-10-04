@@ -9,7 +9,7 @@
  * @throws Error if a required environment variable is not set
  */
 export function expandEnvVars(value: string): string {
-  return value.replace(/\$\{([^}]+)\}/g, (match, content) => {
+  return value.replace(/\$\{([^}]+)\}/g, (_match, content) => {
     // Check if it has a default value syntax: VAR:-default
     const defaultMatch = content.match(/^([^:]+):-(.*)$/)
 

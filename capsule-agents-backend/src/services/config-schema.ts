@@ -21,7 +21,6 @@ export const CapabilitiesConfigSchema = z.object({
   }),
 })
 
-
 export const A2AAgentConfigSchema = z.object({
   name: z.string().min(1, "A2A agent name is required"),
   agent_url: z.string().url("Invalid A2A agent URL"),
@@ -81,7 +80,10 @@ export type BuiltInCapabilityName = typeof BUILTIN_CAPABILITIES[number]
 // Utility function to transform config file format to internal AgentInfo format
 export function transformConfigToAgentInfo(
   config: AgentConfig,
-  mcpServers?: Record<string, { type: "http" | "sse"; url: string; headers?: Record<string, string> }>,
+  mcpServers?: Record<
+    string,
+    { type: "http" | "sse"; url: string; headers?: Record<string, string> }
+  >,
 ): AgentInfo {
   const capabilities: AgentCapability[] = []
 
@@ -136,14 +138,20 @@ export function transformConfigToAgentInfo(
 // Utility function to transform internal AgentInfo format back to config file format
 export function transformAgentInfoToConfig(agentInfo: AgentInfo): {
   agent: AgentConfig
-  mcpServers: Record<string, { type: "http" | "sse"; url: string; headers?: Record<string, string> }>
+  mcpServers: Record<
+    string,
+    { type: "http" | "sse"; url: string; headers?: Record<string, string> }
+  >
 } {
   const tools: CapabilitiesConfig = {
     web_search: { enabled: false },
     memory: { enabled: false },
     file_access: { enabled: false },
   }
-  const mcpServers: Record<string, { type: "http" | "sse"; url: string; headers?: Record<string, string> }> = {}
+  const mcpServers: Record<
+    string,
+    { type: "http" | "sse"; url: string; headers?: Record<string, string> }
+  > = {}
   const a2aAgents: A2AAgentConfig[] = []
 
   for (const capability of agentInfo.capabilities) {
