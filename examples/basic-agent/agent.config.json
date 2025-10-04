@@ -14,9 +14,6 @@
         "enabled": true
       }
     },
-    "mcp": {
-      "servers": []
-    },
     "a2a": []
   }
 }

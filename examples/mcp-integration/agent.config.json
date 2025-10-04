@@ -1,0 +1,31 @@
+{
+  "agent": {
+    "name": "MCP Integration Agent",
+    "description": "An agent demonstrating MCP server integration with environment variable support",
+    "model": {
+      "name": "openai/gpt-4o-mini",
+      "parameters": {
+        "temperature": 0.7,
+        "max_tokens": 1500
+      }
+    },
+    "tools": {
+      "memory": {
+        "enabled": true
+      }
+    }
+  },
+  "mcpServers": {
+    "context7": {
+      "type": "http",
+      "url": "https://mcp.context7.com/mcp",
+      "headers": {
+        "CONTEXT7_API_KEY": "${CONTEXT_7_API_KEY}"
+      }
+    },
+    "remote-mcp": {
+      "type": "http",
+      "url": "https://mcp.remote-mcp.com"
+    }
+  }
+}

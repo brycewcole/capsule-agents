@@ -1,0 +1,12 @@
+services:
+  mcp-agent:
+    image: capsule-agents
+    ports:
+      - "8001:80"
+    volumes:
+      - ./agent.config.json:/app/agent.config.json
+    environment:
+      - AGENT_URL=http://localhost:8001
+    env_file:
+      - ../../.env
+    restart: unless-stopped
