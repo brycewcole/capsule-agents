@@ -79,6 +79,8 @@ export default function AgentEditor() {
   const [capabilityEnabled, setCapabilityEnabled] = useState(true)
   const [agentUrl, setAgentUrl] = useState("") // For A2A capabilities
   const [mcpServerUrl, setMcpServerUrl] = useState("") // For MCP capabilities
+  const [mcpServerType, setMcpServerType] = useState<"http" | "sse">("http") // For MCP server type
+  const [mcpHeaders, setMcpHeaders] = useState<Record<string, string>>({}) // For MCP headers
 
   // Prebuilt capabilities state
   const [fileAccessEnabled, setFileAccessEnabled] = useState(false)
@@ -291,6 +293,8 @@ export default function AgentEditor() {
           enabled: capabilityEnabled,
           type: "mcp",
           serverUrl: mcpServerUrl,
+          serverType: mcpServerType,
+          headers: Object.keys(mcpHeaders).length > 0 ? mcpHeaders : undefined,
         }
       } else {
         toast.error("Invalid capability type", {
@@ -350,6 +354,8 @@ export default function AgentEditor() {
     } else if (isMCPCapability(capability)) {
       setCapabilityType("mcp")
       setMcpServerUrl(capability.serverUrl)
+      setMcpServerType(capability.serverType)
+      setMcpHeaders(capability.headers || {})
       setAgentUrl("")
     }
 
@@ -387,6 +393,8 @@ export default function AgentEditor() {
     setCapabilityEnabled(true)
     setAgentUrl("") // Reset agentUrl
     setMcpServerUrl("") // Reset MCP fields
+    setMcpServerType("http") // Reset MCP server type
+    setMcpHeaders({}) // Reset MCP headers
     setEditIndex(null)
     setShowCapabilityForm(false)
   }
@@ -660,6 +668,10 @@ export default function AgentEditor() {
               setAgentUrl={setAgentUrl}
               mcpServerUrl={mcpServerUrl}
               setMcpServerUrl={setMcpServerUrl}
+              mcpServerType={mcpServerType}
+              setMcpServerType={setMcpServerType}
+              mcpHeaders={mcpHeaders}
+              setMcpHeaders={setMcpHeaders}
               editIndex={editIndex}
               onSubmit={addCapability}
               onCancel={() => setShowCapabilityForm(false)}

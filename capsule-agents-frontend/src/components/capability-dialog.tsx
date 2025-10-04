@@ -1,3 +1,4 @@
+import { useState } from "react"
 import { Input } from "./ui/input.tsx"
 import { Label } from "./ui/label.tsx"
 import { Button } from "./ui/button.tsx"
@@ -17,6 +18,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "./ui/select.tsx"
+import { Plus, Trash } from "lucide-react"
 
 interface CapabilityDialogProps {
   open: boolean
@@ -31,6 +33,10 @@ interface CapabilityDialogProps {
   setAgentUrl: (url: string) => void
   mcpServerUrl: string
   setMcpServerUrl: (url: string) => void
+  mcpServerType: "http" | "sse"
+  setMcpServerType: (type: "http" | "sse") => void
+  mcpHeaders: Record<string, string>
+  setMcpHeaders: (headers: Record<string, string>) => void
   editIndex: number | null
   onSubmit: () => void
   onCancel: () => void
@@ -49,10 +55,17 @@ export function CapabilityDialog({
   setAgentUrl,
   mcpServerUrl,
   setMcpServerUrl,
+  mcpServerType,
+  setMcpServerType,
+  mcpHeaders,
+  setMcpHeaders,
   editIndex,
   onSubmit,
   onCancel,
 }: CapabilityDialogProps) {
+  const [headerKey, setHeaderKey] = useState("")
+  const [headerValue, setHeaderValue] = useState("")
+
   const handleCapabilityTypeChange = (newType: "a2a" | "mcp") => {
     setCapabilityType(newType)
 
@@ -61,7 +74,22 @@ export function CapabilityDialog({
     }
     if (newType !== "mcp") {
       setMcpServerUrl("") // Clear MCP URL if type is not mcp
+      setMcpHeaders({})
     }
+  }
+
+  const addHeader = () => {
+    if (headerKey && headerValue) {
+      setMcpHeaders({ ...mcpHeaders, [headerKey]: headerValue })
+      setHeaderKey("")
+      setHeaderValue("")
+    }
+  }
+
+  const removeHeader = (key: string) => {
+    const newHeaders = { ...mcpHeaders }
+    delete newHeaders[key]
+    setMcpHeaders(newHeaders)
   }
 
   // URL validation functions
@@ -125,7 +153,7 @@ export function CapabilityDialog({
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="a2a">
-                    A2A Agent Communication
+                    A2A Agent
                   </SelectItem>
                   <SelectItem value="mcp">MCP Server</SelectItem>
                 </SelectContent>
@@ -165,28 +193,109 @@ export function CapabilityDialog({
             </div>
           )}
           {capabilityType === "mcp" && (
-            <div>
-              <Label htmlFor="mcp-server-url" className="pb-1">
-                Server URL
-              </Label>
-              <Input
-                id="mcp-server-url"
-                value={mcpServerUrl}
-                onChange={(e) =>
-                  setMcpServerUrl(
-                    (e.target as HTMLInputElement | HTMLTextAreaElement).value,
+            <>
+              <div className="grid grid-cols-[auto_1fr] gap-4 items-end">
+                <div className="w-32">
+                  <Label htmlFor="mcp-server-type" className="pb-1">
+                    Server Type
+                  </Label>
+                  <Select
+                    value={mcpServerType}
+                    onValueChange={(value: "http" | "sse") =>
+                      setMcpServerType(value)}
+                  >
+                    <SelectTrigger id="mcp-server-type">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="http">HTTP</SelectItem>
+                      <SelectItem value="sse">SSE</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="flex-1">
+                  <Label htmlFor="mcp-server-url" className="pb-1">
+                    Server URL
+                  </Label>
+                  <Input
+                    id="mcp-server-url"
+                    value={mcpServerUrl}
+                    onChange={(e) =>
+                      setMcpServerUrl(
+                        (e.target as HTMLInputElement | HTMLTextAreaElement)
+                          .value,
+                      )}
+                    placeholder="https://api.example.com/mcp"
+                    className={mcpServerUrl && !isMcpUrlValid
+                      ? "border-red-500"
+                      : ""}
+                  />
+                  {mcpServerUrl && !isMcpUrlValid && (
+                    <p className="text-sm text-red-600 mt-1">
+                      Please enter a valid URL
+                    </p>
                   )}
-                placeholder="https://api.example.com/mcp"
-                className={mcpServerUrl && !isMcpUrlValid
-                  ? "border-red-500"
-                  : ""}
-              />
-              {mcpServerUrl && !isMcpUrlValid && (
-                <p className="text-sm text-red-600 mt-1">
-                  Please enter a valid URL
+                </div>
+              </div>
+
+              {/* Headers Section */}
+              <div className="space-y-2">
+                <Label className="text-sm">Headers (Optional)</Label>
+                {Object.entries(mcpHeaders).length > 0 && (
+                  <div className="space-y-2">
+                    {Object.entries(mcpHeaders).map(([key, value]) => (
+                      <div
+                        key={key}
+                        className="flex items-center gap-2 p-2 bg-muted rounded"
+                      >
+                        <code className="text-xs flex-1">
+                          {key}: {value}
+                        </code>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => removeHeader(key)}
+                        >
+                          <Trash className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                <div className="flex gap-2">
+                  <Input
+                    placeholder="Header name"
+                    value={headerKey}
+                    onChange={(e) =>
+                      setHeaderKey(
+                        (e.target as HTMLInputElement).value,
+                      )}
+                  />
+                  <Input
+                    placeholder="Header value"
+                    value={headerValue}
+                    onChange={(e) =>
+                      setHeaderValue(
+                        (e.target as HTMLInputElement).value,
+                      )}
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={addHeader}
+                    disabled={!headerKey || !headerValue}
+                  >
+                    <Plus className="h-4 w-4" />
+                  </Button>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Add custom headers for authentication or other purposes
                 </p>
-              )}
-            </div>
+              </div>
+            </>
           )}
         </div>
         <DialogFooter>

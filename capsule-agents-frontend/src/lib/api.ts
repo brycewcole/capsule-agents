@@ -108,6 +108,8 @@ export interface A2ACapability extends BaseCapability {
 export interface MCPCapability extends BaseCapability {
   type: "mcp"
   serverUrl: string
+  serverType: "http" | "sse"
+  headers?: Record<string, string>
 }
 
 export type Capability = PrebuiltCapability | A2ACapability | MCPCapability
