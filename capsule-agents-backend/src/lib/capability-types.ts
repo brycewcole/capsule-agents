@@ -17,10 +17,12 @@ export interface A2ACapability extends BaseCapability {
   agentUrl: string
 }
 
-// MCP capabilities - these are remote MCP servers (SSE or Streamable only)
+// MCP capabilities - these are remote MCP servers (SSE or HTTP)
 export interface MCPCapability extends BaseCapability {
   type: "mcp"
   serverUrl: string
+  serverType: "http" | "sse"
+  headers?: Record<string, string>
 }
 
 // Union type for all capability types

@@ -4,6 +4,7 @@ import {
 } from "./config-schema.ts"
 import type { AgentInfo } from "./agent-config.ts"
 import * as log from "https://deno.land/std@0.203.0/log/mod.ts"
+import { expandEnvVarsInObject } from "../lib/env-expansion.ts"
 
 export class ConfigFileService {
   private static readonly DEFAULT_CONFIG_PATH = "/app/agent.config.json"
@@ -43,6 +44,19 @@ export class ConfigFileService {
         )
       }
 
+      // Expand environment variables in the parsed JSON
+      try {
+        parsedJson = expandEnvVarsInObject(parsedJson)
+        log.debug("Environment variables expanded in config file")
+      } catch (envError) {
+        log.error(`Failed to expand environment variables: ${envError}`)
+        throw new Error(
+          `Environment variable expansion failed: ${
+            envError instanceof Error ? envError.message : String(envError)
+          }`,
+        )
+      }
+
       // Validate against schema
       const validationResult = ConfigFileSchema.safeParse(parsedJson)
       if (!validationResult.success) {
@@ -61,7 +75,7 @@ export class ConfigFileService {
         `Successfully loaded and validated config file: ${configFile.agent.name}`,
       )
 
-      return transformConfigToAgentInfo(configFile.agent)
+      return transformConfigToAgentInfo(configFile.agent, configFile.mcpServers)
     } catch (error) {
       log.error(`Failed to load config file from ${filePath}:`, error)
       throw new Error(
