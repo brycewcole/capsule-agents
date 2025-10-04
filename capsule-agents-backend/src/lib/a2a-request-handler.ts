@@ -78,16 +78,24 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
   private async getMCPServers(): Promise<MCPToolsDisposable> {
     const agentInfo = this.agentConfigService.getAgentInfo()
     const clients: Array<{ close: () => Promise<void> }> = []
-    const urls: string[] = agentInfo.capabilities.filter(isMCPCapability).map((
-      c,
-    ) => c.serverUrl)
+    const mcpCapabilities = agentInfo.capabilities.filter(isMCPCapability)
 
     try {
-      log.info("Connecting to MCP servers:", urls)
+      log.info(
+        "Connecting to MCP servers:",
+        mcpCapabilities.map((c) => c.serverUrl),
+      )
       const connectedClients = await Promise.all(
-        urls.map(async (url) => {
+        mcpCapabilities.map(async (capability) => {
           const client = await experimental_createMCPClient({
-            transport: new StreamableHTTPClientTransport(new URL(url)),
+            transport: new StreamableHTTPClientTransport(
+              new URL(capability.serverUrl),
+              {
+                requestInit: {
+                  headers: capability.headers,
+                },
+              },
+            ),
           })
           clients.push(client)
           return client
