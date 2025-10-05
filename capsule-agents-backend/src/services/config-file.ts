@@ -4,7 +4,6 @@ import {
 } from "./config-schema.ts"
 import type { AgentInfo } from "./agent-config.ts"
 import * as log from "https://deno.land/std@0.203.0/log/mod.ts"
-import { expandEnvVarsInObject } from "../lib/env-expansion.ts"
 
 export class ConfigFileService {
   private static readonly DEFAULT_CONFIG_PATH = "/app/agent.config.json"
@@ -41,19 +40,6 @@ export class ConfigFileService {
         log.error(`Failed to parse JSON from config file: ${parseError}`)
         throw new Error(
           `Invalid JSON in config file ${filePath}: ${parseError}`,
-        )
-      }
-
-      // Expand environment variables in the parsed JSON
-      try {
-        parsedJson = expandEnvVarsInObject(parsedJson)
-        log.debug("Environment variables expanded in config file")
-      } catch (envError) {
-        log.error(`Failed to expand environment variables: ${envError}`)
-        throw new Error(
-          `Environment variable expansion failed: ${
-            envError instanceof Error ? envError.message : String(envError)
-          }`,
         )
       }
 
