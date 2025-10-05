@@ -34,6 +34,7 @@ export interface DBMessagePart {
 
   // Tool call shared columns
   tool_toolCallId?: string
+  tool_toolName?: string
   tool_state?: string
   tool_errorText?: string
   tool_input?: string
@@ -125,10 +126,11 @@ export function mapUIMessagePartsToDBParts(
 
       default:
         // Handle tool calls generically
-        if (part.type.startsWith("tool-")) {
+        if (part.type.startsWith("tool-") || part.type === "dynamic-tool") {
           const toolPart = part as {
             type: string
             toolCallId: string
+            toolName?: string
             state: string
             input?: unknown
             output?: unknown
@@ -138,6 +140,7 @@ export function mapUIMessagePartsToDBParts(
           return {
             ...basePart,
             tool_toolCallId: toolPart.toolCallId,
+            tool_toolName: toolPart.toolName,
             tool_state: toolPart.state,
             tool_input: toolPart.state === "input-available" ||
                 toolPart.state === "output-available" ||
@@ -160,6 +163,7 @@ export function mapUIMessagePartsToDBParts(
 }
 
 export function mapDBPartToUIMessagePart(part: DBMessagePart): MyUIMessagePart {
+  console.debug("Mapping DB part to UIMessagePart:", JSON.stringify(part))
   switch (part.type) {
     case "text":
       return {
@@ -214,12 +218,65 @@ export function mapDBPartToUIMessagePart(part: DBMessagePart): MyUIMessagePart {
 
     default:
       // Handle tool calls generically
-      if (part.type.startsWith("tool-")) {
+      if (part.type.startsWith("tool-") || part.type == "dynamic-tool") {
         if (!part.tool_state) {
           throw new Error(`Tool state is undefined for type: ${part.type}`)
         }
 
-        const baseTool = {
+        const baseInput = part.tool_input ? JSON.parse(part.tool_input) : {}
+
+        // Handle dynamic tools separately
+        if (part.type === "dynamic-tool") {
+          if (!part.tool_toolName) {
+            throw new Error("Dynamic tool must have toolName")
+          }
+
+          const baseDynamicTool = {
+            type: "dynamic-tool" as const,
+            toolCallId: part.tool_toolCallId!,
+            toolName: part.tool_toolName,
+          }
+
+          switch (part.tool_state) {
+            case "input-streaming":
+              return {
+                ...baseDynamicTool,
+                state: "input-streaming",
+                input: baseInput,
+              }
+
+            case "input-available":
+              return {
+                ...baseDynamicTool,
+                state: "input-available",
+                input: baseInput,
+              }
+
+            case "output-available":
+              return {
+                ...baseDynamicTool,
+                state: "output-available",
+                input: baseInput,
+                output: part.tool_output
+                  ? JSON.parse(part.tool_output)
+                  : undefined,
+              }
+
+            case "output-error":
+              return {
+                ...baseDynamicTool,
+                state: "output-error",
+                input: baseInput,
+                errorText: part.tool_errorText || "Unknown error",
+              }
+
+            default:
+              throw new Error(`Unknown tool state: ${part.tool_state}`)
+          }
+        }
+
+        // Handle static tools
+        const baseStaticTool = {
           type: part.type as `tool-${string}`,
           toolCallId: part.tool_toolCallId!,
         }
@@ -227,23 +284,23 @@ export function mapDBPartToUIMessagePart(part: DBMessagePart): MyUIMessagePart {
         switch (part.tool_state) {
           case "input-streaming":
             return {
-              ...baseTool,
+              ...baseStaticTool,
               state: "input-streaming",
-              input: part.tool_input ? JSON.parse(part.tool_input) : {},
+              input: baseInput,
             }
 
           case "input-available":
             return {
-              ...baseTool,
+              ...baseStaticTool,
               state: "input-available",
-              input: part.tool_input ? JSON.parse(part.tool_input) : {},
+              input: baseInput,
             }
 
           case "output-available":
             return {
-              ...baseTool,
+              ...baseStaticTool,
               state: "output-available",
-              input: part.tool_input ? JSON.parse(part.tool_input) : {},
+              input: baseInput,
               output: part.tool_output
                 ? JSON.parse(part.tool_output)
                 : undefined,
@@ -251,9 +308,9 @@ export function mapDBPartToUIMessagePart(part: DBMessagePart): MyUIMessagePart {
 
           case "output-error":
             return {
-              ...baseTool,
+              ...baseStaticTool,
               state: "output-error",
-              input: part.tool_input ? JSON.parse(part.tool_input) : {},
+              input: baseInput,
               errorText: part.tool_errorText || "Unknown error",
             }
 

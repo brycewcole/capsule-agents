@@ -60,9 +60,9 @@ export class VercelMessageRepository {
         source_url_sourceId, source_url_url, source_url_title,
         source_document_sourceId, source_document_mediaType,
         source_document_title, source_document_filename,
-        tool_toolCallId, tool_state, tool_errorText,
+        tool_toolCallId, tool_toolName, tool_state, tool_errorText,
         tool_input, tool_output, provider_metadata
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `)
 
     const transaction = db.transaction(() => {
@@ -98,6 +98,7 @@ export class VercelMessageRepository {
             part.source_document_title ?? null,
             part.source_document_filename ?? null,
             part.tool_toolCallId ?? null,
+            part.tool_toolName ?? null,
             part.tool_state ?? null,
             part.tool_errorText ?? null,
             part.tool_input ?? null,
