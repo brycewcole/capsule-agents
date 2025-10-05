@@ -107,6 +107,7 @@ function createTables(db: Database) {
 
         -- Tool call shared columns
         tool_toolCallId                 TEXT,
+        tool_toolName                   TEXT,
         tool_state                      TEXT,
         tool_errorText                  TEXT,
         tool_input                      TEXT,
