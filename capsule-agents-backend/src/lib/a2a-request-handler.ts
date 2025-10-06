@@ -26,6 +26,14 @@ interface MCPToolsDisposable {
   [Symbol.asyncDispose](): Promise<void>
 }
 
+// Type-safe tool set for artifact support
+type ArtifactToolSet = {
+  createArtifact: typeof artifactTool
+}
+
+type ArtifactToolCall = Vercel.TypedToolCall<ArtifactToolSet>
+type ArtifactToolResult = Vercel.TypedToolResult<ArtifactToolSet>
+
 type StreamEmitUnion =
   | A2A.Task
   | A2A.Message
@@ -321,11 +329,11 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
     return { tools, mcpTools, model, agentInfo, cleanedMessages }
   }
 
-  private createOnStepFinishHandler(
+  private createOnStepFinishHandler<TOOLS extends Vercel.ToolSet>(
     params: A2A.MessageSendParams,
     currentTaskRef: { current: A2A.Task | null },
     statusHandler: StatusUpdateHandler,
-  ): (stepResult: Vercel.StepResult<any>) => void {
+  ): (stepResult: Vercel.StepResult<TOOLS>) => void {
     return (stepResult) => {
       const { text, toolCalls, toolResults, finishReason } = stepResult
       log.info(
@@ -366,30 +374,13 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
           )
         }
 
-        // Handle artifact creation
-        const artifactResult = toolResults?.find((tr) =>
-          tr.toolName === "createArtifact"
-        )
-        log.info(
-          `Checking for artifact - found: ${!!artifactResult}, hasTask: ${!!currentTaskRef
-            .current}`,
-        )
-        if (artifactResult) {
-          log.info(`Artifact result: ${this.truncateForLog(artifactResult)}`)
-        }
-        if (artifactResult && currentTaskRef.current) {
-          const input = (artifactResult as any).args ||
-            (artifactResult as any).input
-          log.info(`Artifact input: ${this.truncateForLog(input)}`)
-          if (input) {
-            const { name, description, content } = input as {
-              name: string
-              description?: string
-              content: string
-            }
-            log.info(
-              `Creating artifact: ${name}, content length: ${content.length}`,
-            )
+        for (const toolResult of toolResults || []) {
+          if (
+            toolResult.dynamic == false &&
+            toolResult.toolName === "createArtifact" && currentTaskRef.current
+          ) {
+            const { name, description, content } = toolResult.input
+
             const artifactEvent = this.taskService.createArtifact(
               currentTaskRef.current,
               {
@@ -397,9 +388,6 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
                 description,
                 parts: [{ kind: "text", text: content }],
               },
-            )
-            log.info(
-              `Artifact event created: ${artifactEvent.artifact.artifactId}`,
             )
             statusHandler(artifactEvent)
           }
