@@ -39,6 +39,13 @@ export const OPENAI_MODELS: ModelEntry[] = [
 // Anthropic Models
 export const ANTHROPIC_MODELS: ModelEntry[] = [
   {
+    id: "anthropic/claude-sonnet-4.5-latest",
+    name: "Claude 4.5 Sonnet",
+    description:
+      "Latest Claude Sonnet model with enhanced reasoning depth and 1M context window",
+    pricing: { input: 0.004, output: 0.02 },
+  },
+  {
     id: "anthropic/claude-sonnet-4-20250514",
     name: "Claude 4 Sonnet",
     description:
@@ -131,6 +138,7 @@ export function selectDefaultModel(
   const priorityOrder = [
     "openai/gpt-5-mini",
     "google/gemini-2.5-flash",
+    "anthropic/claude-sonnet-4.5-latest",
     "anthropic/claude-sonnet-4-latest",
     "openai/gpt-5",
     "google/gemini-2.0-flash",
