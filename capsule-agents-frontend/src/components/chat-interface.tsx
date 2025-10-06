@@ -53,6 +53,12 @@ type TimelineTask = {
   id: string
   task: A2ATask
   createdAt: number
+  artifacts?: Array<{
+    artifactId: string
+    name?: string
+    description?: string
+    parts: Array<{ kind: string; text?: string }>
+  }>
 }
 
 type TimelineEntry = {
@@ -295,7 +301,12 @@ export default function ChatInterface({
 
           if (existingIndex >= 0) {
             const nextTasks = [...entry.tasks]
-            nextTasks[existingIndex] = { id: taskId, task: nextTask, createdAt }
+            nextTasks[existingIndex] = {
+              id: taskId,
+              task: nextTask,
+              createdAt,
+              artifacts: nextTask.artifacts,
+            }
             const sortedTasks = sortTasksByTime(nextTasks)
             updatedIndex = sortedTasks.findIndex((item) => item.id === taskId)
             return { ...entry, tasks: sortedTasks }
@@ -305,6 +316,7 @@ export default function ChatInterface({
             id: taskId,
             task: nextTask,
             createdAt,
+            artifacts: nextTask.artifacts,
           }]
           const sortedTasks = sortTasksByTime(appendedTasks)
           updatedIndex = sortedTasks.findIndex((item) => item.id === taskId)
@@ -483,6 +495,7 @@ export default function ChatInterface({
           id: task.id,
           task,
           createdAt,
+          artifacts: task.artifacts,
         }
         nextTaskLocations[task.id] = { entryId: entry.id, index: existingIndex }
         return
@@ -492,6 +505,7 @@ export default function ChatInterface({
         id: task.id,
         task,
         createdAt,
+        artifacts: task.artifacts,
       })
       nextTaskLocations[task.id] = {
         entryId: entry.id,
@@ -830,6 +844,70 @@ export default function ChatInterface({
             activeEntryIdRef.current = null
             throw new Error(extractResponseText(event) || "Task failed")
           }
+        } else if (event.kind === "artifact-update") {
+          // Handle artifact updates
+          const artifactEvent = event as {
+            kind: "artifact-update"
+            taskId: string
+            contextId: string
+            artifact: {
+              artifactId: string
+              name?: string
+              description?: string
+              parts: Array<{ kind: string; text?: string }>
+            }
+          }
+          console.log("Received artifact-update:", artifactEvent)
+
+          const targetEntryId = resolveEntryIdForTask(artifactEvent.taskId)
+
+          // Update the task's artifacts
+          setTimelineEntries((prev) => {
+            return prev.map((entry) => {
+              if (entry.id !== targetEntryId) return entry
+
+              return {
+                ...entry,
+                tasks: entry.tasks.map((timelineTask) => {
+                  if (timelineTask.id !== artifactEvent.taskId) {
+                    return timelineTask
+                  }
+
+                  // Add or update artifact
+                  const existingArtifacts = timelineTask.artifacts || []
+                  const artifactIndex = existingArtifacts.findIndex(
+                    (a) => a.artifactId === artifactEvent.artifact.artifactId,
+                  )
+
+                  let updatedArtifacts: typeof existingArtifacts
+                  if (artifactIndex >= 0) {
+                    // Update existing artifact
+                    updatedArtifacts = [...existingArtifacts]
+                    updatedArtifacts[artifactIndex] = artifactEvent.artifact
+                  } else {
+                    // Add new artifact
+                    updatedArtifacts = [
+                      ...existingArtifacts,
+                      artifactEvent.artifact,
+                    ]
+                  }
+
+                  // IMPORTANT: Update both the TimelineTask.artifacts AND the task.artifacts
+                  // so that subsequent upsertTask calls don't overwrite our changes
+                  const updatedTask = {
+                    ...timelineTask.task,
+                    artifacts: updatedArtifacts,
+                  }
+
+                  return {
+                    ...timelineTask,
+                    task: updatedTask,
+                    artifacts: updatedArtifacts,
+                  }
+                }),
+              }
+            })
+          })
         }
       }
     } catch (error) {
@@ -1216,6 +1294,43 @@ export default function ChatInterface({
                                           </li>
                                         ))}
                                       </ul>
+                                    )}
+                                    {item.artifacts &&
+                                      item.artifacts.length > 0 && (
+                                      <div className="space-y-3 pl-2">
+                                        {item.artifacts.map((artifact) => {
+                                          const content = artifact.parts
+                                            .filter((p) => p.kind === "text")
+                                            .map((p) => p.text)
+                                            .join("\n")
+
+                                          return (
+                                            <div
+                                              key={artifact.artifactId}
+                                              className="rounded-lg border border-indigo-400/60 bg-indigo-50/70 dark:border-indigo-900/70 dark:bg-indigo-950/40 p-4 shadow-sm"
+                                            >
+                                              <div className="mb-2 flex items-center justify-between">
+                                                <div>
+                                                  <div className="text-sm font-semibold text-indigo-900 dark:text-indigo-100">
+                                                    📦 {artifact.name ||
+                                                      "Artifact"}
+                                                  </div>
+                                                  {artifact.description && (
+                                                    <div className="text-xs text-indigo-700/80 dark:text-indigo-300/80">
+                                                      {artifact.description}
+                                                    </div>
+                                                  )}
+                                                </div>
+                                              </div>
+                                              <div className="rounded bg-white dark:bg-slate-900 p-3 text-xs font-mono overflow-x-auto max-h-96 overflow-y-auto border border-indigo-200 dark:border-indigo-800">
+                                                <pre className="whitespace-pre-wrap">
+                                                  {content}
+                                                </pre>
+                                              </div>
+                                            </div>
+                                          )
+                                        })}
+                                      </div>
                                     )}
                                   </div>
                                 </div>

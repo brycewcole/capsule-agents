@@ -17,6 +17,7 @@ import { AgentConfigService } from "../services/agent-config.ts"
 import { ProviderService } from "../services/provider-service.ts"
 import { TaskService } from "../services/task.service.ts"
 import { VercelService } from "../services/vercel.service.ts"
+import { artifactTool } from "./artifact-tool.ts"
 import { isMCPCapability } from "./capability-types.ts"
 import { AnyToolCall, AnyToolResult } from "./types.ts"
 
@@ -324,7 +325,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
     params: A2A.MessageSendParams,
     currentTaskRef: { current: A2A.Task | null },
     statusHandler: StatusUpdateHandler,
-  ): (stepResult: Vercel.StepResult<Record<string, Vercel.Tool>>) => void {
+  ): (stepResult: Vercel.StepResult<any>) => void {
     return (stepResult) => {
       const { text, toolCalls, toolResults, finishReason } = stepResult
       log.info(
@@ -364,6 +365,46 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
             }`,
           )
         }
+
+        // Handle artifact creation
+        const artifactResult = toolResults?.find((tr) =>
+          tr.toolName === "createArtifact"
+        )
+        log.info(
+          `Checking for artifact - found: ${!!artifactResult}, hasTask: ${!!currentTaskRef
+            .current}`,
+        )
+        if (artifactResult) {
+          log.info(`Artifact result: ${this.truncateForLog(artifactResult)}`)
+        }
+        if (artifactResult && currentTaskRef.current) {
+          const input = (artifactResult as any).args ||
+            (artifactResult as any).input
+          log.info(`Artifact input: ${this.truncateForLog(input)}`)
+          if (input) {
+            const { name, description, content } = input as {
+              name: string
+              description?: string
+              content: string
+            }
+            log.info(
+              `Creating artifact: ${name}, content length: ${content.length}`,
+            )
+            const artifactEvent = this.taskService.createArtifact(
+              currentTaskRef.current,
+              {
+                name,
+                description,
+                parts: [{ kind: "text", text: content }],
+              },
+            )
+            log.info(
+              `Artifact event created: ${artifactEvent.artifact.artifactId}`,
+            )
+            statusHandler(artifactEvent)
+          }
+        }
+
         const toolPreamble = text
           ? text
           : `Used ${toolCalls.map((tc) => tc.toolName).join(", ")}`
@@ -554,7 +595,10 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
         system: agentInfo.description,
         model,
         messages: Vercel.convertToModelMessages(cleanedMessages),
-        tools: tools,
+        tools: {
+          ...tools,
+          createArtifact: artifactTool,
+        },
         stopWhen: Vercel.stepCountIs(10),
         onStepFinish: this.createOnStepFinishHandler(
           params,
@@ -703,7 +747,10 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
         system: agentInfo.description,
         model,
         messages: Vercel.convertToModelMessages(cleanedMessages),
-        tools: tools,
+        tools: {
+          ...tools,
+          createArtifact: artifactTool,
+        },
         stopWhen: Vercel.stepCountIs(10),
         onStepFinish: this.createOnStepFinishHandler(
           params,
