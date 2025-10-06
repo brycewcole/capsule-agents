@@ -30,14 +30,16 @@ Capsule Agents is a framework designed with the goal of making it as easy as pos
    Create a `.env` file with
 
 ```env
-# Required for OpenAI
-OPENAI_API_KEY=sk-abc123
+# Add one or many (required)
+OPENAI_API_KEY=your_key
+ANTHROPIC_API_KEY=your_key
+GOOGLE_GENERATIVE_AI_API_KEY=your_key
 
-# Required for Search
+# Optional to enable search
 BRAVE_API_KEY=your_brave_search_api_key
 
-# Used to restrict access to the configure page
-ADMIN_PASSWORD=admin
+# Optional to restrict access to the configure page
+ADMIN_PASSWORD=your_password
 ```
 
 3. **Run!**
