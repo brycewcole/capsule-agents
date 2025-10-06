@@ -39,7 +39,7 @@ export const OPENAI_MODELS: ModelEntry[] = [
 // Anthropic Models
 export const ANTHROPIC_MODELS: ModelEntry[] = [
   {
-    id: "anthropic/claude-sonnet-4.5-latest",
+    id: "anthropic/claude-sonnet-4-5",
     name: "Claude 4.5 Sonnet",
     description:
       "Latest Claude Sonnet model with enhanced reasoning depth and 1M context window",
