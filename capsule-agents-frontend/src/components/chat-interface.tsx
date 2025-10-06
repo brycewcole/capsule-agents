@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import { Input } from "./ui/input.tsx"
 import { Button } from "@/components/ui/button.tsx"
 import Markdown from "react-markdown"
+import remarkGfm from "remark-gfm"
 import {
   ArrowRight,
   Loader2,
@@ -1002,7 +1003,9 @@ export default function ChatInterface({
                                 {entry.user.content
                                   ? (
                                     <div className="prose prose-sm text-slate-900 dark:prose-invert max-w-none">
-                                      <Markdown>{entry.user.content}</Markdown>
+                                      <Markdown remarkPlugins={[remarkGfm]}>
+                                        {entry.user.content}
+                                      </Markdown>
                                     </div>
                                   )
                                   : (
@@ -1033,7 +1036,9 @@ export default function ChatInterface({
                                   : entry.agent.content
                                   ? (
                                     <div className="prose prose-sm text-slate-900 dark:prose-invert max-w-none">
-                                      <Markdown>{entry.agent.content}</Markdown>
+                                      <Markdown remarkPlugins={[remarkGfm]}>
+                                        {entry.agent.content}
+                                      </Markdown>
                                     </div>
                                   )
                                   : !hasTasks
@@ -1188,7 +1193,9 @@ export default function ChatInterface({
                                                   : "Status"}
                                               </div>
                                               <div className="prose prose-sm text-slate-900 dark:prose-invert max-w-none">
-                                                <Markdown>
+                                                <Markdown
+                                                  remarkPlugins={[remarkGfm]}
+                                                >
                                                   {update.text}
                                                 </Markdown>
                                               </div>
