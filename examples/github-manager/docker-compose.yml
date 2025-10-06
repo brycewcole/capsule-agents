@@ -7,6 +7,4 @@ services:
       - ./agent.config.json:/app/agent.config.json
     environment:
       - AGENT_URL=http://localhost:8001
-    env_file:
-      - ../../.env
     restart: unless-stopped
