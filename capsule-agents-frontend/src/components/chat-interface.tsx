@@ -3,10 +3,13 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { Input } from "./ui/input.tsx"
 import { Button } from "@/components/ui/button.tsx"
+import { Badge } from "@/components/ui/badge.tsx"
 import Markdown from "react-markdown"
 import remarkGfm from "remark-gfm"
 import {
   ArrowRight,
+  Download,
+  Eye,
   Loader2,
   MessageSquare,
   PanelRightOpen,
@@ -19,6 +22,14 @@ import {
   CardHeader,
   CardTitle,
 } from "./ui/card.tsx"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "./ui/dialog.tsx"
+import type { Artifact, Part } from "@a2a-js/sdk"
 import {
   type A2ATask,
   type CapabilityCall,
@@ -53,6 +64,16 @@ type TimelineTask = {
   id: string
   task: A2ATask
   createdAt: number
+  artifacts?: Artifact[]
+}
+
+type ArtifactPreviewState = {
+  artifactId: string
+  title: string
+  description?: string
+  content: string
+  mimeType: string
+  isHtml: boolean
 }
 
 type TimelineEntry = {
@@ -124,22 +145,123 @@ const getTaskStatusInfo = (task: A2ATask) => {
   return taskStatusMeta[state] ?? taskStatusMeta.unknown
 }
 
-const extractTextFromParts = (parts: unknown[]): string => {
+const extractTextFromParts = (parts: Artifact["parts"]): string => {
   if (!Array.isArray(parts)) return ""
   return parts
-    .filter((part) => {
-      if (!part || typeof part !== "object") return false
-      const candidate = part as { kind?: string; type?: string }
-      return candidate.kind === "text" || candidate.type === "text"
-    })
+    .filter((part) => part.kind === "text")
     .map((part) => {
-      if (!part || typeof part !== "object") return ""
-      const candidate = part as { text?: string }
-      return candidate.text ?? ""
+      if (part.kind === "text") {
+        return part.text
+      }
+      return ""
     })
     .filter(Boolean)
     .join("\n\n")
     .trim()
+}
+
+const getArtifactTextContent = (artifact: Artifact): string =>
+  extractTextFromParts(artifact.parts ?? [])
+
+const getTextPartMetadata = (
+  artifact: Artifact,
+): Record<string, unknown> | undefined => {
+  for (const part of artifact.parts ?? []) {
+    if (
+      part &&
+      typeof part === "object" &&
+      part.kind === "text" &&
+      part.metadata &&
+      typeof part.metadata === "object"
+    ) {
+      return part.metadata
+    }
+  }
+  return undefined
+}
+
+const inferMimeTypeFromMetadata = (
+  metadata: Record<string, unknown> | undefined,
+): string | undefined => {
+  if (!metadata) return undefined
+  const candidates = [
+    metadata.contentType,
+    metadata.mimeType,
+    metadata.type,
+    metadata.format,
+  ]
+  for (const candidate of candidates) {
+    if (typeof candidate === "string" && candidate.trim().length > 0) {
+      return candidate
+    }
+  }
+  return undefined
+}
+
+const looksLikeHtml = (content: string): boolean => {
+  const trimmed = content.trim().toLowerCase()
+  if (!trimmed.startsWith("<") || !trimmed.includes(">")) return false
+  if (
+    trimmed.startsWith("<!doctype html") ||
+    /^<html[\s>]/.test(trimmed) ||
+    /^<head[\s>]/.test(trimmed) ||
+    /^<body[\s>]/.test(trimmed)
+  ) {
+    return true
+  }
+  const blockTagPattern = /<\/(div|section|main|article|header|footer|nav)>/
+  const openingBlockTagPattern = /<(div|section|main|article|header|footer|nav)(\s|>)/
+  return (
+    (trimmed.includes("<body") && trimmed.includes("</body>")) ||
+    (openingBlockTagPattern.test(trimmed) && blockTagPattern.test(trimmed))
+  )
+}
+
+const getArtifactContentInfo = (artifact: Artifact) => {
+  const textContent = getArtifactTextContent(artifact)
+  const metadata = getTextPartMetadata(artifact)
+  const providedMime = inferMimeTypeFromMetadata(metadata)
+  const normalizedMime = providedMime?.toLowerCase()
+  const isHtml =
+    (normalizedMime ? normalizedMime.includes("html") : false) ||
+    looksLikeHtml(textContent)
+  const fallbackMime = isHtml ? "text/html" : "text/plain"
+
+  return {
+    content: textContent,
+    metadata,
+    mimeType: normalizedMime ?? fallbackMime,
+    displayMimeType: providedMime,
+    isHtml,
+  }
+}
+
+const extensionFromMimeType = (mimeType: string, isHtml: boolean): string => {
+  if (isHtml) return ".html"
+  if (mimeType.includes("markdown")) return ".md"
+  if (mimeType.includes("json")) return ".json"
+  if (mimeType.includes("javascript")) return ".js"
+  if (mimeType.includes("css")) return ".css"
+  if (mimeType.includes("xml")) return ".xml"
+  return ".txt"
+}
+
+const createArtifactFileName = (
+  artifact: Artifact,
+  info: ReturnType<typeof getArtifactContentInfo>,
+): string => {
+  const baseSource =
+    (artifact.name && artifact.name.trim()) ||
+    artifact.artifactId ||
+    "artifact"
+  const sanitizedBase = baseSource
+    .replace(/[\\/:*?"<>|]+/g, "-")
+    .replace(/\s+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "")
+  const base = sanitizedBase.length > 0 ? sanitizedBase : "artifact"
+  const extension = extensionFromMimeType(info.mimeType, info.isHtml)
+  return `${base}${extension}`
 }
 
 const buildTaskUpdates = (task: A2ATask) => {
@@ -165,7 +287,7 @@ const buildTaskUpdates = (task: A2ATask) => {
       const normalizedRole = isStatusMessage
         ? "status"
         : (role === "user" ? "user" : "agent")
-      const parts = (message as { parts?: unknown[] }).parts ?? []
+      const parts = (message as { parts?: Part[] }).parts ?? []
       const text = extractTextFromParts(parts)
       if (!text) continue
 
@@ -224,6 +346,8 @@ export default function ChatInterface({
   const [connectionError, setConnectionError] = useState<
     JSONRPCError | Error | string | null
   >(null)
+  const [previewArtifact, setPreviewArtifact] =
+    useState<ArtifactPreviewState | null>(null)
   // Use prop contextId if provided, otherwise defer assignment to backend on first message
   const [contextId, setContextId] = useState<string | null>(
     propContextId || null,
@@ -262,6 +386,46 @@ export default function ChatInterface({
     [],
   )
 
+  const openArtifactPreview = useCallback(
+    (artifact: Artifact) => {
+      const info = getArtifactContentInfo(artifact)
+      setPreviewArtifact({
+        artifactId: artifact.artifactId,
+        title: artifact.name ?? "Artifact",
+        description: artifact.description,
+        content: info.content,
+        mimeType: info.mimeType,
+        isHtml: info.isHtml,
+      })
+    },
+    [setPreviewArtifact],
+  )
+
+  const closeArtifactPreview = useCallback(() => {
+    setPreviewArtifact(null)
+  }, [setPreviewArtifact])
+
+  const downloadArtifact = useCallback((artifact: Artifact) => {
+    const info = getArtifactContentInfo(artifact)
+    if (!info.content) return
+    if (typeof window === "undefined") return
+
+    const blob = new Blob([info.content], {
+      type: info.isHtml
+        ? "text/html;charset=utf-8"
+        : "text/plain;charset=utf-8",
+    })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement("a")
+    link.href = url
+    link.download = createArtifactFileName(artifact, info)
+    link.rel = "noopener"
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    URL.revokeObjectURL(url)
+  }, [])
+
   const upsertTask = useCallback(
     (
       entryId: string,
@@ -295,7 +459,12 @@ export default function ChatInterface({
 
           if (existingIndex >= 0) {
             const nextTasks = [...entry.tasks]
-            nextTasks[existingIndex] = { id: taskId, task: nextTask, createdAt }
+            nextTasks[existingIndex] = {
+              id: taskId,
+              task: nextTask,
+              createdAt,
+              artifacts: nextTask.artifacts,
+            }
             const sortedTasks = sortTasksByTime(nextTasks)
             updatedIndex = sortedTasks.findIndex((item) => item.id === taskId)
             return { ...entry, tasks: sortedTasks }
@@ -305,6 +474,7 @@ export default function ChatInterface({
             id: taskId,
             task: nextTask,
             createdAt,
+            artifacts: nextTask.artifacts,
           }]
           const sortedTasks = sortTasksByTime(appendedTasks)
           updatedIndex = sortedTasks.findIndex((item) => item.id === taskId)
@@ -483,6 +653,7 @@ export default function ChatInterface({
           id: task.id,
           task,
           createdAt,
+          artifacts: task.artifacts,
         }
         nextTaskLocations[task.id] = { entryId: entry.id, index: existingIndex }
         return
@@ -492,6 +663,7 @@ export default function ChatInterface({
         id: task.id,
         task,
         createdAt,
+        artifacts: task.artifacts,
       })
       nextTaskLocations[task.id] = {
         entryId: entry.id,
@@ -830,6 +1002,65 @@ export default function ChatInterface({
             activeEntryIdRef.current = null
             throw new Error(extractResponseText(event) || "Task failed")
           }
+        } else if (event.kind === "artifact-update") {
+          // Handle artifact updates
+          const artifactEvent = event as {
+            kind: "artifact-update"
+            taskId: string
+            contextId: string
+            artifact: Artifact
+          }
+          console.log("Received artifact-update:", artifactEvent)
+
+          const targetEntryId = resolveEntryIdForTask(artifactEvent.taskId)
+
+          // Update the task's artifacts
+          setTimelineEntries((prev) => {
+            return prev.map((entry) => {
+              if (entry.id !== targetEntryId) return entry
+
+              return {
+                ...entry,
+                tasks: entry.tasks.map((timelineTask) => {
+                  if (timelineTask.id !== artifactEvent.taskId) {
+                    return timelineTask
+                  }
+
+                  // Add or update artifact
+                  const existingArtifacts = timelineTask.artifacts || []
+                  const artifactIndex = existingArtifacts.findIndex(
+                    (a) => a.artifactId === artifactEvent.artifact.artifactId,
+                  )
+
+                  let updatedArtifacts: typeof existingArtifacts
+                  if (artifactIndex >= 0) {
+                    // Update existing artifact
+                    updatedArtifacts = [...existingArtifacts]
+                    updatedArtifacts[artifactIndex] = artifactEvent.artifact
+                  } else {
+                    // Add new artifact
+                    updatedArtifacts = [
+                      ...existingArtifacts,
+                      artifactEvent.artifact,
+                    ]
+                  }
+
+                  // IMPORTANT: Update both the TimelineTask.artifacts AND the task.artifacts
+                  // so that subsequent upsertTask calls don't overwrite our changes
+                  const updatedTask = {
+                    ...timelineTask.task,
+                    artifacts: updatedArtifacts,
+                  }
+
+                  return {
+                    ...timelineTask,
+                    task: updatedTask,
+                    artifacts: updatedArtifacts,
+                  }
+                }),
+              }
+            })
+          })
         }
       }
     } catch (error) {
@@ -1217,6 +1448,78 @@ export default function ChatInterface({
                                         ))}
                                       </ul>
                                     )}
+                                    {item.artifacts &&
+                                      item.artifacts.length > 0 && (
+                                      <div className="space-y-3 pl-2">
+                                        {item.artifacts.map((artifact) => {
+                                          const artifactInfo =
+                                            getArtifactContentInfo(artifact)
+                                          const hasContent =
+                                            artifactInfo.content.length > 0
+
+                                          return (
+                                            <div
+                                              key={artifact.artifactId}
+                                              className="rounded-lg border border-indigo-400/60 bg-indigo-50/70 dark:border-indigo-900/70 dark:bg-indigo-950/40 px-4 py-3 shadow-sm"
+                                            >
+                                              <div className="flex flex-wrap items-start justify-between gap-2">
+                                                <div className="min-w-0 space-y-1">
+                                                  <div className="flex items-center gap-2 text-sm font-semibold text-indigo-900 dark:text-indigo-100">
+                                                    <span>
+                                                      📦 {artifact.name || "Artifact"}
+                                                    </span>
+                                                    <Badge
+                                                      variant="secondary"
+                                                      className="uppercase tracking-wide"
+                                                    >
+                                                      Artifact
+                                                    </Badge>
+                                                  </div>
+                                                  {artifactInfo.displayMimeType && (
+                                                    <div className="text-[11px] uppercase tracking-wide text-indigo-700/70 dark:text-indigo-200/70">
+                                                      {artifactInfo.displayMimeType}
+                                                    </div>
+                                                  )}
+                                                  {artifact.description && (
+                                                    <div className="text-xs text-indigo-700/80 dark:text-indigo-300/80">
+                                                      {artifact.description}
+                                                    </div>
+                                                  )}
+                                                </div>
+                                                <div className="flex items-center gap-2">
+                                                  <Button
+                                                    variant="ghost"
+                                                    size="sm"
+                                                    className="text-indigo-700 hover:text-indigo-900 dark:text-indigo-200 dark:hover:text-indigo-100"
+                                                    onClick={() =>
+                                                      openArtifactPreview(
+                                                        artifact,
+                                                      )}
+                                                    disabled={!hasContent}
+                                                  >
+                                                    <Eye className="h-4 w-4" />
+                                                    Preview
+                                                  </Button>
+                                                  <Button
+                                                    variant="ghost"
+                                                    size="sm"
+                                                    className="text-indigo-700 hover:text-indigo-900 dark:text-indigo-200 dark:hover:text-indigo-100"
+                                                    onClick={() =>
+                                                      downloadArtifact(
+                                                        artifact,
+                                                      )}
+                                                    disabled={!hasContent}
+                                                  >
+                                                    <Download className="h-4 w-4" />
+                                                    Download
+                                                  </Button>
+                                                </div>
+                                              </div>
+                                            </div>
+                                          )
+                                        })}
+                                      </div>
+                                    )}
                                   </div>
                                 </div>
                               )
@@ -1296,6 +1599,50 @@ export default function ChatInterface({
           </Button>
         </div>
       )}
+
+      <Dialog
+        open={previewArtifact !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            closeArtifactPreview()
+          }
+        }}
+      >
+        <DialogContent className="max-w-3xl sm:max-w-5xl">
+          {previewArtifact && (
+            <div className="space-y-4">
+              <DialogHeader className="text-left">
+                <DialogTitle>{previewArtifact.title}</DialogTitle>
+                {previewArtifact.description && (
+                  <DialogDescription>{previewArtifact.description}</DialogDescription>
+                )}
+              </DialogHeader>
+              <div className="rounded-md border border-indigo-200/70 dark:border-indigo-800/70 bg-background/60 overflow-hidden">
+                {previewArtifact.isHtml
+                  ? (
+                    <iframe
+                      title={`${previewArtifact.title} preview`}
+                      srcDoc={previewArtifact.content}
+                      sandbox=""
+                      className="h-[70vh] w-full bg-white dark:bg-slate-900"
+                    />
+                  )
+                  : previewArtifact.content
+                  ? (
+                    <pre className="max-h-[70vh] overflow-auto whitespace-pre-wrap p-4 text-sm">
+                      {previewArtifact.content}
+                    </pre>
+                  )
+                  : (
+                    <div className="p-6 text-sm text-muted-foreground">
+                      No preview available.
+                    </div>
+                  )}
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
