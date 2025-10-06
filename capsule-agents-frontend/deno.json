@@ -32,6 +32,7 @@
     "react/jsx-runtime": "npm:react@^19.1.1/jsx-runtime",
     "react-dom": "npm:react-dom@^19.1.1",
     "react-markdown": "npm:react-markdown@^10.1.0",
+    "remark-gfm": "npm:remark-gfm@^4.0.0",
     "sonner": "npm:sonner@^2.0.7",
     "tailwind-merge": "npm:tailwind-merge@^3.3.1",
     "tw-animate-css": "npm:tw-animate-css@^1.3.7",

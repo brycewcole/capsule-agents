@@ -121,4 +121,32 @@
     height: 100%;
     overflow: hidden;
   }
+
+  /* Enhanced table styles for markdown content */
+  .prose table {
+    @apply w-full border-collapse;
+    margin-top: 1em;
+    margin-bottom: 1em;
+  }
+
+  .prose thead {
+    @apply border-b-2 border-slate-300 dark:border-slate-600;
+  }
+
+  .prose th {
+    @apply border border-slate-300 dark:border-slate-600 bg-slate-100
+      dark:bg-slate-800 px-4 py-2 text-left font-semibold;
+  }
+
+  .prose td {
+    @apply border border-slate-300 dark:border-slate-600 px-4 py-2;
+  }
+
+  .prose tbody tr:nth-child(even) {
+    @apply bg-slate-50 dark:bg-slate-900/50;
+  }
+
+  .prose tbody tr:hover {
+    @apply bg-slate-100 dark:bg-slate-800/50;
+  }
 }

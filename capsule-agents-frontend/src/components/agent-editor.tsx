@@ -133,14 +133,14 @@ export default function AgentEditor() {
     }
   }
 
-  const autoSaveAgent = async () => {
+  const autoSaveAgent = async (nextCapabilities?: Capability[]) => {
     try {
       const agentInfo: AgentInfo = {
         name,
         description,
         modelName: selectedModel?.id || "",
         modelParameters: {},
-        capabilities: capabilities,
+        capabilities: nextCapabilities ?? capabilities,
       }
       await updateAgentInfo(agentInfo)
 
@@ -149,7 +149,7 @@ export default function AgentEditor() {
         name,
         description,
         modelName: selectedModel?.id || "",
-        capabilities: [...capabilities],
+        capabilities: [...(nextCapabilities ?? capabilities)],
       })
     } catch (error) {
       console.error("Error auto-saving agent:", error)
@@ -239,7 +239,7 @@ export default function AgentEditor() {
     }
   }
 
-  const addCapability = () => {
+  const addCapability = (finalHeaders?: Record<string, string>) => {
     try {
       if (!capabilityName || !capabilityType) {
         toast.error("Invalid capability", {
@@ -288,13 +288,16 @@ export default function AgentEditor() {
           })
           return
         }
+        const resolvedHeaders = finalHeaders ?? mcpHeaders
         newCapability = {
           name: capabilityName,
           enabled: capabilityEnabled,
           type: "mcp",
           serverUrl: mcpServerUrl,
           serverType: mcpServerType,
-          headers: Object.keys(mcpHeaders).length > 0 ? mcpHeaders : undefined,
+          headers: Object.keys(resolvedHeaders).length > 0
+            ? resolvedHeaders
+            : undefined,
         }
       } else {
         toast.error("Invalid capability type", {
@@ -303,27 +306,30 @@ export default function AgentEditor() {
         return
       }
 
+      let updatedCapabilities: Capability[]
+
       if (editIndex !== null) {
         // Update existing capability
-        const newCapabilities = [...capabilities]
-        newCapabilities[editIndex] = newCapability
-        setCapabilities(newCapabilities)
+        updatedCapabilities = [...capabilities]
+        updatedCapabilities[editIndex] = newCapability
         toast.success("Capability updated", {
           description: `Capability "${capabilityName}" has been updated.`,
         })
       } else {
         // Add new capability
-        setCapabilities([...capabilities, newCapability])
+        updatedCapabilities = [...capabilities, newCapability]
         toast.success("Capability added", {
           description: `Capability "${capabilityName}" has been added.`,
         })
       }
 
+      setCapabilities(updatedCapabilities)
+
       // Reset form
       resetCapabilityForm()
 
       // Auto-save when custom capability is added/updated
-      setTimeout(() => autoSaveAgent(), 0)
+      setTimeout(() => autoSaveAgent(updatedCapabilities), 0)
     } catch (error) {
       console.error("Error adding capability:", error)
       toast.error("Error adding capability", {
@@ -384,7 +390,7 @@ export default function AgentEditor() {
     })
 
     // Auto-save when custom capability is deleted
-    setTimeout(() => autoSaveAgent(), 0)
+    setTimeout(() => autoSaveAgent(newCapabilities), 0)
   }
 
   const resetCapabilityForm = () => {

@@ -1,17 +1,18 @@
 import * as log from "@std/log"
+import { getDb } from "../infrastructure/db.ts"
 import {
   Capability,
   isA2ACapability,
   isMCPCapability,
   isPrebuiltCapability,
 } from "../lib/capability-types.ts"
-import { getDb } from "../infrastructure/db.ts"
+import { expandEnvVarsInObject } from "../lib/env-expansion.ts"
 import { selectDefaultModel } from "../lib/model-registry.ts"
-import { ProviderService } from "./provider-service.ts"
 import {
   AgentConfigSchema,
   transformConfigToAgentInfo,
 } from "./config-schema.ts"
+import { ProviderService } from "./provider-service.ts"
 
 // Types for agent configuration
 interface AgentInfoRow {
@@ -143,12 +144,14 @@ export class AgentConfigService {
       const capabilities = JSON.parse(row.capabilities || "[]")
       const modelParameters = JSON.parse(row.model_parameters || "{}")
 
+      const expandedCapabilities = expandEnvVarsInObject(capabilities)
+
       const result = {
         name: row.name,
         description: row.description,
         model_name: row.model_name,
         model_parameters: modelParameters,
-        capabilities: capabilities,
+        capabilities: expandedCapabilities,
       }
 
       log.debug("AgentConfigService.getAgentInfo() returning:", {

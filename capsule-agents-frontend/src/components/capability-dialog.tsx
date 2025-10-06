@@ -38,7 +38,7 @@ interface CapabilityDialogProps {
   mcpHeaders: Record<string, string>
   setMcpHeaders: (headers: Record<string, string>) => void
   editIndex: number | null
-  onSubmit: () => void
+  onSubmit: (finalHeaders?: Record<string, string>) => void
   onCancel: () => void
 }
 
@@ -66,6 +66,27 @@ export function CapabilityDialog({
   const [headerKey, setHeaderKey] = useState("")
   const [headerValue, setHeaderValue] = useState("")
 
+  const handleSubmit = () => {
+    if (capabilityType === "mcp") {
+      const trimmedKey = headerKey.trim()
+      const trimmedValue = headerValue.trim()
+      const updatedHeaders = trimmedKey && trimmedValue
+        ? { ...mcpHeaders, [trimmedKey]: trimmedValue }
+        : mcpHeaders
+
+      if (trimmedKey && trimmedValue) {
+        setMcpHeaders(updatedHeaders)
+        setHeaderKey("")
+        setHeaderValue("")
+      }
+
+      onSubmit(updatedHeaders)
+      return
+    }
+
+    onSubmit()
+  }
+
   const handleCapabilityTypeChange = (newType: "a2a" | "mcp") => {
     setCapabilityType(newType)
 
@@ -79,8 +100,11 @@ export function CapabilityDialog({
   }
 
   const addHeader = () => {
-    if (headerKey && headerValue) {
-      setMcpHeaders({ ...mcpHeaders, [headerKey]: headerValue })
+    const trimmedKey = headerKey.trim()
+    const trimmedValue = headerValue.trim()
+
+    if (trimmedKey && trimmedValue) {
+      setMcpHeaders({ ...mcpHeaders, [trimmedKey]: trimmedValue })
       setHeaderKey("")
       setHeaderValue("")
     }
@@ -303,7 +327,7 @@ export function CapabilityDialog({
             Cancel
           </Button>
           <Button
-            onClick={onSubmit}
+            onClick={handleSubmit}
             disabled={!isFormValid}
           >
             {editIndex !== null ? "Update Capability" : "Add Capability"}
