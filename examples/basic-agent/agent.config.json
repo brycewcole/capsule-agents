@@ -3,17 +3,7 @@
     "name": "Basic Agent",
     "description": "A simple agent with essential tools for basic conversations",
     "model": {
-      "name": "openai/gpt-4o-mini",
-      "parameters": {
-        "temperature": 0.7,
-        "max_tokens": 1500
-      }
-    },
-    "tools": {
-      "memory": {
-        "enabled": true
-      }
-    },
-    "a2a": []
+      "name": "openai/gpt-5-mini"
+    }
   }
 }
