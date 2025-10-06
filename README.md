@@ -9,18 +9,18 @@
 
 > ⚠️ **This project is in an early development stage and is not stable for production use.**
 
-Capsule Agents is a framework designed with the goal of making it as easy as possible to create [Agent-to-Agent (A2A) protocol](https://github.com/google/A2A) compatible agents wrapped in a single docker container.
+Capsule Agents is a framework designed with the goal of making it as easy as possible to create [Agent-to-Agent (A2A) protocol](https://github.com/google/A2A) compatible agents.
 
 ## Features
 
-- **Prebuilt Tools**: Includes a set of prebuilt MCP (Model Context Protocol) servers that can be enabled in one click
+- **Prebuilt Tools**: Includes a set of built in capabilities that can be enabled in one click
   - File Access: Read and write files within the agent workspace
   - Web Search: Powered by Brave Search API
-  - Memory: Persistent memory storage for conversations
-- **A2A Native**: Designed to work seamlessly with the A2A protocol, making it easy to connect and communicate with other agents
+  - Memory (Work in Progress): Persistent memory storage for conversations
+- **A2A Native**: Designed to work seamlessly with the A2A protocol, making it easy to connect and communicate with other agents using A2A like LangGraph, n8n and many more
+- **Remote MCP**: Connect any remote MCP server like Github, Zapier or your own custom server
 - **Containerized**: Each agent stores state in a local SQLite database for portability
-- **Remote MCP**: Connect any remote MCP server
-- **No Code Required**: Create agents using a simple web interface or soon configuration file
+- **No Code Required**: Create agents using a simple web interface or configuration file
 
 ## 🚀 Quick Start
 
@@ -49,16 +49,9 @@ ADMIN_PASSWORD=admin
    - Configuration UI: http://localhost:8080/editor
    - Agent endpoint: http://localhost:8080
 
-## 🔗 Agent-to-Agent Communication
+## Examples
 
-Connect agents together by adding A2A tools in the configuration panel:
-
-1. **Add A2A Tool**: In the tools section, click "Add Custom Tool"
-2. **Tool Type**: Select "a2a"
-3. **Agent URL**: Enter the target agent's URL (e.g., `http://localhost:8001`)
-4. **Save**: The tool will be available to your agent
-
-Your agent can now communicate with other A2A-compatible agents!
+Explore the [examples directory](./examples) for pre-configured agents like a GitHub Manager and a multi-agent setup.
 
 ## License
 
