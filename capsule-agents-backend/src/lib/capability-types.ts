@@ -8,7 +8,7 @@ export interface BaseCapability {
 // Prebuilt capabilities - these are capabilities that have code inside the app
 export interface PrebuiltCapability extends BaseCapability {
   type: "prebuilt"
-  subtype: "file_access" | "web_search" | "memory"
+  subtype: "exec" | "web_search" | "memory"
 }
 
 // A2A capabilities - these represent connections to other AI agents via the a2a protocol

@@ -7,7 +7,7 @@ import { StreamableHTTPClientTransport } from "mcp/client/streamableHttp.js"
 import { z } from "zod"
 import { executeA2ACall } from "../capabilities/a2a.ts"
 import { webSearchSkill, webSearchTool } from "../capabilities/brave-search.ts"
-import { fileAccessSkill, fileAccessTool } from "../capabilities/file-access.ts"
+import { execSkill, execTool } from "../capabilities/exec.ts"
 import { memorySkill, memoryTool } from "../capabilities/memory.ts"
 import { contextRepository } from "../repositories/context.repository.ts"
 import { A2AMessageRepository } from "../repositories/message.repository.ts"
@@ -139,8 +139,8 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
     for (const capability of agentInfo.capabilities) {
       if (capability.type === "prebuilt") {
         switch (capability.subtype) {
-          case "file_access":
-            capabilities.fileAccess = fileAccessTool
+          case "exec":
+            capabilities.exec = execTool
             break
           case "web_search":
             capabilities.webSearch = webSearchTool
@@ -265,8 +265,8 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
     const availableCapabilities = await this.getAvailableTools()
     const skills: A2A.AgentSkill[] = []
 
-    if ("fileAccess" in availableCapabilities) {
-      skills.push(fileAccessSkill)
+    if ("exec" in availableCapabilities) {
+      skills.push(execSkill)
     }
     if ("webSearch" in availableCapabilities) {
       skills.push(webSearchSkill)

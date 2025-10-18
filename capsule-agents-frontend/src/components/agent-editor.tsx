@@ -83,7 +83,7 @@ export default function AgentEditor() {
   const [mcpHeaders, setMcpHeaders] = useState<Record<string, string>>({}) // For MCP headers
 
   // Prebuilt capabilities state
-  const [fileAccessEnabled, setFileAccessEnabled] = useState(false)
+  const [execEnabled, setExecEnabled] = useState(false)
   const [webSearchEnabled, setWebSearchEnabled] = useState(false)
   const [memoryEnabled, setMemoryEnabled] = useState(false)
 
@@ -198,10 +198,10 @@ export default function AgentEditor() {
 
         // Set prebuilt capability states based on existing capabilities
         const currentCapabilities = agentInfo.capabilities || []
-        setFileAccessEnabled(
+        setExecEnabled(
           currentCapabilities.some((capability) =>
             isPrebuiltCapability(capability) &&
-            capability.subtype === "file_access" && capability.enabled
+            capability.subtype === "exec" && capability.enabled
           ),
         )
         setWebSearchEnabled(
@@ -422,13 +422,13 @@ export default function AgentEditor() {
 
   // Handle prebuilt capability toggles
   const handlePrebuiltCapabilityToggle = (
-    subtype: "file_access" | "web_search" | "memory",
+    subtype: "exec" | "web_search" | "memory",
     enabled: boolean,
   ) => {
     const capabilityConfig = {
-      file_access: {
-        name: "file_access",
-        displayName: "File Access",
+      exec: {
+        name: "exec",
+        displayName: "Exec",
       },
       web_search: {
         name: "web_search",
@@ -478,7 +478,7 @@ export default function AgentEditor() {
     setCapabilities(newCapabilities)
 
     // Update the toggle state
-    if (subtype === "file_access") setFileAccessEnabled(enabled)
+    if (subtype === "exec") setExecEnabled(enabled)
     else if (subtype === "web_search") setWebSearchEnabled(enabled)
     else if (subtype === "memory") setMemoryEnabled(enabled)
 
@@ -628,15 +628,15 @@ export default function AgentEditor() {
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
                   <div className="space-y-0.5">
-                    <Label className="text-sm">File Access</Label>
+                    <Label className="text-sm">Exec</Label>
                     <p className="text-xs text-muted-foreground">
-                      Allows the agent to read and write files
+                      Allows the agent to execute shell commands
                     </p>
                   </div>
                   <Switch
-                    checked={fileAccessEnabled}
+                    checked={execEnabled}
                     onCheckedChange={(checked) =>
-                      handlePrebuiltCapabilityToggle("file_access", checked)}
+                      handlePrebuiltCapabilityToggle("exec", checked)}
                   />
                 </div>
                 <div className="flex items-center justify-between">

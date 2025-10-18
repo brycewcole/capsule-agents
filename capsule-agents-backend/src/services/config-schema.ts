@@ -16,7 +16,7 @@ export const CapabilitiesConfigSchema = z.object({
     enabled: false,
   }),
   memory: BuiltInCapabilityConfigSchema.optional().default({ enabled: false }),
-  file_access: BuiltInCapabilityConfigSchema.optional().default({
+  exec: BuiltInCapabilityConfigSchema.optional().default({
     enabled: false,
   }),
 })
@@ -42,7 +42,7 @@ export const ConfigFileSchema = z.object({
     tools: {
       web_search: { enabled: false },
       memory: { enabled: false },
-      file_access: { enabled: false },
+      exec: { enabled: false },
     },
     a2a: [],
   }),
@@ -73,7 +73,7 @@ export type ConfigFile = z.infer<typeof ConfigFileSchema>
 export const BUILTIN_CAPABILITIES = [
   "web_search",
   "memory",
-  "file_access",
+  "exec",
 ] as const
 export type BuiltInCapabilityName = typeof BUILTIN_CAPABILITIES[number]
 
@@ -146,7 +146,7 @@ export function transformAgentInfoToConfig(agentInfo: AgentInfo): {
   const tools: CapabilitiesConfig = {
     web_search: { enabled: false },
     memory: { enabled: false },
-    file_access: { enabled: false },
+    exec: { enabled: false },
   }
   const mcpServers: Record<
     string,
