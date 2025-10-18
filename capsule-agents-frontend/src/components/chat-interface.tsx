@@ -210,7 +210,8 @@ const looksLikeHtml = (content: string): boolean => {
     return true
   }
   const blockTagPattern = /<\/(div|section|main|article|header|footer|nav)>/
-  const openingBlockTagPattern = /<(div|section|main|article|header|footer|nav)(\s|>)/
+  const openingBlockTagPattern =
+    /<(div|section|main|article|header|footer|nav)(\s|>)/
   return (
     (trimmed.includes("<body") && trimmed.includes("</body>")) ||
     (openingBlockTagPattern.test(trimmed) && blockTagPattern.test(trimmed))
@@ -222,8 +223,7 @@ const getArtifactContentInfo = (artifact: Artifact) => {
   const metadata = getTextPartMetadata(artifact)
   const providedMime = inferMimeTypeFromMetadata(metadata)
   const normalizedMime = providedMime?.toLowerCase()
-  const isHtml =
-    (normalizedMime ? normalizedMime.includes("html") : false) ||
+  const isHtml = (normalizedMime ? normalizedMime.includes("html") : false) ||
     looksLikeHtml(textContent)
   const fallbackMime = isHtml ? "text/html" : "text/plain"
 
@@ -250,8 +250,7 @@ const createArtifactFileName = (
   artifact: Artifact,
   info: ReturnType<typeof getArtifactContentInfo>,
 ): string => {
-  const baseSource =
-    (artifact.name && artifact.name.trim()) ||
+  const baseSource = (artifact.name && artifact.name.trim()) ||
     artifact.artifactId ||
     "artifact"
   const sanitizedBase = baseSource
@@ -346,8 +345,9 @@ export default function ChatInterface({
   const [connectionError, setConnectionError] = useState<
     JSONRPCError | Error | string | null
   >(null)
-  const [previewArtifact, setPreviewArtifact] =
-    useState<ArtifactPreviewState | null>(null)
+  const [previewArtifact, setPreviewArtifact] = useState<
+    ArtifactPreviewState | null
+  >(null)
   // Use prop contextId if provided, otherwise defer assignment to backend on first message
   const [contextId, setContextId] = useState<string | null>(
     propContextId || null,
@@ -1466,7 +1466,8 @@ export default function ChatInterface({
                                                 <div className="min-w-0 space-y-1">
                                                   <div className="flex items-center gap-2 text-sm font-semibold text-indigo-900 dark:text-indigo-100">
                                                     <span>
-                                                      📦 {artifact.name || "Artifact"}
+                                                      📦 {artifact.name ||
+                                                        "Artifact"}
                                                     </span>
                                                     <Badge
                                                       variant="secondary"
@@ -1475,9 +1476,11 @@ export default function ChatInterface({
                                                       Artifact
                                                     </Badge>
                                                   </div>
-                                                  {artifactInfo.displayMimeType && (
+                                                  {artifactInfo
+                                                    .displayMimeType && (
                                                     <div className="text-[11px] uppercase tracking-wide text-indigo-700/70 dark:text-indigo-200/70">
-                                                      {artifactInfo.displayMimeType}
+                                                      {artifactInfo
+                                                        .displayMimeType}
                                                     </div>
                                                   )}
                                                   {artifact.description && (
@@ -1614,7 +1617,9 @@ export default function ChatInterface({
               <DialogHeader className="text-left">
                 <DialogTitle>{previewArtifact.title}</DialogTitle>
                 {previewArtifact.description && (
-                  <DialogDescription>{previewArtifact.description}</DialogDescription>
+                  <DialogDescription>
+                    {previewArtifact.description}
+                  </DialogDescription>
                 )}
               </DialogHeader>
               <div className="rounded-md border border-indigo-200/70 dark:border-indigo-800/70 bg-background/60 overflow-hidden">
