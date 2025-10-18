@@ -17,6 +17,7 @@ import { AgentConfigService } from "../services/agent-config.ts"
 import { ProviderService } from "../services/provider-service.ts"
 import { TaskService } from "../services/task.service.ts"
 import { VercelService } from "../services/vercel.service.ts"
+import { artifactTool } from "./artifact-tool.ts"
 import { isMCPCapability } from "./capability-types.ts"
 import { AnyToolCall, AnyToolResult } from "./types.ts"
 
@@ -24,6 +25,14 @@ interface MCPToolsDisposable {
   tools: Record<string, Vercel.Tool>
   [Symbol.asyncDispose](): Promise<void>
 }
+
+// Type-safe tool set for artifact support
+type ArtifactToolSet = {
+  createArtifact: typeof artifactTool
+}
+
+type ArtifactToolCall = Vercel.TypedToolCall<ArtifactToolSet>
+type ArtifactToolResult = Vercel.TypedToolResult<ArtifactToolSet>
 
 type StreamEmitUnion =
   | A2A.Task
@@ -320,11 +329,11 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
     return { tools, mcpTools, model, agentInfo, cleanedMessages }
   }
 
-  private createOnStepFinishHandler(
+  private createOnStepFinishHandler<TOOLS extends Vercel.ToolSet>(
     params: A2A.MessageSendParams,
     currentTaskRef: { current: A2A.Task | null },
     statusHandler: StatusUpdateHandler,
-  ): (stepResult: Vercel.StepResult<Record<string, Vercel.Tool>>) => void {
+  ): (stepResult: Vercel.StepResult<TOOLS>) => void {
     return (stepResult) => {
       const { text, toolCalls, toolResults, finishReason } = stepResult
       log.info(
@@ -364,6 +373,27 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
             }`,
           )
         }
+
+        console.log("checking: " + JSON.stringify(toolResults))
+        for (const toolResult of toolResults || []) {
+          if (
+            toolResult.dynamic !== true &&
+            toolResult.toolName === "createArtifact" && currentTaskRef.current
+          ) {
+            const { name, description, content } = toolResult.input
+
+            const artifactEvent = this.taskService.createArtifact(
+              currentTaskRef.current,
+              {
+                name,
+                description,
+                parts: [{ kind: "text", text: content }],
+              },
+            )
+            statusHandler(artifactEvent)
+          }
+        }
+
         const toolPreamble = text
           ? text
           : `Used ${toolCalls.map((tc) => tc.toolName).join(", ")}`
@@ -387,6 +417,16 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
       log.info(
         `Stream finished - responseMessage: ${
           this.truncateForLog(responseMessage)
+        }`,
+      )
+      log.info(
+        `Response message parts: ${
+          JSON.stringify(
+            responseMessage.parts.map((p) => ({
+              type: p.type,
+              state: (p as Record<string, unknown>).state,
+            })),
+          )
         }`,
       )
 
@@ -539,9 +579,16 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
       const currentTaskRef = { current: null as A2A.Task | null }
       const finalMessageHolder = { message: null as A2A.Message | null }
 
+      const modelMessages = Vercel.convertToModelMessages(cleanedMessages)
+      log.info(
+        `Sending ${modelMessages.length} messages to model`,
+      )
+      log.info(
+        `Model messages: ${JSON.stringify(modelMessages, null, 2)}`,
+      )
       log.debug("Sending message to model:", {
         contextId: params.message.contextId,
-        messages: Vercel.convertToModelMessages(cleanedMessages),
+        messages: modelMessages,
         tools: Object.keys(tools),
         systemPrompt: agentInfo.description,
       })
@@ -554,7 +601,10 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
         system: agentInfo.description,
         model,
         messages: Vercel.convertToModelMessages(cleanedMessages),
-        tools: tools,
+        tools: {
+          ...tools,
+          createArtifact: artifactTool,
+        },
         stopWhen: Vercel.stepCountIs(10),
         onStepFinish: this.createOnStepFinishHandler(
           params,
@@ -635,7 +685,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
   }
 
   // Utility to truncate long JSON strings for logging
-  private truncateForLog(obj: unknown, maxLen = 100): string {
+  private truncateForLog(obj: unknown, maxLen = 1000): string {
     const str = typeof obj === "string" ? obj : JSON.stringify(obj)
     return str.length > maxLen ? str.slice(0, maxLen) + "..." : str
   }
@@ -688,9 +738,16 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
 
       log.info(cleanedMessages)
 
+      const modelMessages = Vercel.convertToModelMessages(cleanedMessages)
+      log.info(
+        `Sending ${modelMessages.length} messages to model (streaming)`,
+      )
+      log.info(
+        `Model messages: ${JSON.stringify(modelMessages, null, 2)}`,
+      )
       log.debug("Sending message to model:", {
         contextId: params.message.contextId,
-        messages: Vercel.convertToModelMessages(cleanedMessages),
+        messages: modelMessages,
         tools: Object.keys(tools),
         systemPrompt: agentInfo.description,
       })
@@ -702,8 +759,11 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
         },
         system: agentInfo.description,
         model,
-        messages: Vercel.convertToModelMessages(cleanedMessages),
-        tools: tools,
+        messages: modelMessages,
+        tools: {
+          ...tools,
+          createArtifact: artifactTool,
+        },
         stopWhen: Vercel.stepCountIs(10),
         onStepFinish: this.createOnStepFinishHandler(
           params,

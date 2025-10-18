@@ -133,23 +133,33 @@ export default function AgentEditor() {
     }
   }
 
-  const autoSaveAgent = async (nextCapabilities?: Capability[]) => {
+  const autoSaveAgent = async (
+    nextCapabilities?: Capability[],
+    nextModel?: Model | null,
+    nextName?: string,
+    nextDescription?: string,
+  ) => {
     try {
+      const finalName = nextName ?? name
+      const finalDescription = nextDescription ?? description
+      const finalModel = nextModel ?? selectedModel
+      const finalCapabilities = nextCapabilities ?? capabilities
+
       const agentInfo: AgentInfo = {
-        name,
-        description,
-        modelName: selectedModel?.id || "",
+        name: finalName,
+        description: finalDescription,
+        modelName: finalModel?.id || "",
         modelParameters: {},
-        capabilities: nextCapabilities ?? capabilities,
+        capabilities: finalCapabilities,
       }
       await updateAgentInfo(agentInfo)
 
       // Update original state after successful save
       setOriginalState({
-        name,
-        description,
-        modelName: selectedModel?.id || "",
-        capabilities: [...(nextCapabilities ?? capabilities)],
+        name: finalName,
+        description: finalDescription,
+        modelName: finalModel?.id || "",
+        capabilities: [...finalCapabilities],
       })
     } catch (error) {
       console.error("Error auto-saving agent:", error)
@@ -229,8 +239,8 @@ export default function AgentEditor() {
 
   const handleModelChange = (model: Model) => {
     setSelectedModel(model)
-    // Auto-save when model changes
-    setTimeout(() => autoSaveAgent(), 0)
+    // Auto-save when model changes, passing the model explicitly to avoid stale state
+    setTimeout(() => autoSaveAgent(undefined, model), 0)
   }
   const handleModelSelect = (modelId: string) => {
     const model = availableModels.find((m) => m.id === modelId)
