@@ -1,5 +1,6 @@
 import { JsonRpcTransportHandler } from "@a2a-js/sdk/server"
 import * as log from "@std/log"
+import { APICallError } from "ai"
 import { Hono } from "hono"
 import { streamSSE } from "hono/streaming"
 import { CapsuleAgentA2ARequestHandler } from "../lib/a2a-request-handler.ts"
@@ -11,6 +12,40 @@ function isAsyncGenerator(
     value && typeof value === "object" && value !== null &&
       (Symbol.asyncIterator in value),
   )
+}
+
+async function handleStreamError(
+  error: unknown,
+  stream: { writeSSE: (data: { data: string; id: string }) => Promise<void> },
+  requestId: unknown,
+): Promise<void> {
+  if (APICallError.isInstance(error)) {
+    log.error("AI API Call Error details:", {
+      url: error.url,
+      statusCode: error.statusCode,
+      responseBody: error.responseBody,
+    })
+    await stream.writeSSE({
+      data: JSON.stringify({
+        jsonrpc: "2.0",
+        id: requestId,
+        error: { code: -32603, message: error.message },
+      }),
+      id: "error",
+    })
+  } else {
+    await stream.writeSSE({
+      data: JSON.stringify({
+        jsonrpc: "2.0",
+        id: requestId,
+        error: {
+          code: -32603,
+          message: error instanceof Error ? error.message : "Internal error",
+        },
+      }),
+      id: "error",
+    })
+  }
 }
 
 export function createA2AController(deps: {
@@ -58,25 +93,28 @@ export function createA2AController(deps: {
       const result = await deps.jsonRpcHandler.handle(body)
       if (isAsyncGenerator(result)) {
         return streamSSE(c, async (stream) => {
+          let eventId = 0
           try {
-            let eventId = 0
             for await (const event of result) {
               await stream.writeSSE({
                 data: JSON.stringify(event),
                 id: String(eventId++),
               })
             }
-          } catch (_err) {
-            await stream.writeSSE({
-              data: JSON.stringify({
-                jsonrpc: "2.0",
-                id: body.id,
-                error: { code: -32603, message: "Streaming error" },
-              }),
-              id: "error",
-            })
+          } catch (iterationError) {
+            // Extract the actual error if it's wrapped in an error property
+            const error =
+              iterationError && typeof iterationError === "object" &&
+                "error" in iterationError
+                ? iterationError.error
+                : iterationError
+            await handleStreamError(error, stream, body.id)
           }
+        }, async (e, stream) => {
+          await handleStreamError(e, stream, body.id)
         })
+      } else {
+        log.error("Result is not an AsyncGenerator")
       }
       return c.json(result)
     } catch (_error) {
