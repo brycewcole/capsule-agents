@@ -1,15 +1,18 @@
 <div align="center">
   <img src="capsule_agents_alpha.png" alt="Capsule Agents Logo" width="240" height="240">
   <h1>Capsule Agents</h1>
-  <p><em>Simple, containerized agents for an A2A world.</em></p>
+  <p><em>containerized agents with simple setup and native A2A interoperability</em></p>
 </div>
 
 ![status](https://img.shields.io/badge/status-under_development-yellow)
-![not ready](https://img.shields.io/badge/production-ready_❌-red)
+![version](https://img.shields.io/docker/v/brycewcole/capsule-agents)
+![Discord](https://img.shields.io/discord/1429513340975190320?style=plastic&logo=discord&logoColor=blueviolet&label=Join%20Us!&labelColor=lightgrey)
 
 > ⚠️ **This project is in an early development stage and is not stable for production use.**
 
-Capsule Agents is a framework designed with the goal of making it as easy as possible to create [Agent-to-Agent (A2A) protocol](https://github.com/google/A2A) compatible agents.
+Capsule Agents is designed to make it as easy as possible to create [Agent-to-Agent (A2A) protocol](https://github.com/google/A2A) compatible agents. 
+
+**Built for the middle third of agent use cases**: beyond basic chat apps, short of full-scale frameworks.
 
 ## Features
 
@@ -22,7 +25,7 @@ Capsule Agents is a framework designed with the goal of making it as easy as pos
 - **Containerized**: Each agent stores state in a local SQLite database for portability
 - **No Code Required**: Create agents using a simple web interface or configuration file
 
-## 🚀 Quick Start
+## Quick Start
 
 1. Ensure [Docker](https://docs.docker.com/get-started/get-docker/) is installed on your system
 
