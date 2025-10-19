@@ -10,7 +10,7 @@
 
 > ⚠️ **This project is in an early development stage and is not stable for production use.**
 
-Capsule Agents is designed to make it as easy as possible to create [Agent-to-Agent (A2A) protocol](https://github.com/google/A2A) compatible agents. 
+Capsule Agents is designed to make it as easy as possible to create [Agent-to-Agent (A2A) protocol](https://github.com/google/A2A) compatible agents.
 
 **Built for the middle third of agent use cases**: beyond basic chat apps, short of full-scale frameworks.
 
