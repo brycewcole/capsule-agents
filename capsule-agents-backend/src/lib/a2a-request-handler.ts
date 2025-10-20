@@ -474,12 +474,8 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
           // Just consume to ensure onFinish fires
         }
         log.info("UI message stream consumed successfully")
-      } catch (error) {
-        console.log(error)
-        log.error(
-          "Error stack:",
-          error instanceof Error ? error.stack : "No stack available",
-        )
+      } catch (_error) {
+        log.error("🚨 UI Stream Message ERROR, Swallowing")
       }
     })()
   }
@@ -540,11 +536,6 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
   }
 
   private handleStreamError(error: unknown): never {
-    log.error("🚨 STREAM MESSAGE ERROR:", this.truncateForLog(error))
-    log.error(
-      "Error stack:",
-      error instanceof Error ? error.stack : "No stack available",
-    )
     throw error
   }
 
@@ -597,6 +588,9 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
         experimental_telemetry: {
           isEnabled: true,
           functionId: "chat-complete",
+        },
+        onError: (error) => {
+          this.handleStreamError(error)
         },
         system: agentInfo.description,
         model,
@@ -765,6 +759,9 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
           createArtifact: artifactTool,
         },
         stopWhen: Vercel.stepCountIs(10),
+        onError: (error) => {
+          this.handleStreamError(error)
+        },
         onStepFinish: this.createOnStepFinishHandler(
           params,
           currentTaskRef,
