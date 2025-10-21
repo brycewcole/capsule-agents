@@ -6,7 +6,17 @@ import { Textarea } from "./ui/textarea.tsx"
 import { Label } from "./ui/label.tsx"
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card.tsx"
 import { Button } from "./ui/button.tsx"
-import { Edit, HelpCircle, Loader2, Plus, Save, Trash } from "lucide-react"
+import {
+  Brain,
+  Edit,
+  HelpCircle,
+  Loader2,
+  Plus,
+  Save,
+  Search,
+  Terminal,
+  Trash,
+} from "lucide-react"
 import { toast } from "sonner"
 import {
   Tooltip,
@@ -83,7 +93,7 @@ export default function AgentEditor() {
   const [mcpHeaders, setMcpHeaders] = useState<Record<string, string>>({}) // For MCP headers
 
   // Prebuilt capabilities state
-  const [fileAccessEnabled, setFileAccessEnabled] = useState(false)
+  const [execEnabled, setExecEnabled] = useState(false)
   const [webSearchEnabled, setWebSearchEnabled] = useState(false)
   const [memoryEnabled, setMemoryEnabled] = useState(false)
 
@@ -198,10 +208,10 @@ export default function AgentEditor() {
 
         // Set prebuilt capability states based on existing capabilities
         const currentCapabilities = agentInfo.capabilities || []
-        setFileAccessEnabled(
+        setExecEnabled(
           currentCapabilities.some((capability) =>
             isPrebuiltCapability(capability) &&
-            capability.subtype === "file_access" && capability.enabled
+            capability.subtype === "exec" && capability.enabled
           ),
         )
         setWebSearchEnabled(
@@ -422,13 +432,13 @@ export default function AgentEditor() {
 
   // Handle prebuilt capability toggles
   const handlePrebuiltCapabilityToggle = (
-    subtype: "file_access" | "web_search" | "memory",
+    subtype: "exec" | "web_search" | "memory",
     enabled: boolean,
   ) => {
     const capabilityConfig = {
-      file_access: {
-        name: "file_access",
-        displayName: "File Access",
+      exec: {
+        name: "exec",
+        displayName: "Interactive Shell",
       },
       web_search: {
         name: "web_search",
@@ -478,7 +488,7 @@ export default function AgentEditor() {
     setCapabilities(newCapabilities)
 
     // Update the toggle state
-    if (subtype === "file_access") setFileAccessEnabled(enabled)
+    if (subtype === "exec") setExecEnabled(enabled)
     else if (subtype === "web_search") setWebSearchEnabled(enabled)
     else if (subtype === "memory") setMemoryEnabled(enabled)
 
@@ -622,29 +632,33 @@ export default function AgentEditor() {
           <CardContent className="space-y-4">
             {/* Prebuilt Capabilities Toggles */}
             <div className="space-y-3 p-4 bg-muted/50 rounded-lg">
-              <Label className="text-sm font-medium">
-                Prebuilt Capabilities
-              </Label>
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
-                  <div className="space-y-0.5">
-                    <Label className="text-sm">File Access</Label>
-                    <p className="text-xs text-muted-foreground">
-                      Allows the agent to read and write files
-                    </p>
+                  <div className="flex items-center gap-3">
+                    <Terminal className="h-5 w-5 text-muted-foreground" />
+                    <div className="space-y-0.5">
+                      <Label className="text-sm">Interactive Shell</Label>
+                      <p className="text-xs text-muted-foreground">
+                        Allows the agent to execute shell commands in its
+                        container
+                      </p>
+                    </div>
                   </div>
                   <Switch
-                    checked={fileAccessEnabled}
+                    checked={execEnabled}
                     onCheckedChange={(checked) =>
-                      handlePrebuiltCapabilityToggle("file_access", checked)}
+                      handlePrebuiltCapabilityToggle("exec", checked)}
                   />
                 </div>
                 <div className="flex items-center justify-between">
-                  <div className="space-y-0.5">
-                    <Label className="text-sm">Web Search</Label>
-                    <p className="text-xs text-muted-foreground">
-                      Enables web search capabilities using Brave Search
-                    </p>
+                  <div className="flex items-center gap-3">
+                    <Search className="h-5 w-5 text-muted-foreground" />
+                    <div className="space-y-0.5">
+                      <Label className="text-sm">Web Search</Label>
+                      <p className="text-xs text-muted-foreground">
+                        Enables web search capabilities
+                      </p>
+                    </div>
                   </div>
                   <Switch
                     checked={webSearchEnabled}
@@ -652,17 +666,26 @@ export default function AgentEditor() {
                       handlePrebuiltCapabilityToggle("web_search", checked)}
                   />
                 </div>
-                <div className="flex items-center justify-between">
-                  <div className="space-y-0.5">
-                    <Label className="text-sm">Memory</Label>
-                    <p className="text-xs text-muted-foreground">
-                      Enables persistent memory storage for the agent
-                    </p>
+                <div className="flex items-center justify-between opacity-60">
+                  <div className="flex items-center gap-3">
+                    <Brain className="h-5 w-5 text-muted-foreground" />
+                    <div className="space-y-0.5">
+                      <div className="flex items-center gap-2">
+                        <Label className="text-sm">Memory</Label>
+                        <span className="text-xs bg-blue-100 text-blue-800 px-2 py-0.5 rounded">
+                          Coming Soon
+                        </span>
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        Enables persistent memory storage for the agent
+                      </p>
+                    </div>
                   </div>
                   <Switch
                     checked={memoryEnabled}
                     onCheckedChange={(checked) =>
                       handlePrebuiltCapabilityToggle("memory", checked)}
+                    disabled
                   />
                 </div>
               </div>
