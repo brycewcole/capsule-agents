@@ -6,7 +6,7 @@ import { Textarea } from "./ui/textarea.tsx"
 import { Label } from "./ui/label.tsx"
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card.tsx"
 import { Button } from "./ui/button.tsx"
-import { Edit, HelpCircle, Loader2, Plus, Save, Trash } from "lucide-react"
+import { Edit, HelpCircle, Loader2, Plus, Save, Trash, Terminal, Search, Brain } from "lucide-react"
 import { toast } from "sonner"
 import {
   Tooltip,
@@ -428,7 +428,7 @@ export default function AgentEditor() {
     const capabilityConfig = {
       exec: {
         name: "exec",
-        displayName: "Exec",
+        displayName: "Interactive Shell",
       },
       web_search: {
         name: "web_search",
@@ -627,11 +627,14 @@ export default function AgentEditor() {
               </Label>
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
-                  <div className="space-y-0.5">
-                    <Label className="text-sm">Exec</Label>
-                    <p className="text-xs text-muted-foreground">
-                      Allows the agent to execute shell commands
-                    </p>
+                  <div className="flex items-center gap-3">
+                    <Terminal className="h-5 w-5 text-muted-foreground" />
+                    <div className="space-y-0.5">
+                      <Label className="text-sm">Interactive Shell</Label>
+                      <p className="text-xs text-muted-foreground">
+                        Allows the agent to execute shell commands
+                      </p>
+                    </div>
                   </div>
                   <Switch
                     checked={execEnabled}
@@ -640,11 +643,14 @@ export default function AgentEditor() {
                   />
                 </div>
                 <div className="flex items-center justify-between">
-                  <div className="space-y-0.5">
-                    <Label className="text-sm">Web Search</Label>
-                    <p className="text-xs text-muted-foreground">
-                      Enables web search capabilities using Brave Search
-                    </p>
+                  <div className="flex items-center gap-3">
+                    <Search className="h-5 w-5 text-muted-foreground" />
+                    <div className="space-y-0.5">
+                      <Label className="text-sm">Web Search</Label>
+                      <p className="text-xs text-muted-foreground">
+                        Enables web search capabilities
+                      </p>
+                    </div>
                   </div>
                   <Switch
                     checked={webSearchEnabled}
@@ -652,17 +658,26 @@ export default function AgentEditor() {
                       handlePrebuiltCapabilityToggle("web_search", checked)}
                   />
                 </div>
-                <div className="flex items-center justify-between">
-                  <div className="space-y-0.5">
-                    <Label className="text-sm">Memory</Label>
-                    <p className="text-xs text-muted-foreground">
-                      Enables persistent memory storage for the agent
-                    </p>
+                <div className="flex items-center justify-between opacity-60">
+                  <div className="flex items-center gap-3">
+                    <Brain className="h-5 w-5 text-muted-foreground" />
+                    <div className="space-y-0.5">
+                      <div className="flex items-center gap-2">
+                        <Label className="text-sm">Memory</Label>
+                        <span className="text-xs bg-blue-100 text-blue-800 px-2 py-0.5 rounded">
+                          Coming Soon
+                        </span>
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        Enables persistent memory storage for the agent
+                      </p>
+                    </div>
                   </div>
                   <Switch
                     checked={memoryEnabled}
                     onCheckedChange={(checked) =>
                       handlePrebuiltCapabilityToggle("memory", checked)}
+                    disabled
                   />
                 </div>
               </div>
