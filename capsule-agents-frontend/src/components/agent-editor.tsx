@@ -622,9 +622,6 @@ export default function AgentEditor() {
           <CardContent className="space-y-4">
             {/* Prebuilt Capabilities Toggles */}
             <div className="space-y-3 p-4 bg-muted/50 rounded-lg">
-              <Label className="text-sm font-medium">
-                Prebuilt Capabilities
-              </Label>
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
