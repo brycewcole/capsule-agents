@@ -6,7 +6,17 @@ import { Textarea } from "./ui/textarea.tsx"
 import { Label } from "./ui/label.tsx"
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card.tsx"
 import { Button } from "./ui/button.tsx"
-import { Edit, HelpCircle, Loader2, Plus, Save, Trash, Terminal, Search, Brain } from "lucide-react"
+import {
+  Brain,
+  Edit,
+  HelpCircle,
+  Loader2,
+  Plus,
+  Save,
+  Search,
+  Terminal,
+  Trash,
+} from "lucide-react"
 import { toast } from "sonner"
 import {
   Tooltip,
@@ -629,7 +639,8 @@ export default function AgentEditor() {
                     <div className="space-y-0.5">
                       <Label className="text-sm">Interactive Shell</Label>
                       <p className="text-xs text-muted-foreground">
-                        Allows the agent to execute shell commands in its container
+                        Allows the agent to execute shell commands in its
+                        container
                       </p>
                     </div>
                   </div>
