@@ -632,7 +632,7 @@ export default function AgentEditor() {
                     <div className="space-y-0.5">
                       <Label className="text-sm">Interactive Shell</Label>
                       <p className="text-xs text-muted-foreground">
-                        Allows the agent to execute shell commands
+                        Allows the agent to execute shell commands in its container
                       </p>
                     </div>
                   </div>
