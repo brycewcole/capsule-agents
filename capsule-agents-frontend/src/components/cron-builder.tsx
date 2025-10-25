@@ -134,6 +134,14 @@ export function CronBuilder({ value, onChange }: CronBuilderProps) {
     customExpression,
   ])
 
+  const formatTime = (hour: number, minute: number): string => {
+    const period = hour >= 12 ? "PM" : "AM"
+    const displayHour = hour === 0 ? 12 : hour > 12 ? hour - 12 : hour
+    return `${displayHour.toString().padStart(2, "0")}:${
+      minute.toString().padStart(2, "0")
+    } ${period}`
+  }
+
   const getHumanReadable = (): string => {
     switch (preset) {
       case "minute":
@@ -149,9 +157,7 @@ export function CronBuilder({ value, onChange }: CronBuilderProps) {
           }`
         }
       case "daily":
-        return `Daily at ${dailyHour.toString().padStart(2, "0")}:${
-          dailyMinute.toString().padStart(2, "0")
-        }`
+        return `Daily at ${formatTime(dailyHour, dailyMinute)}`
       case "weekly":
         const days = [
           "Sunday",
@@ -163,12 +169,12 @@ export function CronBuilder({ value, onChange }: CronBuilderProps) {
           "Saturday",
         ]
         return `Every ${days[weeklyDay]} at ${
-          weeklyHour.toString().padStart(2, "0")
-        }:${weeklyMinute.toString().padStart(2, "0")}`
+          formatTime(weeklyHour, weeklyMinute)
+        }`
       case "monthly":
         return `Monthly on day ${monthlyDay} at ${
-          monthlyHour.toString().padStart(2, "0")
-        }:${monthlyMinute.toString().padStart(2, "0")}`
+          formatTime(monthlyHour, monthlyMinute)
+        }`
       case "custom":
         return customExpression || "Custom expression"
     }
@@ -176,24 +182,46 @@ export function CronBuilder({ value, onChange }: CronBuilderProps) {
 
   return (
     <div className="space-y-4">
-      <div className="space-y-2">
-        <Label>Schedule Type</Label>
-        <Select
-          value={preset}
-          onValueChange={(value) => setPreset(value as PresetType)}
-        >
-          <SelectTrigger>
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="minute">Every Minute</SelectItem>
-            <SelectItem value="hourly">Hourly</SelectItem>
-            <SelectItem value="daily">Daily</SelectItem>
-            <SelectItem value="weekly">Weekly</SelectItem>
-            <SelectItem value="monthly">Monthly</SelectItem>
-            <SelectItem value="custom">Custom</SelectItem>
-          </SelectContent>
-        </Select>
+      <div className="grid grid-cols-2 gap-4">
+        <div className="space-y-2">
+          <Label>Schedule Type</Label>
+          <Select
+            value={preset}
+            onValueChange={(value) => setPreset(value as PresetType)}
+          >
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="minute">Every Minute</SelectItem>
+              <SelectItem value="hourly">Hourly</SelectItem>
+              <SelectItem value="daily">Daily</SelectItem>
+              <SelectItem value="weekly">Weekly</SelectItem>
+              <SelectItem value="monthly">Monthly</SelectItem>
+              <SelectItem value="custom">Custom</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
+        {preset === "daily" && (
+          <div className="space-y-2">
+            <Label htmlFor="daily-time">Time</Label>
+            <Input
+              type="time"
+              id="daily-time"
+              value={`${dailyHour.toString().padStart(2, "0")}:${
+                dailyMinute.toString().padStart(2, "0")
+              }`}
+              onChange={(e) => {
+                const [hours, minutes] = (e.target as HTMLInputElement).value
+                  .split(":")
+                setDailyHour(parseInt(hours) || 0)
+                setDailyMinute(parseInt(minutes) || 0)
+              }}
+              className="bg-background"
+            />
+          </div>
+        )}
       </div>
 
       {preset === "minute" && (
@@ -264,45 +292,8 @@ export function CronBuilder({ value, onChange }: CronBuilderProps) {
         </div>
       )}
 
-      {preset === "daily" && (
-        <div className="space-y-2">
-          <Label>Time</Label>
-          <div className="flex items-center gap-2">
-            <Input
-              type="number"
-              min={0}
-              max={23}
-              value={dailyHour}
-              onChange={(e) =>
-                setDailyHour(
-                  parseInt(
-                    (e.target as HTMLInputElement | HTMLTextAreaElement).value,
-                  ) || 0,
-                )}
-              className="w-24"
-              placeholder="Hour"
-            />
-            <span>:</span>
-            <Input
-              type="number"
-              min={0}
-              max={59}
-              value={dailyMinute}
-              onChange={(e) =>
-                setDailyMinute(
-                  parseInt(
-                    (e.target as HTMLInputElement | HTMLTextAreaElement).value,
-                  ) || 0,
-                )}
-              className="w-24"
-              placeholder="Minute"
-            />
-          </div>
-        </div>
-      )}
-
       {preset === "weekly" && (
-        <div className="space-y-4">
+        <div className="grid grid-cols-2 gap-4">
           <div className="space-y-2">
             <Label>Day of Week</Label>
             <Select
@@ -324,46 +315,27 @@ export function CronBuilder({ value, onChange }: CronBuilderProps) {
             </Select>
           </div>
           <div className="space-y-2">
-            <Label>Time</Label>
-            <div className="flex items-center gap-2">
-              <Input
-                type="number"
-                min={0}
-                max={23}
-                value={weeklyHour}
-                onChange={(e) =>
-                  setWeeklyHour(
-                    parseInt(
-                      (e.target as HTMLInputElement | HTMLTextAreaElement)
-                        .value,
-                    ) || 0,
-                  )}
-                className="w-24"
-                placeholder="Hour"
-              />
-              <span>:</span>
-              <Input
-                type="number"
-                min={0}
-                max={59}
-                value={weeklyMinute}
-                onChange={(e) =>
-                  setWeeklyMinute(
-                    parseInt(
-                      (e.target as HTMLInputElement | HTMLTextAreaElement)
-                        .value,
-                    ) || 0,
-                  )}
-                className="w-24"
-                placeholder="Minute"
-              />
-            </div>
+            <Label htmlFor="weekly-time">Time</Label>
+            <Input
+              type="time"
+              id="weekly-time"
+              value={`${weeklyHour.toString().padStart(2, "0")}:${
+                weeklyMinute.toString().padStart(2, "0")
+              }`}
+              onChange={(e) => {
+                const [hours, minutes] = (e.target as HTMLInputElement).value
+                  .split(":")
+                setWeeklyHour(parseInt(hours) || 0)
+                setWeeklyMinute(parseInt(minutes) || 0)
+              }}
+              className="bg-background"
+            />
           </div>
         </div>
       )}
 
       {preset === "monthly" && (
-        <div className="space-y-4">
+        <div className="grid grid-cols-2 gap-4">
           <div className="space-y-2">
             <Label>Day of Month</Label>
             <Input
@@ -377,44 +349,24 @@ export function CronBuilder({ value, onChange }: CronBuilderProps) {
                     (e.target as HTMLInputElement | HTMLTextAreaElement).value,
                   ) || 1,
                 )}
-              className="w-24"
             />
           </div>
           <div className="space-y-2">
-            <Label>Time</Label>
-            <div className="flex items-center gap-2">
-              <Input
-                type="number"
-                min={0}
-                max={23}
-                value={monthlyHour}
-                onChange={(e) =>
-                  setMonthlyHour(
-                    parseInt(
-                      (e.target as HTMLInputElement | HTMLTextAreaElement)
-                        .value,
-                    ) || 0,
-                  )}
-                className="w-24"
-                placeholder="Hour"
-              />
-              <span>:</span>
-              <Input
-                type="number"
-                min={0}
-                max={59}
-                value={monthlyMinute}
-                onChange={(e) =>
-                  setMonthlyMinute(
-                    parseInt(
-                      (e.target as HTMLInputElement | HTMLTextAreaElement)
-                        .value,
-                    ) || 0,
-                  )}
-                className="w-24"
-                placeholder="Minute"
-              />
-            </div>
+            <Label htmlFor="monthly-time">Time</Label>
+            <Input
+              type="time"
+              id="monthly-time"
+              value={`${monthlyHour.toString().padStart(2, "0")}:${
+                monthlyMinute.toString().padStart(2, "0")
+              }`}
+              onChange={(e) => {
+                const [hours, minutes] = (e.target as HTMLInputElement).value
+                  .split(":")
+                setMonthlyHour(parseInt(hours) || 0)
+                setMonthlyMinute(parseInt(minutes) || 0)
+              }}
+              className="bg-background"
+            />
           </div>
         </div>
       )}

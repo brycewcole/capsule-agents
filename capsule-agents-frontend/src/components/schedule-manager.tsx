@@ -117,8 +117,21 @@ export default function ScheduleManager() {
       }
 
       if (editingSchedule) {
+        // Check if cron expression changed
+        const cronChanged = input.cronExpression !== editingSchedule.cronExpression
+        const backoffChanged = input.backoffEnabled !== editingSchedule.backoffEnabled ||
+          JSON.stringify(input.backoffSchedule) !== JSON.stringify(editingSchedule.backoffSchedule)
+
         await updateSchedule(editingSchedule.id, input)
-        toast.success("Schedule updated successfully")
+
+        if (cronChanged || backoffChanged) {
+          toast.success("Schedule updated", {
+            description: "Server restart required for timing changes to take effect",
+            duration: 5000,
+          })
+        } else {
+          toast.success("Schedule updated successfully")
+        }
       } else {
         await createSchedule(input)
         toast.success("Schedule created successfully")

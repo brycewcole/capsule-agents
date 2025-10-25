@@ -71,9 +71,6 @@ export class ScheduleService {
   }
 
   registerSchedule(schedule: Schedule): void {
-    // Unregister existing cron job if present
-    this.unregisterSchedule(schedule.id)
-
     try {
       log.info(
         `Attempting to register schedule: ${schedule.name} with cron: ${schedule.cronExpression}`,
@@ -84,10 +81,22 @@ export class ScheduleService {
         }`,
       )
 
+      // Use schedule ID for unique cron name to avoid conflicts
+      // Deno.cron doesn't support unregistering, so we use unique IDs
+      const cronName = `schedule-${schedule.id}`
+
+      // Skip if already registered
+      if (this.registeredCronJobs.has(schedule.id)) {
+        log.info(
+          `Schedule ${schedule.name} (${schedule.id}) already registered, skipping`,
+        )
+        return
+      }
+
       // Register Deno.cron job with optional backoff
       if (schedule.backoffEnabled && schedule.backoffSchedule) {
         Deno.cron(
-          `schedule-${schedule.name}`,
+          cronName,
           schedule.cronExpression,
           {
             backoffSchedule: schedule.backoffSchedule,
@@ -98,7 +107,7 @@ export class ScheduleService {
         )
       } else {
         Deno.cron(
-          `schedule-${schedule.name}`,
+          cronName,
           schedule.cronExpression,
           async () => {
             await this.executeSchedule(schedule)
@@ -106,11 +115,11 @@ export class ScheduleService {
         )
       }
 
-      // Store unregister function
+      // Mark as registered
       this.registeredCronJobs.set(schedule.id, () => {
-        // Deno.cron doesn't expose an unregister API, so we just remove from our map
-        // The cron job will continue to run, but we mark it as unregistered
-        log.info(`Unregistered schedule: ${schedule.name}`)
+        // Deno.cron doesn't expose an unregister API
+        // The cron job will continue to run for the process lifetime
+        log.info(`Marked schedule as unregistered: ${schedule.name}`)
       })
 
       log.info(
@@ -136,6 +145,21 @@ export class ScheduleService {
 
   async executeSchedule(schedule: Schedule): Promise<void> {
     log.info(`Executing schedule: ${schedule.name}`)
+
+    // Check if schedule is still enabled and registered
+    const currentSchedule = this.scheduleRepository.getSchedule(schedule.id)
+    if (!currentSchedule || !currentSchedule.enabled) {
+      log.info(
+        `Schedule ${schedule.name} is disabled or deleted, skipping execution`,
+      )
+      return
+    }
+
+    // Check if still registered (not deleted)
+    if (!this.registeredCronJobs.has(schedule.id)) {
+      log.info(`Schedule ${schedule.name} is no longer registered, skipping execution`)
+      return
+    }
 
     try {
       // Ensure context exists or create new one
@@ -221,6 +245,25 @@ export class ScheduleService {
       throw new Error(`Schedule ${id} not found`)
     }
 
+    // Check if cron expression or backoff settings are changing
+    const cronChanging = input.cronExpression !== undefined &&
+      input.cronExpression !== existing.cronExpression
+    const backoffChanging = (input.backoffEnabled !== undefined &&
+        input.backoffEnabled !== existing.backoffEnabled) ||
+      (input.backoffSchedule !== undefined &&
+        JSON.stringify(input.backoffSchedule) !==
+          JSON.stringify(existing.backoffSchedule))
+
+    // If cron or backoff is changing, we cannot update the Deno.cron job dynamically
+    // Just update the database and warn that a restart is needed
+    if (cronChanging || backoffChanging) {
+      log.warn(
+        `Schedule ${existing.name} cron/backoff settings changed. Server restart required for changes to take effect.`,
+      )
+      // Mark as unregistered so old cron job won't execute
+      this.unregisterSchedule(id)
+    }
+
     const success = this.scheduleRepository.updateSchedule(id, input)
     if (!success) {
       throw new Error(`Failed to update schedule ${id}`)
@@ -231,11 +274,15 @@ export class ScheduleService {
       throw new Error(`Failed to retrieve updated schedule ${id}`)
     }
 
-    // Re-register cron job if enabled, or unregister if disabled
-    if (updated.enabled) {
-      this.registerSchedule(updated)
-    } else {
-      this.unregisterSchedule(updated.id)
+    // Handle enabled/disabled toggle (only if cron/backoff didn't change)
+    if (!cronChanging && !backoffChanging) {
+      if (updated.enabled && !this.registeredCronJobs.has(id)) {
+        // Was disabled, now enabled - register it
+        this.registerSchedule(updated)
+      } else if (!updated.enabled && this.registeredCronJobs.has(id)) {
+        // Was enabled, now disabled - unregister it
+        this.unregisterSchedule(updated.id)
+      }
     }
 
     return updated
