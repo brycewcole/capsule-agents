@@ -1,9 +1,15 @@
 import {
   ConfigFileSchema,
   transformConfigToAgentInfo,
+  type ScheduleConfig,
 } from "./config-schema.ts"
 import type { AgentInfo } from "./agent-config.ts"
 import * as log from "https://deno.land/std@0.203.0/log/mod.ts"
+
+export interface ConfigFileResult {
+  agentInfo: AgentInfo | null
+  schedules: ScheduleConfig[]
+}
 
 export class ConfigFileService {
   private static readonly DEFAULT_CONFIG_PATH = "/app/agent.config.json"
@@ -11,7 +17,9 @@ export class ConfigFileService {
   /**
    * Load and parse a configuration file from the specified path
    */
-  static async loadConfigFile(configPath?: string): Promise<AgentInfo | null> {
+  static async loadConfigFile(
+    configPath?: string,
+  ): Promise<ConfigFileResult> {
     const filePath = configPath ||
       Deno.env.get("AGENT_CONFIG_FILE") ||
       ConfigFileService.DEFAULT_CONFIG_PATH
@@ -26,7 +34,7 @@ export class ConfigFileService {
           log.info(
             `Config file not found at ${filePath}, using database defaults`,
           )
-          return null
+          return { agentInfo: null, schedules: [] }
         }
         throw error
       }
@@ -61,7 +69,17 @@ export class ConfigFileService {
         `Successfully loaded and validated config file: ${configFile.agent.name}`,
       )
 
-      return transformConfigToAgentInfo(configFile.agent, configFile.mcpServers)
+      const agentInfo = transformConfigToAgentInfo(
+        configFile.agent,
+        configFile.mcpServers,
+      )
+      const schedules = configFile.schedules || []
+
+      if (schedules.length > 0) {
+        log.info(`Loaded ${schedules.length} schedules from config file`)
+      }
+
+      return { agentInfo, schedules }
     } catch (error) {
       log.error(`Failed to load config file from ${filePath}:`, error)
       throw new Error(

@@ -6,7 +6,9 @@ import { serveStatic } from "hono/deno"
 import { createA2AController } from "./controllers/a2a.controller.ts"
 import { createAgentController } from "./controllers/agent.controller.ts"
 import { createChatController } from "./controllers/chat.controller.ts"
+import { createScheduleController } from "./controllers/schedule.controller.ts"
 import { ChatService } from "./services/chat.service.ts"
+import { ScheduleService } from "./services/schedule.service.ts"
 import { createHealthController } from "./controllers/health.controller.ts"
 import { getDb } from "./infrastructure/db.ts"
 import { CapsuleAgentA2ARequestHandler } from "./lib/a2a-request-handler.ts"
@@ -50,8 +52,11 @@ try {
 // Load optional config file
 log.info("Checking for configuration file...")
 let configFileAgentInfo: AgentInfo | null = null
+let configSchedules: import("./services/config-schema.ts").ScheduleConfig[] = []
 try {
-  configFileAgentInfo = await ConfigFileService.loadConfigFile()
+  const configResult = await ConfigFileService.loadConfigFile()
+  configFileAgentInfo = configResult.agentInfo
+  configSchedules = configResult.schedules
   if (configFileAgentInfo) {
     log.info(`Loaded configuration from file: ${configFileAgentInfo.name}`)
   } else log.info("No configuration file found, using database defaults")
@@ -63,14 +68,20 @@ try {
 // Instantiate services/handlers
 const agentConfigService = new AgentConfigService(configFileAgentInfo)
 const chatService = new ChatService()
+const scheduleService = new ScheduleService(agentConfigService)
 const a2aRequestHandler = new CapsuleAgentA2ARequestHandler(agentConfigService)
 const jsonRpcHandler = new JsonRpcTransportHandler(a2aRequestHandler)
+
+// Initialize schedule service with config schedules
+log.info("Initializing schedule service...")
+await scheduleService.initializeSchedules(configSchedules)
 
 // Mount controllers
 app.route("/", createA2AController({ jsonRpcHandler, a2aRequestHandler }))
 app.route("/api", createHealthController())
 app.route("/api", createAgentController(agentConfigService))
 app.route("/api", createChatController(chatService))
+app.route("/api", createScheduleController(scheduleService))
 
 // Serve static files at /editor
 app.use(

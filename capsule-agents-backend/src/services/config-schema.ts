@@ -27,6 +27,20 @@ export const A2AAgentConfigSchema = z.object({
   enabled: z.boolean().default(true),
 })
 
+export const ScheduleBackoffConfigSchema = z.object({
+  enabled: z.boolean().default(false),
+  schedule: z.array(z.number().positive()).optional(),
+}).default({ enabled: false })
+
+export const ScheduleConfigSchema = z.object({
+  name: z.string().min(1, "Schedule name is required"),
+  prompt: z.string().min(1, "Prompt is required"),
+  cron_expression: z.string().min(1, "Cron expression is required"),
+  enabled: z.boolean().default(true),
+  context_id: z.string().optional(),
+  backoff: ScheduleBackoffConfigSchema.optional().default({ enabled: false }),
+})
+
 export const AgentConfigSchema = z.object({
   name: z.string().min(1, "Agent name is required").default("Capsule Agent"),
   description: z.string().default(""),
@@ -58,6 +72,7 @@ export const ConfigFileSchema = z.object({
       headers: z.record(z.string()).optional(),
     }),
   ).optional().default({}),
+  schedules: z.array(ScheduleConfigSchema).optional().default([]),
 })
 
 // TypeScript types derived from schemas
@@ -67,6 +82,8 @@ export type BuiltInCapabilityConfig = z.infer<
 >
 export type CapabilitiesConfig = z.infer<typeof CapabilitiesConfigSchema>
 export type A2AAgentConfig = z.infer<typeof A2AAgentConfigSchema>
+export type ScheduleBackoffConfig = z.infer<typeof ScheduleBackoffConfigSchema>
+export type ScheduleConfig = z.infer<typeof ScheduleConfigSchema>
 export type AgentConfig = z.infer<typeof AgentConfigSchema>
 export type ConfigFile = z.infer<typeof ConfigFileSchema>
 
