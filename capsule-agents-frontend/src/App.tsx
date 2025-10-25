@@ -3,16 +3,20 @@ import Header from "./components/header.tsx"
 import ChatInterface from "./components/chat-interface.tsx"
 // Sidebar is now rendered inside ChatInterface's sheet
 import AgentEditor from "./components/agent-editor.tsx"
+import ScheduleManager from "./components/schedule-manager.tsx"
 import { LoginDialog } from "./components/login-dialog.tsx"
 import { Toaster } from "./components/ui/toaster.tsx"
 import { type ChatWithHistory, getChatById, testLogin } from "./lib/api.ts"
 import { showErrorToast } from "./lib/error-utils.ts"
 import "./App.css"
 
+type ViewType = "chat" | "schedules"
+
 function App() {
   const [showLogin, setShowLogin] = useState(false)
   const [loginError, setLoginError] = useState<string>()
   const [, setIsAuthenticated] = useState(true) // Temporarily always authenticated
+  const [currentView, setCurrentView] = useState<ViewType>("chat")
 
   // Chat management state
   const [currentChatId, setCurrentChatId] = useState<string | null>(() => {
@@ -160,59 +164,78 @@ function App() {
   return (
     <>
       <main className="flex h-screen flex-col bg-slate-50 overflow-hidden">
-        <Header />
+        <Header
+          currentView={currentView}
+          onViewChange={setCurrentView}
+        />
 
-        <div className="container mx-auto flex flex-1 gap-6 p-4 md:p-6 lg:p-8 min-h-0">
-          {/* Agent Editor - Left Side */}
-          <div className="basis-1/3 flex flex-col min-h-0">
-            <div className="mb-4">
-              <h2 className="text-lg font-semibold text-foreground">
-                Agent Configuration
+        {currentView === "chat" && (
+          <div className="container mx-auto flex flex-1 gap-6 p-4 md:p-6 lg:p-8 min-h-0">
+            {/* Agent Editor - Left Side */}
+            <div className="basis-1/3 flex flex-col min-h-0">
+              <div className="mb-4">
+                <h2 className="text-lg font-semibold text-foreground">
+                  Agent Configuration
+                </h2>
+                <p className="text-sm text-muted-foreground">
+                  Configure your agent's settings and capabilities
+                </p>
+              </div>
+              <div className="flex-1 overflow-y-auto min-h-0">
+                <AgentEditor />
+              </div>
+            </div>
+
+            {/* Chat Interface - Middle */}
+            <div className="flex-1 flex flex-col min-h-0">
+              <div className="mb-4">
+                <h2 className="text-lg font-semibold text-foreground">
+                  Chat Interface
+                </h2>
+                <p className="text-sm text-muted-foreground">
+                  {currentChatId
+                    ? `Chatting in: ${currentChatData?.title || "Loading..."}`
+                    : "Start a new conversation"}
+                </p>
+              </div>
+              <div className="flex-1 min-h-0">
+                <ChatInterface
+                  contextId={currentChatId}
+                  initialChatData={currentChatData}
+                  isLoadingChat={isLoadingChat}
+                  isConversationsOpen={isConversationsOpen}
+                  onToggleConversations={() => {
+                    convPrefLockedRef.current = true
+                    setIsConversationsOpen((v) => !v)
+                  }}
+                  onChatCreated={(newChatId) => {
+                    setCurrentChatId(newChatId)
+                    setChatsRefreshKey((k) => k + 1)
+                  }}
+                  onNewChat={handleNewChat}
+                  currentChatId={currentChatId}
+                  onChatSelect={handleChatSelect}
+                  chatsRefreshKey={chatsRefreshKey}
+                />
+              </div>
+            </div>
+            {/* Sheet moved inside ChatInterface to keep it visually connected */}
+          </div>
+        )}
+
+        {currentView === "schedules" && (
+          <div className="container mx-auto flex-1 p-4 md:p-6 lg:p-8 overflow-y-auto">
+            <div className="mb-6">
+              <h2 className="text-2xl font-semibold text-foreground">
+                Schedules
               </h2>
               <p className="text-sm text-muted-foreground">
-                Configure your agent's settings and capabilities
+                Automate agent queries with scheduled tasks
               </p>
             </div>
-            <div className="flex-1 overflow-y-auto min-h-0">
-              <AgentEditor />
-            </div>
+            <ScheduleManager />
           </div>
-
-          {/* Chat Interface - Middle */}
-          <div className="flex-1 flex flex-col min-h-0">
-            <div className="mb-4">
-              <h2 className="text-lg font-semibold text-foreground">
-                Chat Interface
-              </h2>
-              <p className="text-sm text-muted-foreground">
-                {currentChatId
-                  ? `Chatting in: ${currentChatData?.title || "Loading..."}`
-                  : "Start a new conversation"}
-              </p>
-            </div>
-            <div className="flex-1 min-h-0">
-              <ChatInterface
-                contextId={currentChatId}
-                initialChatData={currentChatData}
-                isLoadingChat={isLoadingChat}
-                isConversationsOpen={isConversationsOpen}
-                onToggleConversations={() => {
-                  convPrefLockedRef.current = true
-                  setIsConversationsOpen((v) => !v)
-                }}
-                onChatCreated={(newChatId) => {
-                  setCurrentChatId(newChatId)
-                  setChatsRefreshKey((k) => k + 1)
-                }}
-                onNewChat={handleNewChat}
-                currentChatId={currentChatId}
-                onChatSelect={handleChatSelect}
-                chatsRefreshKey={chatsRefreshKey}
-              />
-            </div>
-          </div>
-          {/* Sheet moved inside ChatInterface to keep it visually connected */}
-        </div>
+        )}
       </main>
 
       <LoginDialog

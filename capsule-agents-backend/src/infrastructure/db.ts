@@ -140,6 +140,25 @@ function createTables(db: Database) {
         tools               TEXT NOT NULL DEFAULT '[]'
     );
 
+    -- Schedules: Automated tasks that run on cron schedules
+    CREATE TABLE IF NOT EXISTS schedules (
+        id                  TEXT PRIMARY KEY,
+        name                TEXT NOT NULL,
+        prompt              TEXT NOT NULL,
+        cron_expression     TEXT NOT NULL,
+        enabled             INTEGER NOT NULL DEFAULT 1,
+        context_id          TEXT,
+        backoff_enabled     INTEGER NOT NULL DEFAULT 0,
+        backoff_schedule    TEXT,
+        last_run_at         REAL,
+        next_run_at         REAL,
+        run_count           INTEGER NOT NULL DEFAULT 0,
+        failure_count       INTEGER NOT NULL DEFAULT 0,
+        created_at          REAL NOT NULL,
+        updated_at          REAL NOT NULL,
+        FOREIGN KEY(context_id) REFERENCES contexts(id) ON DELETE SET NULL
+    );
+
     -- Indexes
     CREATE INDEX IF NOT EXISTS idx_tasks_context_id ON tasks(context_id);
     CREATE INDEX IF NOT EXISTS idx_messages_context_id ON messages(context_id);
@@ -151,6 +170,8 @@ function createTables(db: Database) {
     CREATE INDEX IF NOT EXISTS idx_artifacts_task_id ON artifacts(task_id);
     CREATE INDEX IF NOT EXISTS idx_contexts_updated_at ON contexts(updated_at);
     CREATE INDEX IF NOT EXISTS idx_tasks_updated_at ON tasks(updated_at);
+    CREATE INDEX IF NOT EXISTS idx_schedules_enabled ON schedules(enabled);
+    CREATE INDEX IF NOT EXISTS idx_schedules_context_id ON schedules(context_id);
   `)
 
   ensureMessagesMetadataColumn(db)
