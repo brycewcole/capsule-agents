@@ -4,6 +4,9 @@
     "start": "deno run --allow-all src/index.ts",
     "dev": "deno run --allow-all --watch src/index.ts"
   },
+  "unstable": [
+    "cron"
+  ],
   "imports": {
     "@ai-sdk/provider-utils": "npm:@ai-sdk/provider-utils@^3.0.7",
     "mcp": "npm:@modelcontextprotocol/sdk@^1.17.5",

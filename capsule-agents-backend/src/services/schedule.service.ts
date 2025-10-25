@@ -1,5 +1,5 @@
-import * as log from "@std/log"
 import type * as A2A from "@a2a-js/sdk"
+import * as log from "@std/log"
 import { contextRepository } from "../repositories/context.repository.ts"
 import {
   Schedule,
@@ -59,7 +59,11 @@ export class ScheduleService {
         this.registerSchedule(schedule)
         log.info(`Registered schedule: ${schedule.name}`)
       } catch (error) {
-        log.error(`Failed to register schedule ${schedule.name}:`, error)
+        log.error(
+          `Failed to register schedule ${schedule.name} error ${
+            JSON.stringify(error)
+          }`,
+        )
       }
     }
 
@@ -71,24 +75,36 @@ export class ScheduleService {
     this.unregisterSchedule(schedule.id)
 
     try {
-      // Create cron options with optional backoff
-      const cronOptions: {
-        backoffSchedule?: number[]
-      } = {}
-
-      if (schedule.backoffEnabled && schedule.backoffSchedule) {
-        cronOptions.backoffSchedule = schedule.backoffSchedule
-      }
-
-      // Register Deno.cron job
-      const cronHandler = Deno.cron(
-        `schedule-${schedule.name}`,
-        schedule.cronExpression,
-        cronOptions,
-        async () => {
-          await this.executeSchedule(schedule)
-        },
+      log.info(
+        `Attempting to register schedule: ${schedule.name} with cron: ${schedule.cronExpression}`,
       )
+      log.info(
+        `Backoff enabled: ${schedule.backoffEnabled}, Schedule: ${
+          JSON.stringify(schedule.backoffSchedule)
+        }`,
+      )
+
+      // Register Deno.cron job with optional backoff
+      if (schedule.backoffEnabled && schedule.backoffSchedule) {
+        Deno.cron(
+          `schedule-${schedule.name}`,
+          schedule.cronExpression,
+          {
+            backoffSchedule: schedule.backoffSchedule,
+          },
+          async () => {
+            await this.executeSchedule(schedule)
+          },
+        )
+      } else {
+        Deno.cron(
+          `schedule-${schedule.name}`,
+          schedule.cronExpression,
+          async () => {
+            await this.executeSchedule(schedule)
+          },
+        )
+      }
 
       // Store unregister function
       this.registeredCronJobs.set(schedule.id, () => {
@@ -98,10 +114,14 @@ export class ScheduleService {
       })
 
       log.info(
-        `Registered cron job for schedule: ${schedule.name} (${schedule.cronExpression})`,
+        `Successfully registered cron job for schedule: ${schedule.name} (${schedule.cronExpression})`,
       )
     } catch (error) {
       log.error(`Failed to register schedule ${schedule.name}:`, error)
+      log.error(
+        `Error details: ${error instanceof Error ? error.message : "Unknown"}`,
+      )
+      log.error(`Error stack: ${error instanceof Error ? error.stack : "N/A"}`)
       throw error
     }
   }
@@ -147,7 +167,6 @@ export class ScheduleService {
             text: schedule.prompt,
           },
         ],
-        timestamp: Date.now(),
       }
 
       // Import dynamically to avoid circular dependency

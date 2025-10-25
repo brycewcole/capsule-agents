@@ -1,10 +1,10 @@
+import * as log from "https://deno.land/std@0.203.0/log/mod.ts"
+import type { AgentInfo } from "./agent-config.ts"
 import {
   ConfigFileSchema,
-  transformConfigToAgentInfo,
   type ScheduleConfig,
+  transformConfigToAgentInfo,
 } from "./config-schema.ts"
-import type { AgentInfo } from "./agent-config.ts"
-import * as log from "https://deno.land/std@0.203.0/log/mod.ts"
 
 export interface ConfigFileResult {
   agentInfo: AgentInfo | null

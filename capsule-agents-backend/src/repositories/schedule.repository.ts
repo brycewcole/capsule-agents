@@ -133,7 +133,7 @@ export class ScheduleRepository {
     if (!existing) return false
 
     const updates: string[] = []
-    const values: unknown[] = []
+    const values: (string | number | null)[] = []
 
     if (input.name !== undefined) {
       updates.push("name = ?")
@@ -183,8 +183,8 @@ export class ScheduleRepository {
 
   deleteSchedule(id: string): boolean {
     const stmt = this.db.prepare("DELETE FROM schedules WHERE id = ?")
-    const result = stmt.run(id)
-    return result.changes > 0
+    stmt.run(id)
+    return true
   }
 
   recordExecution(
@@ -197,18 +197,16 @@ export class ScheduleRepository {
       ? "run_count = run_count + 1, last_run_at = ?, updated_at = ?"
       : "failure_count = failure_count + 1, last_run_at = ?, updated_at = ?"
 
-    const values = [now, now]
-
     if (nextRunAt !== undefined) {
       const stmt = this.db.prepare(
         `UPDATE schedules SET ${updates}, next_run_at = ? WHERE id = ?`,
       )
-      stmt.run(...values, nextRunAt, id)
+      stmt.run(now, now, nextRunAt, id)
     } else {
       const stmt = this.db.prepare(
         `UPDATE schedules SET ${updates} WHERE id = ?`,
       )
-      stmt.run(...values, id)
+      stmt.run(now, now, id)
     }
   }
 
