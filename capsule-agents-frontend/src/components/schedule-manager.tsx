@@ -118,15 +118,19 @@ export default function ScheduleManager() {
 
       if (editingSchedule) {
         // Check if cron expression changed
-        const cronChanged = input.cronExpression !== editingSchedule.cronExpression
-        const backoffChanged = input.backoffEnabled !== editingSchedule.backoffEnabled ||
-          JSON.stringify(input.backoffSchedule) !== JSON.stringify(editingSchedule.backoffSchedule)
+        const cronChanged =
+          input.cronExpression !== editingSchedule.cronExpression
+        const backoffChanged =
+          input.backoffEnabled !== editingSchedule.backoffEnabled ||
+          JSON.stringify(input.backoffSchedule) !==
+            JSON.stringify(editingSchedule.backoffSchedule)
 
         await updateSchedule(editingSchedule.id, input)
 
         if (cronChanged || backoffChanged) {
           toast.success("Schedule updated", {
-            description: "Server restart required for timing changes to take effect",
+            description:
+              "Server restart required for timing changes to take effect",
             duration: 5000,
           })
         } else {
@@ -151,7 +155,9 @@ export default function ScheduleManager() {
 
   const handleDelete = async (id: string, scheduleName: string) => {
     if (
-      !confirm(`Are you sure you want to delete the schedule "${scheduleName}"?`)
+      !confirm(
+        `Are you sure you want to delete the schedule "${scheduleName}"?`,
+      )
     ) {
       return
     }
@@ -294,7 +300,8 @@ export default function ScheduleManager() {
                           <Button
                             variant="ghost"
                             size="sm"
-                            onClick={() => handleRunNow(schedule.id, schedule.name)}
+                            onClick={() =>
+                              handleRunNow(schedule.id, schedule.name)}
                             disabled={runningScheduleId === schedule.id}
                             title="Run now"
                           >
@@ -313,7 +320,8 @@ export default function ScheduleManager() {
                           <Button
                             variant="ghost"
                             size="sm"
-                            onClick={() => handleDelete(schedule.id, schedule.name)}
+                            onClick={() =>
+                              handleDelete(schedule.id, schedule.name)}
                             title="Delete"
                           >
                             <Trash className="h-4 w-4" />
@@ -370,7 +378,10 @@ export default function ScheduleManager() {
 
             <div className="space-y-2">
               <Label>Schedule</Label>
-              <CronBuilder value={cronExpression} onChange={setCronExpression} />
+              <CronBuilder
+                value={cronExpression}
+                onChange={setCronExpression}
+              />
             </div>
 
             <BackoffConfig

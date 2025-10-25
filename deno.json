@@ -11,6 +11,9 @@
     "fmt": "deno fmt",
     "check": "deno check"
   },
+  "unstable": [
+    "cron"
+  ],
   "fmt": {
     "useTabs": false,
     "lineWidth": 80,

@@ -1026,12 +1026,15 @@ export async function toggleSchedule(
 
 export async function runScheduleNow(id: string): Promise<void> {
   try {
-    const response = await fetch(`${API_BASE_URL}/api/schedules/${id}/run-now`, {
-      method: "POST",
-      headers: {
-        ...authStore.getAuthHeaders(),
+    const response = await fetch(
+      `${API_BASE_URL}/api/schedules/${id}/run-now`,
+      {
+        method: "POST",
+        headers: {
+          ...authStore.getAuthHeaders(),
+        },
       },
-    })
+    )
 
     if (!response.ok) {
       throw {

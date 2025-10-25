@@ -17,8 +17,13 @@ interface CronBuilderProps {
   onChange: (cronExpression: string) => void
 }
 
-type PresetType = "minute" | "hourly" | "daily" | "weekly" | "monthly" |
-  "custom"
+type PresetType =
+  | "minute"
+  | "hourly"
+  | "daily"
+  | "weekly"
+  | "monthly"
+  | "custom"
 
 export function CronBuilder({ value, onChange }: CronBuilderProps) {
   const [preset, setPreset] = useState<PresetType>("daily")
@@ -48,8 +53,10 @@ export function CronBuilder({ value, onChange }: CronBuilderProps) {
           setPreset("minute")
           const interval = parseInt(parts[0].substring(2))
           if (!isNaN(interval)) setMinuteInterval(interval)
-        } else if (parts[1] === "*" && parts[2] === "*" && parts[3] === "*" &&
-          parts[4] === "*") {
+        } else if (
+          parts[1] === "*" && parts[2] === "*" && parts[3] === "*" &&
+          parts[4] === "*"
+        ) {
           setPreset("hourly")
           const minute = parseInt(parts[0])
           if (!isNaN(minute)) setHourMinute(minute)

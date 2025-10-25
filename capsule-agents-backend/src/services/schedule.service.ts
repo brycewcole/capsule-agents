@@ -157,7 +157,9 @@ export class ScheduleService {
 
     // Check if still registered (not deleted)
     if (!this.registeredCronJobs.has(schedule.id)) {
-      log.info(`Schedule ${schedule.name} is no longer registered, skipping execution`)
+      log.info(
+        `Schedule ${schedule.name} is no longer registered, skipping execution`,
+      )
       return
     }
 
@@ -249,7 +251,7 @@ export class ScheduleService {
     const cronChanging = input.cronExpression !== undefined &&
       input.cronExpression !== existing.cronExpression
     const backoffChanging = (input.backoffEnabled !== undefined &&
-        input.backoffEnabled !== existing.backoffEnabled) ||
+      input.backoffEnabled !== existing.backoffEnabled) ||
       (input.backoffSchedule !== undefined &&
         JSON.stringify(input.backoffSchedule) !==
           JSON.stringify(existing.backoffSchedule))

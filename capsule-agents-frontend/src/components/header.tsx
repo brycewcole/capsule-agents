@@ -1,12 +1,14 @@
 import logoSrc from "@/assets/logo.png"
-import { MessageSquare, Clock } from "lucide-react"
+import { Clock, MessageSquare } from "lucide-react"
 
 interface HeaderProps {
   currentView?: "chat" | "schedules"
   onViewChange?: (view: "chat" | "schedules") => void
 }
 
-export default function Header({ currentView = "chat", onViewChange }: HeaderProps) {
+export default function Header(
+  { currentView = "chat", onViewChange }: HeaderProps,
+) {
   return (
     <header className="border-b bg-white shadow-sm">
       <div className="container mx-auto flex h-16 items-center px-4 md:px-6 lg:px-8">
