@@ -7,7 +7,7 @@ export function createScheduleController(scheduleService: ScheduleService) {
   const app = new Hono()
 
   // GET /api/schedules - List all schedules
-  app.get("/schedules", async (c) => {
+  app.get("/schedules", (c) => {
     try {
       const schedules = scheduleService.getAllSchedules()
       return c.json({ schedules })
@@ -55,7 +55,7 @@ export function createScheduleController(scheduleService: ScheduleService) {
   })
 
   // GET /api/schedules/:id - Get schedule details
-  app.get("/schedules/:id", async (c) => {
+  app.get("/schedules/:id", (c) => {
     try {
       const id = c.req.param("id")
       const schedule = scheduleService.getSchedule(id)
@@ -113,7 +113,7 @@ export function createScheduleController(scheduleService: ScheduleService) {
   })
 
   // DELETE /api/schedules/:id - Delete schedule
-  app.delete("/schedules/:id", async (c) => {
+  app.delete("/schedules/:id", (c) => {
     try {
       const id = c.req.param("id")
       const success = scheduleService.deleteSchedule(id)

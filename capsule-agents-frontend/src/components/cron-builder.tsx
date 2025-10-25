@@ -165,7 +165,7 @@ export function CronBuilder({ value, onChange }: CronBuilderProps) {
         }
       case "daily":
         return `Daily at ${formatTime(dailyHour, dailyMinute)}`
-      case "weekly":
+      case "weekly": {
         const days = [
           "Sunday",
           "Monday",
@@ -178,6 +178,7 @@ export function CronBuilder({ value, onChange }: CronBuilderProps) {
         return `Every ${days[weeklyDay]} at ${
           formatTime(weeklyHour, weeklyMinute)
         }`
+      }
       case "monthly":
         return `Monthly on day ${monthlyDay} at ${
           formatTime(monthlyHour, monthlyMinute)

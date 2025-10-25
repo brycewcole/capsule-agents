@@ -18,9 +18,9 @@ export class ScheduleService {
     this.agentConfigService = agentConfigService
   }
 
-  async initializeSchedules(
+  initializeSchedules(
     configSchedules?: ScheduleConfig[],
-  ): Promise<void> {
+  ): void {
     log.info("Initializing schedule service...")
 
     // Load schedules from config file and upsert to database

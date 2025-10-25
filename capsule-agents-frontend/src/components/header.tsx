@@ -21,6 +21,7 @@ export default function Header(
         </span>
         <nav className="ml-auto flex items-center gap-4">
           <button
+            type="button"
             onClick={() => onViewChange?.("chat")}
             className={`text-sm font-medium flex items-center gap-1.5 transition-colors ${
               currentView === "chat"
@@ -32,6 +33,7 @@ export default function Header(
             Chat
           </button>
           <button
+            type="button"
             onClick={() => onViewChange?.("schedules")}
             className={`text-sm font-medium flex items-center gap-1.5 transition-colors ${
               currentView === "schedules"
