@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.7-labs
 
-ARG DENO_VERSION=2.5.2
+ARG DENO_VERSION=2.5.4
 
 # ─── Stage 1: Build Vite frontend (Deno) ─────────────────────────
 FROM denoland/deno:${DENO_VERSION} AS frontend-builder
