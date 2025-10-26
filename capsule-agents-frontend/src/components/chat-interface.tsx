@@ -13,6 +13,7 @@ import {
   Loader2,
   MessageSquare,
   PanelRightOpen,
+  X,
 } from "lucide-react"
 import {
   Card,
@@ -32,11 +33,13 @@ import {
 import type { Artifact, Part } from "@a2a-js/sdk"
 import {
   type A2ATask,
+  cancelTask,
   type CapabilityCall,
   type ChatWithHistory,
   checkHealth,
   extractCapabilityCalls,
   extractResponseText,
+  fetchTaskById,
   streamMessage,
 } from "../lib/api.ts"
 import {
@@ -341,6 +344,7 @@ export default function ChatInterface({
   >({})
   const [input, setInput] = useState("")
   const [isLoading, setIsLoading] = useState(false)
+  const [currentTaskId, setCurrentTaskId] = useState<string | null>(null)
   const [isBackendConnected, setIsBackendConnected] = useState(false)
   const [connectionError, setConnectionError] = useState<
     JSONRPCError | Error | string | null
@@ -712,6 +716,19 @@ export default function ChatInterface({
     setTimelineEntries(nextEntries)
     setTaskLocations(nextTaskLocations)
     activeEntryIdRef.current = null
+
+    // Check if there's an active task in working/submitted state
+    const activeTask = loadedTasks.find(
+      (task) =>
+        task.status?.state === "working" || task.status?.state === "submitted",
+    )
+    if (activeTask?.id) {
+      setCurrentTaskId(activeTask.id)
+      setIsLoading(true)
+    } else {
+      setCurrentTaskId(null)
+      setIsLoading(false)
+    }
   }, [initialChatData])
 
   // Scroll to bottom of messages
@@ -774,6 +791,8 @@ export default function ChatInterface({
             console.warn("Received task event without id", task)
             continue
           }
+          // Track the current task for cancellation
+          setCurrentTaskId(task.id)
           const targetEntryId = resolveEntryIdForTask(task.id)
           const mergedTask = upsertTask(
             targetEntryId,
@@ -998,6 +1017,21 @@ export default function ChatInterface({
               }
             })
             activeEntryIdRef.current = null
+          } else if (event.final && event.status.state === "canceled") {
+            updateEntry(targetEntryId, (entry) => {
+              const updates = nextTask ? buildTaskUpdates(nextTask) : []
+              return {
+                ...entry,
+                agent: entry.agent
+                  ? {
+                    ...entry.agent,
+                    isLoading: false,
+                    taskUpdates: updates,
+                  }
+                  : entry.agent,
+              }
+            })
+            activeEntryIdRef.current = null
           } else if (event.final && event.status.state === "failed") {
             activeEntryIdRef.current = null
             throw new Error(extractResponseText(event) || "Task failed")
@@ -1099,6 +1133,56 @@ export default function ChatInterface({
       }
     } finally {
       setIsLoading(false)
+      setCurrentTaskId(null)
+    }
+  }
+
+  const handleCancelTask = async () => {
+    if (!currentTaskId) return
+
+    try {
+      await cancelTask(currentTaskId)
+      console.log(`Task ${currentTaskId} cancelled`)
+
+      // Fetch the updated task to get the cancelled status and history
+      const updatedTask = await fetchTaskById(currentTaskId)
+
+      // Find the entry containing this task
+      const taskLocation = taskLocationsRef.current[currentTaskId]
+      const targetEntryId = taskLocation?.entryId ??
+        activeEntryIdRef.current ??
+        timelineEntriesRef.current.at(-1)?.id
+
+      if (targetEntryId) {
+        // Update the task with cancelled status
+        upsertTask(targetEntryId, currentTaskId, () => updatedTask)
+
+        // Update the entry to show it's no longer loading
+        updateEntry(targetEntryId, (entry) => {
+          const taskUpdates = buildTaskUpdates(updatedTask)
+          return {
+            ...entry,
+            agent: entry.agent
+              ? {
+                ...entry.agent,
+                isLoading: false,
+                taskUpdates,
+              }
+              : entry.agent,
+          }
+        })
+      }
+
+      setIsLoading(false)
+      setCurrentTaskId(null)
+      activeEntryIdRef.current = null
+    } catch (error) {
+      console.error("Failed to cancel task:", error)
+      showErrorToast(error, {
+        title: "Failed to cancel task",
+      })
+      setIsLoading(false)
+      setCurrentTaskId(null)
     }
   }
 
@@ -1339,6 +1423,8 @@ export default function ChatInterface({
                                         ? "border-emerald-500/40 bg-emerald-200/80 text-emerald-900 dark:border-emerald-900/60 dark:bg-emerald-950/60 dark:text-emerald-100"
                                         : task.status?.state === "failed"
                                         ? "border-rose-500/40 bg-rose-200/80 text-rose-900 dark:border-rose-900/60 dark:bg-rose-950/60 dark:text-rose-100"
+                                        : task.status?.state === "canceled"
+                                        ? "border-gray-500/40 bg-gray-200/80 text-gray-900 dark:border-gray-900/60 dark:bg-gray-950/60 dark:text-gray-100"
                                         : "border-slate-500/40 bg-slate-200/80 text-slate-900 dark:border-slate-900/60 dark:bg-slate-950/60 dark:text-slate-100"
                                     }`}
                                   >
@@ -1359,6 +1445,8 @@ export default function ChatInterface({
                                         ? "text-emerald-700/90 dark:text-emerald-200/80"
                                         : task.status?.state === "failed"
                                         ? "text-rose-700/90 dark:text-rose-200/80"
+                                        : task.status?.state === "canceled"
+                                        ? "text-gray-700/90 dark:text-gray-200/80"
                                         : "text-slate-700/90 dark:text-slate-200/80"}
                                     >
                                       Task {shortId}
@@ -1377,6 +1465,8 @@ export default function ChatInterface({
                                           ? "text-emerald-700/70 dark:text-emerald-300/70"
                                           : task.status?.state === "failed"
                                           ? "text-rose-700/70 dark:text-rose-300/70"
+                                          : task.status?.state === "canceled"
+                                          ? "text-gray-700/70 dark:text-gray-300/70"
                                           : "text-slate-700/70 dark:text-slate-300/70"}
                                       >
                                         • {statusTimestamp}
@@ -1574,15 +1664,21 @@ export default function ChatInterface({
               maxRows={8}
             />
             <Button
-              onClick={handleSendMessage}
+              onClick={currentTaskId ? handleCancelTask : handleSendMessage}
               size="icon"
               className="rounded-full h-11 w-11 shrink-0"
-              disabled={!input.trim() || isLoading || !isBackendConnected}
+              disabled={currentTaskId
+                ? false
+                : (!input.trim() || isLoading || !isBackendConnected)}
             >
-              {isLoading
+              {currentTaskId
+                ? <X className="h-4 w-4" />
+                : isLoading
                 ? <Loader2 className="h-4 w-4 animate-spin" />
                 : <ArrowRight className="h-4 w-4" />}
-              <span className="sr-only">Send message</span>
+              <span className="sr-only">
+                {currentTaskId ? "Cancel task" : "Send message"}
+              </span>
             </Button>
           </div>
         </CardFooter>
