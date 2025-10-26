@@ -42,7 +42,10 @@ export const AgentConfigSchema = z.object({
   name: z.string().min(1, "Agent name is required").default("Capsule Agent"),
   description: z.string().default(""),
   model: ModelConfigSchema.optional(),
-  tools: CapabilitiesConfigSchema.optional().default({}),
+  tools: CapabilitiesConfigSchema.optional().default({
+    memory: { enabled: false },
+    exec: { enabled: true },
+  }),
   a2a: z.array(A2AAgentConfigSchema).optional().default([]),
 })
 
