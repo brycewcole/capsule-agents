@@ -530,11 +530,7 @@ export default function AgentEditor() {
                 onChange={(e) => {
                   const value =
                     (e.target as HTMLInputElement | HTMLTextAreaElement).value
-                  if (value.includes(" ")) {
-                    setNameError("Name cannot contain spaces")
-                  } else {
-                    setNameError("")
-                  }
+                  setNameError("")
                   setName(value)
                 }}
                 className={nameError ? "border-red-500" : ""}
