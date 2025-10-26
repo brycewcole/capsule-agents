@@ -18,7 +18,6 @@ Capsule Agents is designed to make it as easy as possible to create [Agent-to-Ag
 
 - **Prebuilt Tools**: Includes a set of built in capabilities that can be enabled in one click
   - File Access: Read and write files within the agent workspace
-  - Web Search: Powered by Brave Search API
   - Memory (Work in Progress): Persistent memory storage for conversations
 - **A2A Native**: Designed to work seamlessly with the A2A protocol, making it easy to connect and communicate with other agents using A2A like LangGraph, n8n and many more
 - **Remote MCP**: Connect any remote MCP server like Github, Zapier or your own custom server
@@ -37,9 +36,6 @@ Capsule Agents is designed to make it as easy as possible to create [Agent-to-Ag
 OPENAI_API_KEY=your_key
 ANTHROPIC_API_KEY=your_key
 GOOGLE_GENERATIVE_AI_API_KEY=your_key
-
-# Optional to enable search
-BRAVE_API_KEY=your_brave_search_api_key
 
 # Optional to restrict access to the configure page
 ADMIN_PASSWORD=your_password

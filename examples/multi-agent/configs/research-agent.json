@@ -6,9 +6,6 @@
       "name": "openai/gpt-4o"
     },
     "tools": {
-      "web_search": {
-        "enabled": true
-      },
       "memory": {
         "enabled": true
       }
