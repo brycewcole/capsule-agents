@@ -7,7 +7,6 @@ import { createProviderRegistry } from "ai"
 import { StreamableHTTPClientTransport } from "mcp/client/streamableHttp.js"
 import { z } from "zod"
 import { executeA2ACall } from "../capabilities/a2a.ts"
-import { webSearchSkill, webSearchTool } from "../capabilities/brave-search.ts"
 import { execSkill, execTool } from "../capabilities/exec.ts"
 import { memorySkill, memoryTool } from "../capabilities/memory.ts"
 import { contextRepository } from "../repositories/context.repository.ts"
@@ -144,9 +143,6 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
           case "exec":
             capabilities.exec = execTool
             break
-          case "web_search":
-            capabilities.webSearch = webSearchTool
-            break
           case "memory":
             capabilities.memory = memoryTool
             break
@@ -269,9 +265,6 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
 
     if ("exec" in availableCapabilities) {
       skills.push(execSkill)
-    }
-    if ("webSearch" in availableCapabilities) {
-      skills.push(webSearchSkill)
     }
     if ("memory" in availableCapabilities) {
       skills.push(memorySkill)

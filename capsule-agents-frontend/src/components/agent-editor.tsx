@@ -13,7 +13,6 @@ import {
   Loader2,
   Plus,
   Save,
-  Search,
   Terminal,
   Trash,
 } from "lucide-react"
@@ -94,7 +93,6 @@ export default function AgentEditor() {
 
   // Prebuilt capabilities state
   const [execEnabled, setExecEnabled] = useState(false)
-  const [webSearchEnabled, setWebSearchEnabled] = useState(false)
   const [memoryEnabled, setMemoryEnabled] = useState(false)
 
   const handleSaveNameDescription = async () => {
@@ -212,12 +210,6 @@ export default function AgentEditor() {
           currentCapabilities.some((capability) =>
             isPrebuiltCapability(capability) &&
             capability.subtype === "exec" && capability.enabled
-          ),
-        )
-        setWebSearchEnabled(
-          currentCapabilities.some((capability) =>
-            isPrebuiltCapability(capability) &&
-            capability.subtype === "web_search" && capability.enabled
           ),
         )
         setMemoryEnabled(
@@ -432,17 +424,13 @@ export default function AgentEditor() {
 
   // Handle prebuilt capability toggles
   const handlePrebuiltCapabilityToggle = (
-    subtype: "exec" | "web_search" | "memory",
+    subtype: "exec" | "memory",
     enabled: boolean,
   ) => {
     const capabilityConfig = {
       exec: {
         name: "exec",
         displayName: "Interactive Shell",
-      },
-      web_search: {
-        name: "web_search",
-        displayName: "Web Search",
       },
       memory: {
         name: "memory",
@@ -489,7 +477,6 @@ export default function AgentEditor() {
 
     // Update the toggle state
     if (subtype === "exec") setExecEnabled(enabled)
-    else if (subtype === "web_search") setWebSearchEnabled(enabled)
     else if (subtype === "memory") setMemoryEnabled(enabled)
 
     toast.success(
@@ -648,22 +635,6 @@ export default function AgentEditor() {
                     checked={execEnabled}
                     onCheckedChange={(checked) =>
                       handlePrebuiltCapabilityToggle("exec", checked)}
-                  />
-                </div>
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <Search className="h-5 w-5 text-muted-foreground" />
-                    <div className="space-y-0.5">
-                      <Label className="text-sm">Web Search</Label>
-                      <p className="text-xs text-muted-foreground">
-                        Enables web search capabilities
-                      </p>
-                    </div>
-                  </div>
-                  <Switch
-                    checked={webSearchEnabled}
-                    onCheckedChange={(checked) =>
-                      handlePrebuiltCapabilityToggle("web_search", checked)}
                   />
                 </div>
                 <div className="flex items-center justify-between opacity-60">

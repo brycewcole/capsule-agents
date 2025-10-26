@@ -12,12 +12,9 @@ export const BuiltInCapabilityConfigSchema = z.object({
 }).default({ enabled: false })
 
 export const CapabilitiesConfigSchema = z.object({
-  web_search: BuiltInCapabilityConfigSchema.optional().default({
-    enabled: false,
-  }),
   memory: BuiltInCapabilityConfigSchema.optional().default({ enabled: false }),
   exec: BuiltInCapabilityConfigSchema.optional().default({
-    enabled: false,
+    enabled: true,
   }),
 })
 
@@ -45,7 +42,10 @@ export const AgentConfigSchema = z.object({
   name: z.string().min(1, "Agent name is required").default("Capsule Agent"),
   description: z.string().default(""),
   model: ModelConfigSchema.optional(),
-  tools: CapabilitiesConfigSchema.optional().default({}),
+  tools: CapabilitiesConfigSchema.optional().default({
+    memory: { enabled: false },
+    exec: { enabled: true },
+  }),
   a2a: z.array(A2AAgentConfigSchema).optional().default([]),
 })
 
@@ -54,9 +54,8 @@ export const ConfigFileSchema = z.object({
     name: "Capsule Agent",
     description: "",
     tools: {
-      web_search: { enabled: false },
       memory: { enabled: false },
-      exec: { enabled: false },
+      exec: { enabled: true },
     },
     a2a: [],
   }),
@@ -88,7 +87,6 @@ export type AgentConfig = z.infer<typeof AgentConfigSchema>
 export type ConfigFile = z.infer<typeof ConfigFileSchema>
 
 export const BUILTIN_CAPABILITIES = [
-  "web_search",
   "memory",
   "exec",
 ] as const
@@ -161,9 +159,8 @@ export function transformAgentInfoToConfig(agentInfo: AgentInfo): {
   >
 } {
   const tools: CapabilitiesConfig = {
-    web_search: { enabled: false },
     memory: { enabled: false },
-    exec: { enabled: false },
+    exec: { enabled: true },
   }
   const mcpServers: Record<
     string,
