@@ -437,11 +437,15 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
         // Clean up the AbortController
         this.taskAbortControllers.delete(currentTaskRef.current.id)
 
-        const statusUpdate = this.taskService.transitionState(
-          currentTaskRef.current,
-          "completed",
-        )
-        statusHandler(statusUpdate)
+        // Check if task was cancelled - don't override cancelled state
+        const currentTask = this.taskStorage.getTask(currentTaskRef.current.id)
+        if (currentTask && currentTask.status.state !== "canceled") {
+          const statusUpdate = this.taskService.transitionState(
+            currentTaskRef.current,
+            "completed",
+          )
+          statusHandler(statusUpdate)
+        }
       }
 
       // Ensure the message has a valid ID
@@ -678,7 +682,10 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
     }
 
     this.taskService.cancelTask(task)
-    return Promise.resolve(task)
+
+    // Reload the task from storage to get the complete task with updated history
+    const updatedTask = this.taskStorage.getTask(params.id)
+    return Promise.resolve(updatedTask!)
   }
 
   setTaskPushNotificationConfig(
