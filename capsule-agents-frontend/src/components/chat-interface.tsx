@@ -1667,11 +1667,9 @@ export default function ChatInterface({
               onClick={currentTaskId ? handleCancelTask : handleSendMessage}
               size="icon"
               className="rounded-full h-11 w-11 shrink-0"
-              disabled={
-                currentTaskId
-                  ? false
-                  : (!input.trim() || isLoading || !isBackendConnected)
-              }
+              disabled={currentTaskId
+                ? false
+                : (!input.trim() || isLoading || !isBackendConnected)}
             >
               {currentTaskId
                 ? <X className="h-4 w-4" />
