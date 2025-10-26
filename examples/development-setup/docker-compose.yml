@@ -33,6 +33,7 @@ services:
       "deno",
       "run",
       "--allow-all",
+      "--unstable-cron",
       "--watch",
       "--node-modules-dir",
       "--no-lock",

@@ -60,4 +60,4 @@ USER deno
 EXPOSE 80
 # Disable automatic lockfile writes in runtime container to avoid
 # permission issues when writing /app/deno.lock
-CMD ["deno", "run", "--allow-all", "--node-modules-dir", "--no-lock", "src/index.ts"]
+CMD ["deno", "run", "--allow-all", "--unstable-cron", "--node-modules-dir", "--no-lock", "src/index.ts"]

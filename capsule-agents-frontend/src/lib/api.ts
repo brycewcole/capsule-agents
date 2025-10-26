@@ -794,6 +794,269 @@ export async function updateChatMetadata(
   }
 }
 
+// Schedule types and API functions
+export interface Schedule {
+  id: string
+  name: string
+  prompt: string
+  cronExpression: string
+  enabled: boolean
+  contextId?: string
+  backoffEnabled: boolean
+  backoffSchedule?: number[]
+  lastRunAt?: number
+  nextRunAt?: number
+  runCount: number
+  failureCount: number
+  createdAt: number
+  updatedAt: number
+}
+
+export interface ScheduleInput {
+  name: string
+  prompt: string
+  cronExpression: string
+  enabled?: boolean
+  contextId?: string
+  backoffEnabled?: boolean
+  backoffSchedule?: number[]
+}
+
+export async function getSchedules(): Promise<Schedule[]> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/schedules`, {
+      headers: {
+        ...authStore.getAuthHeaders(),
+      },
+    })
+
+    if (!response.ok) {
+      throw {
+        code: response.status,
+        message: `Failed to fetch schedules: ${response.status}`,
+        user_message: response.status === 401
+          ? "Please log in to view schedules"
+          : "Could not load schedules",
+        recovery_action: response.status === 401
+          ? "Log in and try again"
+          : "Try again later",
+        isAPIError: true,
+      }
+    }
+
+    const data = await response.json()
+    return data.schedules || []
+  } catch (error) {
+    console.error("Failed to fetch schedules:", error)
+    throw error
+  }
+}
+
+export async function getSchedule(id: string): Promise<Schedule> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/schedules/${id}`, {
+      headers: {
+        ...authStore.getAuthHeaders(),
+      },
+    })
+
+    if (!response.ok) {
+      throw {
+        code: response.status,
+        message: `Failed to fetch schedule: ${response.status}`,
+        user_message: response.status === 404
+          ? "Schedule not found"
+          : response.status === 401
+          ? "Please log in to view this schedule"
+          : "Could not load schedule",
+        recovery_action: response.status === 401
+          ? "Log in and try again"
+          : "Try again later",
+        isAPIError: true,
+      }
+    }
+
+    return await response.json()
+  } catch (error) {
+    console.error("Failed to fetch schedule:", error)
+    throw error
+  }
+}
+
+export async function createSchedule(
+  data: ScheduleInput,
+): Promise<Schedule> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/schedules`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...authStore.getAuthHeaders(),
+      },
+      body: JSON.stringify(data),
+    })
+
+    if (!response.ok) {
+      throw {
+        code: response.status,
+        message: `Failed to create schedule: ${response.status}`,
+        user_message: response.status === 401
+          ? "Please log in to create a schedule"
+          : "Could not create schedule",
+        recovery_action: response.status === 401
+          ? "Log in and try again"
+          : "Check your input and try again",
+        isAPIError: true,
+      }
+    }
+
+    return await response.json()
+  } catch (error) {
+    console.error("Failed to create schedule:", error)
+    throw error
+  }
+}
+
+export async function updateSchedule(
+  id: string,
+  data: Partial<ScheduleInput>,
+): Promise<Schedule> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/schedules/${id}`, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        ...authStore.getAuthHeaders(),
+      },
+      body: JSON.stringify(data),
+    })
+
+    if (!response.ok) {
+      throw {
+        code: response.status,
+        message: `Failed to update schedule: ${response.status}`,
+        user_message: response.status === 404
+          ? "Schedule not found"
+          : response.status === 401
+          ? "Please log in to update this schedule"
+          : "Could not update schedule",
+        recovery_action: response.status === 401
+          ? "Log in and try again"
+          : "Check your input and try again",
+        isAPIError: true,
+      }
+    }
+
+    return await response.json()
+  } catch (error) {
+    console.error("Failed to update schedule:", error)
+    throw error
+  }
+}
+
+export async function deleteSchedule(id: string): Promise<boolean> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/schedules/${id}`, {
+      method: "DELETE",
+      headers: {
+        ...authStore.getAuthHeaders(),
+      },
+    })
+
+    if (!response.ok) {
+      throw {
+        code: response.status,
+        message: `Failed to delete schedule: ${response.status}`,
+        user_message: response.status === 404
+          ? "Schedule not found"
+          : response.status === 401
+          ? "Please log in to delete this schedule"
+          : "Could not delete schedule",
+        recovery_action: response.status === 401
+          ? "Log in and try again"
+          : "Try again later",
+        isAPIError: true,
+      }
+    }
+
+    const result = await response.json()
+    return result.success === true
+  } catch (error) {
+    console.error("Failed to delete schedule:", error)
+    throw error
+  }
+}
+
+export async function toggleSchedule(
+  id: string,
+  enabled: boolean,
+): Promise<Schedule> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/schedules/${id}/toggle`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...authStore.getAuthHeaders(),
+      },
+      body: JSON.stringify({ enabled }),
+    })
+
+    if (!response.ok) {
+      throw {
+        code: response.status,
+        message: `Failed to toggle schedule: ${response.status}`,
+        user_message: response.status === 404
+          ? "Schedule not found"
+          : response.status === 401
+          ? "Please log in to toggle this schedule"
+          : "Could not toggle schedule",
+        recovery_action: response.status === 401
+          ? "Log in and try again"
+          : "Try again later",
+        isAPIError: true,
+      }
+    }
+
+    return await response.json()
+  } catch (error) {
+    console.error("Failed to toggle schedule:", error)
+    throw error
+  }
+}
+
+export async function runScheduleNow(id: string): Promise<void> {
+  try {
+    const response = await fetch(
+      `${API_BASE_URL}/api/schedules/${id}/run-now`,
+      {
+        method: "POST",
+        headers: {
+          ...authStore.getAuthHeaders(),
+        },
+      },
+    )
+
+    if (!response.ok) {
+      throw {
+        code: response.status,
+        message: `Failed to run schedule: ${response.status}`,
+        user_message: response.status === 404
+          ? "Schedule not found"
+          : response.status === 401
+          ? "Please log in to run this schedule"
+          : "Could not run schedule",
+        recovery_action: response.status === 401
+          ? "Log in and try again"
+          : "Try again later",
+        isAPIError: true,
+      }
+    }
+  } catch (error) {
+    console.error("Failed to run schedule:", error)
+    throw error
+  }
+}
+
 // Export A2A types for use in components
 export type {
   A2AMessage,
