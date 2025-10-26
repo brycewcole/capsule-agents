@@ -97,7 +97,7 @@ export interface BaseCapability {
 
 export interface PrebuiltCapability extends BaseCapability {
   type: "prebuilt"
-  subtype: "exec" | "web_search" | "memory"
+  subtype: "exec" | "memory"
 }
 
 export interface A2ACapability extends BaseCapability {

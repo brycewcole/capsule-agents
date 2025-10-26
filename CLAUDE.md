@@ -32,7 +32,7 @@ Capsule Agents is a framework for creating Agent-to-Agent (A2A) protocol compati
 2. **Agent Configuration** (`src/lib/agent-config.ts`): Manages agent settings, models, and tools
 3. **Storage Layer** (`src/lib/storage.ts`): SQLite-based persistence for chats and agent data
 4. **Task Service** (`src/lib/task-service.ts`): Handles A2A task execution and streaming
-5. **Tool System** (`src/tools/`): Built-in tools for file access, web search, and memory
+5. **Tool System** (`src/tools/`): Built-in tools for file access and memory
 
 ## Docker Development
 
@@ -110,7 +110,6 @@ Required environment variables (create `.env` file):
 
 ```
 OPENAI_API_KEY=sk-your-openai-key
-BRAVE_API_KEY=your-brave-search-key  
 ADMIN_PASSWORD=admin
 ```
 
@@ -161,7 +160,6 @@ SQLite database stored in `/app/data/` (containerized) with tables:
 Built-in MCP-compatible tools:
 
 - **File Access**: Read/write files in agent workspace
-- **Brave Search**: Web search capabilities
 - **Memory**: Persistent conversation memory
 - **A2A**: Communication with other agents
 
