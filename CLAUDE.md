@@ -48,61 +48,9 @@ docker build -t capsule-agents .
 docker run --env-file .env -p 8080:80 capsule-agents
 ```
 
-### Development Setup with Bind Mounts
+### Development Setup
 
-For development, use bind mounts to enable hot reload and live code changes without rebuilding containers:
-
-#### Docker Compose Development Setup
-
-```yaml
-services:
-  capsule-agents-dev:
-    build: .
-    ports:
-      - "8080:80"
-    env_file:
-      - .env
-    volumes:
-      # Backend source code and config for hot reload
-      - ./capsule-agents-backend/src:/app/src
-      - ./capsule-agents-backend/deno.json:/app/deno.json
-      # Frontend built output (updated by build watch)
-      - ./capsule-agents-frontend/dist:/app/static
-      # Prevent node_modules conflicts
-      - /app/node_modules
-    command: [
-      "deno",
-      "run",
-      "--allow-all",
-      "--watch",
-      "--node-modules-dir",
-      "--no-lock",
-      "src/index.ts",
-    ]
-```
-
-Run with:
-
-```bash
-docker-compose -f docker-compose.dev.yml up --build
-```
-
-#### Development Workflow
-
-1. **Initial Setup**:
-   ```bash
-   # Build frontend to create dist/ directory
-   cd capsule-agents-frontend && deno task build
-   ```
-
-2. **Start Development Environment**:
-   ```bash
-   # Terminal 1: Start containerized backend
-   docker-compose -f docker-compose.dev.yml up --build
-
-   # Terminal 2: Start frontend build watch
-   cd capsule-agents-frontend && deno task build --watch
-   ```
+Use the docker compose in development setup in `examples/development-setup/`:
 
 ## Environment Configuration
 
@@ -139,28 +87,10 @@ ADMIN_PASSWORD=admin
 
 ## Code Conventions
 
-- **Formatting**: Deno fmt (2 spaces, no semicolons, double quotes)
-- **Linting**: Deno lint with recommended rules
+- **Formatting**: deno task fmt
+- **Linting**: deno task lint
 - **Imports**: Use JSR imports for Deno packages, npm: for Node packages
 - **File Structure**: Organized by feature in `src/lib/` and `src/tools/`
 - **Error Handling**: Comprehensive logging with `@std/log`, structured error responses
-- **Type Safety**: Zod schemas for runtime validation, strict TypeScript
+- **Type Safety**: strict TypeScript, check with deno task check
 - DO NOT use `any` type for backend
-
-## Database Schema
-
-SQLite database stored in `/app/data/` (containerized) with tables:
-
-- `chats` - Chat metadata and conversation history
-- `tasks` - A2A task execution records
-- `agent_config` - Agent configuration persistence
-
-## Tool System
-
-Built-in MCP-compatible tools:
-
-- **File Access**: Read/write files in agent workspace
-- **Memory**: Persistent conversation memory
-- **A2A**: Communication with other agents
-
-Tools are dynamically loaded and configured via the agent editor interface.
