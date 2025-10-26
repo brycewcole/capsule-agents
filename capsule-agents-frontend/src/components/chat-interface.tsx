@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useRef, useState } from "react"
-import { Input } from "./ui/input.tsx"
+import { Textarea } from "./ui/textarea.tsx"
 import { Button } from "@/components/ui/button.tsx"
 import { Badge } from "@/components/ui/badge.tsx"
 import Markdown from "react-markdown"
@@ -1102,7 +1102,7 @@ export default function ChatInterface({
     }
   }
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault()
       handleSendMessage()
@@ -1561,22 +1561,22 @@ export default function ChatInterface({
         </CardContent>
 
         <CardFooter className="border-t p-4">
-          <div className="flex w-full items-center gap-2">
-            <Input
+          <div className="flex w-full items-end gap-2">
+            <Textarea
               value={input}
-              onChange={(e) =>
-                setInput(
-                  (e.target as HTMLInputElement | HTMLTextAreaElement).value,
-                )}
+              onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder="Type your message..."
-              className="flex-1 rounded-full"
+              placeholder="Type your message... (Shift+Enter for new line)"
+              className="flex-1 rounded-2xl min-h-[44px]"
               disabled={isLoading || !isBackendConnected}
+              autoResize
+              minRows={1}
+              maxRows={8}
             />
             <Button
               onClick={handleSendMessage}
               size="icon"
-              className="rounded-full"
+              className="rounded-full h-11 w-11 shrink-0"
               disabled={!input.trim() || isLoading || !isBackendConnected}
             >
               {isLoading
