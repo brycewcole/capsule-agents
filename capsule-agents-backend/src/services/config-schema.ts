@@ -14,7 +14,7 @@ export const BuiltInCapabilityConfigSchema = z.object({
 export const CapabilitiesConfigSchema = z.object({
   memory: BuiltInCapabilityConfigSchema.optional().default({ enabled: false }),
   exec: BuiltInCapabilityConfigSchema.optional().default({
-    enabled: false,
+    enabled: true,
   }),
 })
 
@@ -42,7 +42,10 @@ export const AgentConfigSchema = z.object({
   name: z.string().min(1, "Agent name is required").default("Capsule Agent"),
   description: z.string().default(""),
   model: ModelConfigSchema.optional(),
-  tools: CapabilitiesConfigSchema.optional().default({}),
+  tools: CapabilitiesConfigSchema.optional().default({
+    memory: { enabled: false },
+    exec: { enabled: true },
+  }),
   a2a: z.array(A2AAgentConfigSchema).optional().default([]),
 })
 
@@ -52,7 +55,7 @@ export const ConfigFileSchema = z.object({
     description: "",
     tools: {
       memory: { enabled: false },
-      exec: { enabled: false },
+      exec: { enabled: true },
     },
     a2a: [],
   }),
@@ -157,7 +160,7 @@ export function transformAgentInfoToConfig(agentInfo: AgentInfo): {
 } {
   const tools: CapabilitiesConfig = {
     memory: { enabled: false },
-    exec: { enabled: false },
+    exec: { enabled: true },
   }
   const mcpServers: Record<
     string,
