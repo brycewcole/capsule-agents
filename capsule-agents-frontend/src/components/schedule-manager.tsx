@@ -111,7 +111,7 @@ export default function ScheduleManager() {
         name: name.trim(),
         prompt: prompt.trim(),
         cronExpression: cronExpression.trim(),
-        enabled: true,
+        enabled: editingSchedule ? editingSchedule.enabled : true,
         backoffEnabled,
         backoffSchedule: backoffEnabled ? backoffSchedule : undefined,
       }

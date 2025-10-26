@@ -165,10 +165,10 @@ export class ScheduleService {
 
     try {
       // Ensure context exists or create new one
-      let contextId = schedule.contextId
+      let contextId = currentSchedule.contextId
       if (contextId && !contextRepository.getContext(contextId)) {
         log.warn(
-          `Context ${contextId} not found for schedule ${schedule.name}, creating new one`,
+          `Context ${contextId} not found for schedule ${currentSchedule.name}, creating new one`,
         )
         contextId = undefined
       }
@@ -177,7 +177,7 @@ export class ScheduleService {
         contextId = crypto.randomUUID()
         contextRepository.createContext(contextId)
         log.info(
-          `Created new context ${contextId} for schedule ${schedule.name}`,
+          `Created new context ${contextId} for schedule ${currentSchedule.name}`,
         )
       }
 
@@ -190,7 +190,7 @@ export class ScheduleService {
         parts: [
           {
             kind: "text",
-            text: schedule.prompt,
+            text: currentSchedule.prompt,
           },
         ],
       }
