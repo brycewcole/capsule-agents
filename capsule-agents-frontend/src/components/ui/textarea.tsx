@@ -11,6 +11,7 @@ interface TextareaProps extends React.ComponentProps<"textarea"> {
 const Textarea = React.forwardRef<HTMLTextAreaElement, TextareaProps>(
   ({ className, autoResize = false, maxRows = 10, minRows = 1, ...props }, ref) => {
     const textareaRef = React.useRef<HTMLTextAreaElement | null>(null)
+    const [isAtMaxHeight, setIsAtMaxHeight] = React.useState(false)
 
     const adjustHeight = React.useCallback(() => {
       const textarea = textareaRef.current
@@ -28,6 +29,9 @@ const Textarea = React.forwardRef<HTMLTextAreaElement, TextareaProps>(
       const newHeight = Math.min(Math.max(textarea.scrollHeight, minHeight), maxHeight)
 
       textarea.style.height = `${newHeight}px`
+
+      // Check if content exceeds max height to enable scrolling
+      setIsAtMaxHeight(textarea.scrollHeight > maxHeight)
     }, [autoResize, maxRows, minRows])
 
     React.useEffect(() => {
@@ -54,7 +58,8 @@ const Textarea = React.forwardRef<HTMLTextAreaElement, TextareaProps>(
         data-slot="textarea"
         className={cn(
           "border-input placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-ring/50 aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive dark:bg-input/30 flex w-full rounded-md border bg-transparent px-3 py-2 text-base shadow-xs transition-[color,box-shadow] outline-none focus-visible:ring-[3px] disabled:cursor-not-allowed disabled:opacity-50 md:text-sm",
-          autoResize ? "resize-none overflow-hidden" : "field-sizing-content min-h-16",
+          autoResize ? "resize-none" : "field-sizing-content min-h-16",
+          autoResize && !isAtMaxHeight ? "overflow-hidden" : "overflow-y-auto",
           className,
         )}
         ref={handleRef}
