@@ -136,10 +136,14 @@ export class ScheduleService {
   }
 
   unregisterSchedule(id: string): void {
+    // NOTE: Deno.cron does not support dynamic unregistration
+    // Cron jobs continue to run for the process lifetime
+    // We keep the Map entry to prevent re-registration
+    // Execution is controlled by the enabled check in executeSchedule
     const unregister = this.registeredCronJobs.get(id)
     if (unregister) {
       unregister()
-      this.registeredCronJobs.delete(id)
+      // DO NOT delete from the map - this prevents duplicate registrations
     }
   }
 
@@ -277,14 +281,16 @@ export class ScheduleService {
     }
 
     // Handle enabled/disabled toggle (only if cron/backoff didn't change)
+    // NOTE: We don't actually re-register or unregister because Deno.cron
+    // doesn't support dynamic unregistration. The enabled check in
+    // executeSchedule will control whether the job actually runs.
+    // We only need to register if it has never been registered before.
     if (!cronChanging && !backoffChanging) {
       if (updated.enabled && !this.registeredCronJobs.has(id)) {
-        // Was disabled, now enabled - register it
+        // Was never registered - register it now
         this.registerSchedule(updated)
-      } else if (!updated.enabled && this.registeredCronJobs.has(id)) {
-        // Was enabled, now disabled - unregister it
-        this.unregisterSchedule(updated.id)
       }
+      // If disabled, the cron job keeps running but executeSchedule will skip it
     }
 
     return updated
