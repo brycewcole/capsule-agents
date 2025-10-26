@@ -9,7 +9,10 @@ interface TextareaProps extends React.ComponentProps<"textarea"> {
 }
 
 const Textarea = React.forwardRef<HTMLTextAreaElement, TextareaProps>(
-  ({ className, autoResize = false, maxRows = 10, minRows = 1, ...props }, ref) => {
+  (
+    { className, autoResize = false, maxRows = 10, minRows = 1, ...props },
+    ref,
+  ) => {
     const textareaRef = React.useRef<HTMLTextAreaElement | null>(null)
     const [isAtMaxHeight, setIsAtMaxHeight] = React.useState(false)
 
@@ -23,10 +26,14 @@ const Textarea = React.forwardRef<HTMLTextAreaElement, TextareaProps>(
       // Calculate new height based on content
       const lineHeight = parseInt(getComputedStyle(textarea).lineHeight) || 20
       const paddingTop = parseInt(getComputedStyle(textarea).paddingTop) || 0
-      const paddingBottom = parseInt(getComputedStyle(textarea).paddingBottom) || 0
+      const paddingBottom =
+        parseInt(getComputedStyle(textarea).paddingBottom) || 0
       const minHeight = lineHeight * minRows + paddingTop + paddingBottom
       const maxHeight = lineHeight * maxRows + paddingTop + paddingBottom
-      const newHeight = Math.min(Math.max(textarea.scrollHeight, minHeight), maxHeight)
+      const newHeight = Math.min(
+        Math.max(textarea.scrollHeight, minHeight),
+        maxHeight,
+      )
 
       textarea.style.height = `${newHeight}px`
 
