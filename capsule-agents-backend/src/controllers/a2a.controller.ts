@@ -114,9 +114,9 @@ export function createA2AController(deps: {
           await handleStreamError(e, stream, body.id)
         })
       } else {
-        log.error("Result is not an AsyncGenerator")
+        // Non-streaming response (e.g., cancelTask, getTask)
+        return c.json(result)
       }
-      return c.json(result)
     } catch (_error) {
       return c.json({
         jsonrpc: "2.0",

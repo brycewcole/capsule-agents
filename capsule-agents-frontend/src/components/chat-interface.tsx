@@ -13,6 +13,7 @@ import {
   Loader2,
   MessageSquare,
   PanelRightOpen,
+  X,
 } from "lucide-react"
 import {
   Card,
@@ -32,6 +33,7 @@ import {
 import type { Artifact, Part } from "@a2a-js/sdk"
 import {
   type A2ATask,
+  cancelTask,
   type CapabilityCall,
   type ChatWithHistory,
   checkHealth,
@@ -341,6 +343,7 @@ export default function ChatInterface({
   >({})
   const [input, setInput] = useState("")
   const [isLoading, setIsLoading] = useState(false)
+  const [currentTaskId, setCurrentTaskId] = useState<string | null>(null)
   const [isBackendConnected, setIsBackendConnected] = useState(false)
   const [connectionError, setConnectionError] = useState<
     JSONRPCError | Error | string | null
@@ -774,6 +777,8 @@ export default function ChatInterface({
             console.warn("Received task event without id", task)
             continue
           }
+          // Track the current task for cancellation
+          setCurrentTaskId(task.id)
           const targetEntryId = resolveEntryIdForTask(task.id)
           const mergedTask = upsertTask(
             targetEntryId,
@@ -1099,6 +1104,38 @@ export default function ChatInterface({
       }
     } finally {
       setIsLoading(false)
+      setCurrentTaskId(null)
+    }
+  }
+
+  const handleCancelTask = async () => {
+    if (!currentTaskId) return
+
+    try {
+      await cancelTask(currentTaskId)
+      console.log(`Task ${currentTaskId} cancelled`)
+      setIsLoading(false)
+      setCurrentTaskId(null)
+
+      // Update the UI to show cancellation
+      const targetEntryId = activeEntryIdRef.current ??
+        timelineEntriesRef.current.at(-1)?.id
+      if (targetEntryId) {
+        updateEntry(targetEntryId, (entry) => ({
+          ...entry,
+          agent: {
+            content: entry.agent?.content || "",
+            isLoading: false,
+            timestamp: Date.now() / 1000,
+            capabilityCalls: entry.agent?.capabilityCalls,
+          },
+        }))
+      }
+    } catch (error) {
+      console.error("Failed to cancel task:", error)
+      showErrorToast(error, {
+        title: "Failed to cancel task",
+      })
     }
   }
 
@@ -1574,15 +1611,23 @@ export default function ChatInterface({
               maxRows={8}
             />
             <Button
-              onClick={handleSendMessage}
+              onClick={currentTaskId ? handleCancelTask : handleSendMessage}
               size="icon"
               className="rounded-full h-11 w-11 shrink-0"
-              disabled={!input.trim() || isLoading || !isBackendConnected}
+              disabled={
+                currentTaskId
+                  ? false
+                  : (!input.trim() || isLoading || !isBackendConnected)
+              }
             >
-              {isLoading
+              {currentTaskId
+                ? <X className="h-4 w-4" />
+                : isLoading
                 ? <Loader2 className="h-4 w-4 animate-spin" />
                 : <ArrowRight className="h-4 w-4" />}
-              <span className="sr-only">Send message</span>
+              <span className="sr-only">
+                {currentTaskId ? "Cancel task" : "Send message"}
+              </span>
             </Button>
           </div>
         </CardFooter>

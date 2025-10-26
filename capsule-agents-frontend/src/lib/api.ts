@@ -257,6 +257,16 @@ export async function* streamMessage(
   }
 }
 
+// Function to cancel a task
+export async function cancelTask(taskId: string): Promise<void> {
+  try {
+    await a2aClient.cancelTask({ id: taskId })
+  } catch (error) {
+    console.error("Error cancelling task:", error)
+    throw error
+  }
+}
+
 // Function to get agent health status
 export async function checkHealth(): Promise<{ status: string }> {
   try {

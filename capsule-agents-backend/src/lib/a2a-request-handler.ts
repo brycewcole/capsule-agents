@@ -57,6 +57,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
     this.vercelMessageRepository,
   )
   private agentConfigService: AgentConfigService
+  private taskAbortControllers = new Map<string, AbortController>()
 
   constructor(agentConfigService?: AgentConfigService) {
     log.info("Initializing CapsuleAgentA2ARequestHandler...")
@@ -334,6 +335,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
     params: A2A.MessageSendParams,
     currentTaskRef: { current: A2A.Task | null },
     statusHandler: StatusUpdateHandler,
+    abortController?: AbortController,
   ): (stepResult: Vercel.StepResult<TOOLS>) => void {
     return (stepResult) => {
       const { text, toolCalls, toolResults, finishReason } = stepResult
@@ -349,6 +351,13 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
             params.message.contextId!,
             params.metadata,
           )
+          // Register AbortController for this task
+          if (abortController) {
+            this.taskAbortControllers.set(
+              currentTaskRef.current.id,
+              abortController,
+            )
+          }
           // Move user message into task context
           this.taskService.addExistingMessageToHistory(
             currentTaskRef.current,
@@ -432,6 +441,9 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
       )
 
       if (currentTaskRef.current) {
+        // Clean up the AbortController
+        this.taskAbortControllers.delete(currentTaskRef.current.id)
+
         const statusUpdate = this.taskService.transitionState(
           currentTaskRef.current,
           "completed",
@@ -605,6 +617,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
           params,
           currentTaskRef,
           () => {},
+          undefined, // no abort controller for non-streaming sendMessage
         ),
       })
 
@@ -663,6 +676,14 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
       throw new Error("Task not found")
     }
 
+    // Abort the streaming if there's an active controller
+    const abortController = this.taskAbortControllers.get(params.id)
+    if (abortController) {
+      log.info(`Aborting task ${params.id}`)
+      abortController.abort()
+      this.taskAbortControllers.delete(params.id)
+    }
+
     this.taskService.cancelTask(task)
     return Promise.resolve(task)
   }
@@ -716,6 +737,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
 
     // Queue for status updates that need to be yielded progressively
     const eventUpdateQueue: StreamEmitUnion[] = []
+    const currentTaskRef = { current: null as A2A.Task | null }
 
     try {
       const { tools, mcpTools, model, agentInfo, cleanedMessages } = await this
@@ -723,7 +745,6 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
 
       await using _mcpTools = mcpTools
 
-      const currentTaskRef = { current: null as A2A.Task | null }
       const finalMessageHolder = { message: null as A2A.Message | null }
 
       // Queue-based status handler for streaming version
@@ -747,11 +768,15 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
         systemPrompt: agentInfo.description,
       })
 
+      // Create AbortController for this task stream
+      const abortController = new AbortController()
+
       const result = Vercel.streamText({
         experimental_telemetry: {
           isEnabled: true,
           functionId: "chat-complete",
         },
+        abortSignal: abortController.signal,
         system: agentInfo.description,
         model,
         messages: modelMessages,
@@ -767,6 +792,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
           params,
           currentTaskRef,
           queueStatusHandler,
+          abortController,
         ),
       })
 
@@ -856,6 +882,10 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
         yield finalMessageHolder.message
       }
     } catch (error) {
+      // Clean up abort controller on error
+      if (currentTaskRef.current) {
+        this.taskAbortControllers.delete(currentTaskRef.current.id)
+      }
       this.handleStreamError(error)
     }
   }
