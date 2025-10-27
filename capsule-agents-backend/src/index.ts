@@ -1,5 +1,4 @@
 import { JsonRpcTransportHandler } from "@a2a-js/sdk/server"
-import * as log from "@std/log"
 import { Hono } from "hono"
 import { cors } from "hono/cors"
 import { serveStatic } from "hono/deno"
@@ -40,17 +39,17 @@ app.use(
 )
 
 // Initialize DB
-log.info("Initializing database...")
+console.info("Initializing database...")
 try {
   getDb()
-  log.info("Database initialized successfully")
+  console.info("Database initialized successfully")
 } catch (error) {
-  log.error("Failed to initialize database:", error)
+  console.error("Failed to initialize database:", error)
   throw error
 }
 
 // Load optional config file
-log.info("Checking for configuration file...")
+console.info("Checking for configuration file...")
 let configFileAgentInfo: AgentInfo | null = null
 let configSchedules: import("./services/config-schema.ts").ScheduleConfig[] = []
 try {
@@ -58,10 +57,10 @@ try {
   configFileAgentInfo = configResult.agentInfo
   configSchedules = configResult.schedules
   if (configFileAgentInfo) {
-    log.info(`Loaded configuration from file: ${configFileAgentInfo.name}`)
-  } else log.info("No configuration file found, using database defaults")
+    console.info(`Loaded configuration from file: ${configFileAgentInfo.name}`)
+  } else console.info("No configuration file found, using database defaults")
 } catch (error) {
-  log.error("Failed to load configuration file:", error)
+  console.error("Failed to load configuration file:", error)
   throw error
 }
 
@@ -73,7 +72,7 @@ const a2aRequestHandler = new CapsuleAgentA2ARequestHandler(agentConfigService)
 const jsonRpcHandler = new JsonRpcTransportHandler(a2aRequestHandler)
 
 // Initialize schedule service with config schedules
-log.info("Initializing schedule service...")
+console.info("Initializing schedule service...")
 await scheduleService.initializeSchedules(configSchedules)
 
 // Mount controllers
@@ -99,5 +98,5 @@ app.get(
 )
 
 const port = parseInt(Deno.env.get("PORT") || "80")
-log.info(`Server running on port ${port}`)
+console.info(`Server running on port ${port}`)
 Deno.serve({ port }, app.fetch)

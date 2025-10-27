@@ -1,4 +1,3 @@
-import * as log from "@std/log"
 import { getDb } from "../infrastructure/db.ts"
 import {
   Capability,
@@ -39,7 +38,7 @@ export class AgentConfigService {
       try {
         this.updateAgentInfo(configFileData)
       } catch (error) {
-        log.error("Failed to initialize database from config file:", error)
+        console.error("Failed to initialize database from config file:", error)
         throw new Error(
           `Failed to initialize from config file: ${
             error instanceof Error ? error.message : String(error)
@@ -64,7 +63,7 @@ export class AgentConfigService {
       const row = stmt.get() as { model_name: string } | undefined
 
       if (!row) {
-        log.debug("No agent info found yet, skipping model validation")
+        console.debug("No agent info found yet, skipping model validation")
         return
       }
 
@@ -78,10 +77,10 @@ export class AgentConfigService {
         const defaultModel = selectDefaultModel(availableModels)
 
         if (defaultModel) {
-          log.info(
+          console.info(
             `Auto-selecting default model: ${defaultModel.name} (${defaultModel.id})`,
           )
-          log.info(
+          console.info(
             `Reason: ${
               !currentModelName
                 ? "No model was selected"
@@ -91,23 +90,23 @@ export class AgentConfigService {
 
           // Update the database with the new model
           const updateStmt = this.db.prepare(`
-            UPDATE agent_info 
+            UPDATE agent_info
             SET model_name = ?
             WHERE key = 1
           `)
           updateStmt.run(defaultModel.id)
 
-          log.info("Successfully updated agent with default model")
+          console.info("Successfully updated agent with default model")
         } else {
-          log.warn(
+          console.warn(
             "No models are available for auto-selection. Please configure at least one AI provider.",
           )
         }
       } else {
-        log.info(`Current model '${currentModelName}' is available and valid`)
+        console.info(`Current model '${currentModelName}' is available and valid`)
       }
     } catch (error) {
-      log.error("Error in ensureValidModel():", error)
+      console.error("Error in ensureValidModel():", error)
     }
   }
 
@@ -122,13 +121,13 @@ export class AgentConfigService {
 
       const row = stmt.get() as AgentInfoRow | undefined
       if (!row) {
-        log.info("No agent info found, creating default configuration")
+        console.info("No agent info found, creating default configuration")
 
         // Use Zod schema defaults to create clean default configuration
         const defaultConfig = AgentConfigSchema.parse({})
         const defaultAgentInfo = transformConfigToAgentInfo(defaultConfig)
 
-        log.info("Created default agent config:", {
+        console.info("Created default agent config:", {
           name: defaultAgentInfo.name,
           description: defaultAgentInfo.description,
           capabilityCount: defaultAgentInfo.capabilities.length,
@@ -154,7 +153,7 @@ export class AgentConfigService {
         capabilities: expandedCapabilities,
       }
 
-      log.debug("AgentConfigService.getAgentInfo() returning:", {
+      console.debug("AgentConfigService.getAgentInfo() returning:", {
         name: result.name,
         model_name: result.model_name,
         capabilityCount: result.capabilities.length,
@@ -162,12 +161,12 @@ export class AgentConfigService {
 
       return result
     } catch (error) {
-      log.error(
+      console.error(
         "Error in AgentConfigService.getAgentInfo():",
         error instanceof Error ? error.message : String(error),
       )
       if (error instanceof Error && error.stack) {
-        log.error("Stack trace:", error.stack)
+        console.error("Stack trace:", error.stack)
       }
       throw error
     }
@@ -178,13 +177,13 @@ export class AgentConfigService {
       // Validate capabilities using new type system
       this.validateCapabilities(info.capabilities)
 
-      log.info("Preparing database update...")
+      console.info("Preparing database update...")
       const stmt = this.db.prepare(`
-        INSERT OR REPLACE INTO agent_info(key, name, description, model_name, model_parameters, tools) 
+        INSERT OR REPLACE INTO agent_info(key, name, description, model_name, model_parameters, tools)
         VALUES(1, ?, ?, ?, ?, ?)
       `)
 
-      log.info("Executing database update...")
+      console.info("Executing database update...")
       stmt.run(
         info.name,
         info.description,
@@ -193,15 +192,15 @@ export class AgentConfigService {
         JSON.stringify(info.capabilities),
       )
 
-      log.info("Database update completed successfully")
+      console.info("Database update completed successfully")
       return info
     } catch (error) {
-      log.error(
+      console.error(
         "Error in AgentConfigService.updateAgentInfo():",
         error instanceof Error ? error.message : String(error),
       )
       if (error instanceof Error && error.stack) {
-        log.error("Stack trace:", error.stack)
+        console.error("Stack trace:", error.stack)
       }
       throw error
     }

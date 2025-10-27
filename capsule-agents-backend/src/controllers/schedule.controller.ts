@@ -1,5 +1,4 @@
 import { Hono } from "hono"
-import * as log from "@std/log"
 import type { ScheduleService } from "../services/schedule.service.ts"
 import type { ScheduleInput } from "../repositories/schedule.repository.ts"
 
@@ -12,7 +11,7 @@ export function createScheduleController(scheduleService: ScheduleService) {
       const schedules = scheduleService.getAllSchedules()
       return c.json({ schedules })
     } catch (error) {
-      log.error("Failed to get schedules:", error)
+      console.error("Failed to get schedules:", error)
       return c.json(
         { error: "Failed to retrieve schedules" },
         500,
@@ -46,7 +45,7 @@ export function createScheduleController(scheduleService: ScheduleService) {
       const schedule = scheduleService.createSchedule(input)
       return c.json(schedule, 201)
     } catch (error) {
-      log.error("Failed to create schedule:", error)
+      console.error("Failed to create schedule:", error)
       return c.json(
         { error: "Failed to create schedule" },
         500,
@@ -66,7 +65,7 @@ export function createScheduleController(scheduleService: ScheduleService) {
 
       return c.json(schedule)
     } catch (error) {
-      log.error("Failed to get schedule:", error)
+      console.error("Failed to get schedule:", error)
       return c.json(
         { error: "Failed to retrieve schedule" },
         500,
@@ -99,7 +98,7 @@ export function createScheduleController(scheduleService: ScheduleService) {
       const schedule = scheduleService.updateSchedule(id, input)
       return c.json(schedule)
     } catch (error) {
-      log.error("Failed to update schedule:", error)
+      console.error("Failed to update schedule:", error)
       if (
         error instanceof Error && error.message.includes("not found")
       ) {
@@ -124,7 +123,7 @@ export function createScheduleController(scheduleService: ScheduleService) {
 
       return c.json({ success: true })
     } catch (error) {
-      log.error("Failed to delete schedule:", error)
+      console.error("Failed to delete schedule:", error)
       return c.json(
         { error: "Failed to delete schedule" },
         500,
@@ -145,7 +144,7 @@ export function createScheduleController(scheduleService: ScheduleService) {
       const schedule = scheduleService.toggleSchedule(id, body.enabled)
       return c.json(schedule)
     } catch (error) {
-      log.error("Failed to toggle schedule:", error)
+      console.error("Failed to toggle schedule:", error)
       if (
         error instanceof Error && error.message.includes("not found")
       ) {
@@ -165,7 +164,7 @@ export function createScheduleController(scheduleService: ScheduleService) {
       await scheduleService.runScheduleNow(id)
       return c.json({ success: true })
     } catch (error) {
-      log.error("Failed to run schedule:", error)
+      console.error("Failed to run schedule:", error)
       if (
         error instanceof Error && error.message.includes("not found")
       ) {
