@@ -31,8 +31,10 @@
     "npm:@modelcontextprotocol/sdk@^1.17.5": "1.20.2_express@5.1.0_zod@3.25.76",
     "npm:@opentelemetry/api@1": "1.9.0",
     "npm:@radix-ui/react-collapsible@^1.1.12": "1.1.12_@types+react@19.2.2_@types+react-dom@19.2.2__@types+react@19.2.2_react@19.2.0_react-dom@19.2.0__react@19.2.0",
+    "npm:@radix-ui/react-collapsible@^1.1.7": "1.1.12_@types+react@19.2.2_@types+react-dom@19.2.2__@types+react@19.2.2_react@19.2.0_react-dom@19.2.0__react@19.2.0",
     "npm:@radix-ui/react-dialog@^1.1.15": "1.1.15_@types+react@19.2.2_@types+react-dom@19.2.2__@types+react@19.2.2_react@19.2.0_react-dom@19.2.0__react@19.2.0",
     "npm:@radix-ui/react-label@^2.1.7": "2.1.7_@types+react@19.2.2_@types+react-dom@19.2.2__@types+react@19.2.2_react@19.2.0_react-dom@19.2.0__react@19.2.0",
+    "npm:@radix-ui/react-popover@^1.1.15": "1.1.15_@types+react@19.2.2_@types+react-dom@19.2.2__@types+react@19.2.2_react@19.2.0_react-dom@19.2.0__react@19.2.0",
     "npm:@radix-ui/react-select@^2.2.6": "2.2.6_@types+react@19.2.2_@types+react-dom@19.2.2__@types+react@19.2.2_react@19.2.0_react-dom@19.2.0__react@19.2.0",
     "npm:@radix-ui/react-separator@^1.1.7": "1.1.7_@types+react@19.2.2_@types+react-dom@19.2.2__@types+react@19.2.2_react@19.2.0_react-dom@19.2.0__react@19.2.0",
     "npm:@radix-ui/react-slot@^1.2.3": "1.2.3_@types+react@19.2.2_react@19.2.0",
@@ -740,6 +742,34 @@
         "@types/react-dom",
         "react",
         "react-dom"
+      ],
+      "optionalPeers": [
+        "@types/react",
+        "@types/react-dom"
+      ]
+    },
+    "@radix-ui/react-popover@1.1.15_@types+react@19.2.2_@types+react-dom@19.2.2__@types+react@19.2.2_react@19.2.0_react-dom@19.2.0__react@19.2.0": {
+      "integrity": "sha512-kr0X2+6Yy/vJzLYJUPCZEc8SfQcf+1COFoAqauJm74umQhta9M7lNJHP7QQS3vkvcGLQUbWpMzwrXYwrYztHKA==",
+      "dependencies": [
+        "@radix-ui/primitive",
+        "@radix-ui/react-compose-refs",
+        "@radix-ui/react-context",
+        "@radix-ui/react-dismissable-layer",
+        "@radix-ui/react-focus-guards",
+        "@radix-ui/react-focus-scope",
+        "@radix-ui/react-id",
+        "@radix-ui/react-popper",
+        "@radix-ui/react-portal",
+        "@radix-ui/react-presence",
+        "@radix-ui/react-primitive",
+        "@radix-ui/react-slot",
+        "@radix-ui/react-use-controllable-state",
+        "@types/react",
+        "@types/react-dom",
+        "aria-hidden",
+        "react",
+        "react-dom",
+        "react-remove-scroll"
       ],
       "optionalPeers": [
         "@types/react",
@@ -3058,8 +3088,10 @@
           "npm:@a2a-js/sdk@~0.3.2",
           "npm:@ai-sdk/react@^2.0.22",
           "npm:@deno/vite-plugin@^1.0.5",
+          "npm:@radix-ui/react-collapsible@^1.1.7",
           "npm:@radix-ui/react-dialog@^1.1.15",
           "npm:@radix-ui/react-label@^2.1.7",
+          "npm:@radix-ui/react-popover@^1.1.15",
           "npm:@radix-ui/react-select@^2.2.6",
           "npm:@radix-ui/react-separator@^1.1.7",
           "npm:@radix-ui/react-slot@^1.2.3",
