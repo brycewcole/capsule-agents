@@ -64,7 +64,9 @@ export function createWorkspaceController() {
    */
   router.get("/workspace/files/*", async (c) => {
     try {
-      const path = c.req.param("*")
+      // Get the full path after /workspace/files/
+      const fullPath = c.req.path
+      const path = fullPath.replace("/api/workspace/files/", "")
 
       if (!path) {
         return c.json({ error: "File path is required" }, 400)
@@ -95,7 +97,9 @@ export function createWorkspaceController() {
    */
   router.delete("/workspace/files/*", async (c) => {
     try {
-      const path = c.req.param("*")
+      // Get the full path after /workspace/files/
+      const fullPath = c.req.path
+      const path = fullPath.replace("/api/workspace/files/", "")
 
       if (!path) {
         return c.json({ error: "File path is required" }, 400)

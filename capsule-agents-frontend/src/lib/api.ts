@@ -1142,8 +1142,12 @@ export async function uploadWorkspaceFile(file: File): Promise<boolean> {
 
 export async function downloadWorkspaceFile(path: string): Promise<void> {
   try {
+    // Encode each path segment separately to preserve slashes
+    const encodedPath = path.split("/").map((segment) =>
+      encodeURIComponent(segment)
+    ).join("/")
     const response = await fetch(
-      `${API_BASE_URL}/api/workspace/files/${encodeURIComponent(path)}`,
+      `${API_BASE_URL}/api/workspace/files/${encodedPath}`,
       {
         headers: {
           ...authStore.getAuthHeaders(),
@@ -1183,8 +1187,12 @@ export async function downloadWorkspaceFile(path: string): Promise<void> {
 
 export async function deleteWorkspaceFile(path: string): Promise<boolean> {
   try {
+    // Encode each path segment separately to preserve slashes
+    const encodedPath = path.split("/").map((segment) =>
+      encodeURIComponent(segment)
+    ).join("/")
     const response = await fetch(
-      `${API_BASE_URL}/api/workspace/files/${encodeURIComponent(path)}`,
+      `${API_BASE_URL}/api/workspace/files/${encodedPath}`,
       {
         method: "DELETE",
         headers: {

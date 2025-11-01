@@ -36,7 +36,17 @@ export async function listWorkspaceFiles(): Promise<WorkspaceFile[]> {
   const files: WorkspaceFile[] = []
 
   try {
+    logger.info(`Listing files in workspace directory: ${WORKSPACE_DIR}`)
     await ensureDir(WORKSPACE_DIR)
+
+    // Check if directory exists and is readable
+    try {
+      const dirStat = await Deno.stat(WORKSPACE_DIR)
+      logger.info(`Workspace directory exists: ${dirStat.isDirectory}`)
+    } catch (statError) {
+      logger.error(`Cannot stat workspace directory: ${statError}`)
+      throw statError
+    }
 
     for await (
       const entry of walk(WORKSPACE_DIR, {
@@ -48,6 +58,9 @@ export async function listWorkspaceFiles(): Promise<WorkspaceFile[]> {
       if (entry.path === WORKSPACE_DIR) continue
 
       const relativePath = entry.path.substring(WORKSPACE_DIR.length + 1)
+      logger.info(
+        `Found entry: ${relativePath} (${entry.isFile ? "file" : "directory"})`,
+      )
 
       let size: number | undefined
       if (entry.isFile) {
@@ -66,6 +79,8 @@ export async function listWorkspaceFiles(): Promise<WorkspaceFile[]> {
         size,
       })
     }
+
+    logger.info(`Total files found: ${files.length}`)
 
     return files.sort((a, b) => {
       // Sort directories first, then by path
