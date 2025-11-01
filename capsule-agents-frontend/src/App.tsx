@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react"
-import { Navigate, Route, Routes, useLocation } from "react-router-dom"
+import { Navigate, Route, Routes } from "react-router-dom"
 import Header from "./components/header.tsx"
 import ChatInterface from "./components/chat-interface.tsx"
 // Sidebar is now rendered inside ChatInterface's sheet
@@ -32,7 +32,6 @@ function App() {
   const [chatsRefreshKey, setChatsRefreshKey] = useState(0)
   const [isConversationsOpen, setIsConversationsOpen] = useState<boolean>(true)
   const convPrefLockedRef = useRef(false)
-  const location = useLocation()
 
   // Initialize conversations panel preference: use saved if present, otherwise responsive default
   useEffect(() => {
@@ -161,18 +160,9 @@ function App() {
     setCurrentChatData(null)
   }
 
-  const normalizedPath = location.pathname.endsWith("/") &&
-      location.pathname.length > 1
-    ? location.pathname.slice(0, -1)
-    : location.pathname
-  const isChatRoute = normalizedPath === "/chat"
-  const mainScrollClass = isChatRoute
-    ? "overflow-hidden"
-    : "overflow-auto"
-
   return (
     <>
-      <main className={`flex h-screen flex-col bg-slate-50 ${mainScrollClass}`}>
+      <main className="flex h-screen flex-col bg-slate-50 overflow-hidden">
         <Header />
 
         <Routes>
@@ -220,18 +210,20 @@ function App() {
           <Route
             index
             element={
-              <div className="mx-auto flex w-full max-w-7xl flex-1 flex-col gap-6 p-4 md:p-6 lg:p-8">
-                <div className="flex flex-col gap-2">
-                  <h2 className="text-2xl font-semibold text-foreground">
-                    Editor
-                  </h2>
-                  <p className="text-sm text-muted-foreground">
-                    Configure your agent and manage its workspace.
-                  </p>
-                </div>
-                <div className="grid gap-6 lg:grid-cols-2 lg:items-start">
-                  <AgentEditor />
-                  <WorkspaceManager />
+              <div className="flex-1 overflow-y-auto min-h-0">
+                <div className="mx-auto flex w-full max-w-7xl flex-col gap-6 p-4 md:p-6 lg:p-8">
+                  <div className="flex flex-col gap-2">
+                    <h2 className="text-2xl font-semibold text-foreground">
+                      Editor
+                    </h2>
+                    <p className="text-sm text-muted-foreground">
+                      Configure your agent and manage its workspace.
+                    </p>
+                  </div>
+                  <div className="grid gap-6 lg:grid-cols-2 lg:items-start">
+                    <AgentEditor />
+                    <WorkspaceManager />
+                  </div>
                 </div>
               </div>
             }
@@ -239,8 +231,8 @@ function App() {
           <Route
             path="schedules"
             element={
-              <div className="container mx-auto flex-1 overflow-y-auto p-4 md:p-6 lg:p-8">
-                <div className="mx-auto flex w-full max-w-5xl flex-col gap-6">
+              <div className="flex-1 overflow-y-auto min-h-0">
+                <div className="container mx-auto flex w-full max-w-5xl flex-col gap-6 p-4 md:p-6 lg:p-8">
                   <div className="flex flex-col gap-2">
                     <h2 className="text-2xl font-semibold text-foreground">
                       Schedules
