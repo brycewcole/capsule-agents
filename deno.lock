@@ -53,6 +53,7 @@
     "npm:next-themes@~0.4.6": "0.4.6_react@19.2.0_react-dom@19.2.0__react@19.2.0",
     "npm:react-dom@^19.1.1": "19.2.0_react@19.2.0",
     "npm:react-markdown@^10.1.0": "10.1.0_@types+react@19.2.2_react@19.2.0",
+    "npm:react-router-dom@^6.28.1": "6.30.1_react@19.2.0_react-dom@19.2.0__react@19.2.0",
     "npm:react@^19.1.1": "19.2.0",
     "npm:remark-gfm@4": "4.0.1",
     "npm:sonner@^2.0.7": "2.0.7_react@19.2.0_react-dom@19.2.0__react@19.2.0",
@@ -1020,6 +1021,9 @@
     },
     "@radix-ui/rect@1.1.1": {
       "integrity": "sha512-HPwpGIzkl28mWyZqG52jiqDJ12waP11Pa1lGoiyUkIEuMLBP0oeK/C89esbXrxsky5we7dfd8U58nm0SgAWpVw=="
+    },
+    "@remix-run/router@1.23.0": {
+      "integrity": "sha512-O3rHJzAQKamUz1fvE0Qaw0xSFqsA/yafi2iqeE0pvdFtCO1viYx8QL6f3Ln/aCCTLxs68SLf0KPM9eSeM8yBnA=="
     },
     "@rolldown/pluginutils@1.0.0-beta.43": {
       "integrity": "sha512-5Uxg7fQUCmfhax7FJke2+8B6cqgeUJUD9o2uXIKXhD+mG0mL6NObmVoi9wXEU1tY89mZKgAYA6fTbftx3q2ZPQ=="
@@ -2543,6 +2547,22 @@
         "@types/react"
       ]
     },
+    "react-router-dom@6.30.1_react@19.2.0_react-dom@19.2.0__react@19.2.0": {
+      "integrity": "sha512-llKsgOkZdbPU1Eg3zK8lCn+sjD9wMRZZPuzmdWWX5SUs8OFkN5HnFVC0u5KMeMaC9aoancFI/KoLuKPqN+hxHw==",
+      "dependencies": [
+        "@remix-run/router",
+        "react",
+        "react-dom",
+        "react-router"
+      ]
+    },
+    "react-router@6.30.1_react@19.2.0": {
+      "integrity": "sha512-X1m21aEmxGXqENEPG3T6u0Th7g0aS4ZmoNynhbs+Cn+q+QGTLt+d5IQ2bHAXKzKcxGJjxACpVbnYQSCRcfxHlQ==",
+      "dependencies": [
+        "@remix-run/router",
+        "react"
+      ]
+    },
     "react-style-singleton@2.2.3_@types+react@19.2.2_react@19.2.0": {
       "integrity": "sha512-b6jSvxvVnyptAiLjbkWLE/lOnR4lfTtDAl+eUC7RZy+QQWc6wRzIV2CE6xBuMmDxc2qIihtDCZD5NPOFl7fRBQ==",
       "dependencies": [
@@ -3036,6 +3056,7 @@
           "npm:next-themes@~0.4.6",
           "npm:react-dom@^19.1.1",
           "npm:react-markdown@^10.1.0",
+          "npm:react-router-dom@^6.28.1",
           "npm:react@^19.1.1",
           "npm:remark-gfm@4",
           "npm:sonner@^2.0.7",
@@ -3049,6 +3070,7 @@
             "npm:@ai-sdk/gateway@^1.0.15",
             "npm:@radix-ui/react-tooltip@^1.2.8",
             "npm:@tailwindcss/vite@latest",
+            "npm:react-router-dom@^6.28.1",
             "npm:tailwindcss@4",
             "npm:vite@6"
           ]

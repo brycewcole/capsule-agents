@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react"
+import { Navigate, Route, Routes, useLocation } from "react-router-dom"
 import Header from "./components/header.tsx"
 import ChatInterface from "./components/chat-interface.tsx"
 // Sidebar is now rendered inside ChatInterface's sheet
@@ -11,23 +12,10 @@ import { type ChatWithHistory, getChatById, testLogin } from "./lib/api.ts"
 import { showErrorToast } from "./lib/error-utils.ts"
 import "./App.css"
 
-type ViewType = "chat" | "editor" | "schedules"
-
 function App() {
   const [showLogin, setShowLogin] = useState(false)
   const [loginError, setLoginError] = useState<string>()
   const [, setIsAuthenticated] = useState(true) // Temporarily always authenticated
-  const [currentView, setCurrentView] = useState<ViewType>(() => {
-    try {
-      const stored = localStorage.getItem("ui:lastView")
-      if (stored === "chat" || stored === "editor" || stored === "schedules") {
-        return stored
-      }
-    } catch {
-      // Ignore storage access issues; default to chat view
-    }
-    return "chat"
-  })
 
   // Chat management state
   const [currentChatId, setCurrentChatId] = useState<string | null>(() => {
@@ -44,6 +32,7 @@ function App() {
   const [chatsRefreshKey, setChatsRefreshKey] = useState(0)
   const [isConversationsOpen, setIsConversationsOpen] = useState<boolean>(true)
   const convPrefLockedRef = useRef(false)
+  const location = useLocation()
 
   // Initialize conversations panel preference: use saved if present, otherwise responsive default
   useEffect(() => {
@@ -117,14 +106,6 @@ function App() {
     }
   }, [currentChatId])
 
-  useEffect(() => {
-    try {
-      localStorage.setItem("ui:lastView", currentView)
-    } catch {
-      // Ignore localStorage errors
-    }
-  }, [currentView])
-
   // Keyboard shortcut: Cmd/Ctrl+K to toggle conversations panel
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -180,87 +161,101 @@ function App() {
     setCurrentChatData(null)
   }
 
-  const mainScrollClass = currentView === "chat"
+  const normalizedPath = location.pathname.endsWith("/") &&
+      location.pathname.length > 1
+    ? location.pathname.slice(0, -1)
+    : location.pathname
+  const isChatRoute = normalizedPath === "/chat"
+  const mainScrollClass = isChatRoute
     ? "overflow-hidden"
     : "overflow-auto"
 
   return (
     <>
       <main className={`flex h-screen flex-col bg-slate-50 ${mainScrollClass}`}>
-        <Header
-          currentView={currentView}
-          onViewChange={setCurrentView}
-        />
+        <Header />
 
-        {currentView === "chat" && (
-          <div className="container mx-auto flex flex-1 flex-col p-4 md:p-6 lg:p-8 min-h-0">
-            <div className="flex h-full min-h-0 flex-col gap-4 lg:gap-6">
-              <div>
-                <h2 className="text-lg font-semibold text-foreground">
-                  Chat
-                </h2>
-                <p className="text-sm text-muted-foreground">
-                  {currentChatId
-                    ? `Chatting in: ${currentChatData?.title || "Loading..."}`
-                    : "Converse with your agent and review task history."}
-                </p>
+        <Routes>
+          <Route
+            path="chat"
+            element={
+              <div className="container mx-auto flex flex-1 flex-col p-4 md:p-6 lg:p-8 min-h-0">
+                <div className="flex h-full min-h-0 flex-col gap-4 lg:gap-6">
+                  <div>
+                    <h2 className="text-lg font-semibold text-foreground">
+                      Chat
+                    </h2>
+                    <p className="text-sm text-muted-foreground">
+                      {currentChatId
+                        ? `Chatting in: ${
+                          currentChatData?.title || "Loading..."
+                        }`
+                        : "Converse with your agent and review task history."}
+                    </p>
+                  </div>
+                  <div className="flex-1 min-h-0">
+                    <ChatInterface
+                      contextId={currentChatId}
+                      initialChatData={currentChatData}
+                      isLoadingChat={isLoadingChat}
+                      isConversationsOpen={isConversationsOpen}
+                      onToggleConversations={() => {
+                        convPrefLockedRef.current = true
+                        setIsConversationsOpen((v) => !v)
+                      }}
+                      onChatCreated={(newChatId) => {
+                        setCurrentChatId(newChatId)
+                        setChatsRefreshKey((k) => k + 1)
+                      }}
+                      onNewChat={handleNewChat}
+                      currentChatId={currentChatId}
+                      onChatSelect={handleChatSelect}
+                      chatsRefreshKey={chatsRefreshKey}
+                    />
+                  </div>
+                </div>
               </div>
-              <div className="flex-1 min-h-0">
-                <ChatInterface
-                  contextId={currentChatId}
-                  initialChatData={currentChatData}
-                  isLoadingChat={isLoadingChat}
-                  isConversationsOpen={isConversationsOpen}
-                  onToggleConversations={() => {
-                    convPrefLockedRef.current = true
-                    setIsConversationsOpen((v) => !v)
-                  }}
-                  onChatCreated={(newChatId) => {
-                    setCurrentChatId(newChatId)
-                    setChatsRefreshKey((k) => k + 1)
-                  }}
-                  onNewChat={handleNewChat}
-                  currentChatId={currentChatId}
-                  onChatSelect={handleChatSelect}
-                  chatsRefreshKey={chatsRefreshKey}
-                />
+            }
+          />
+          <Route
+            index
+            element={
+              <div className="mx-auto flex w-full max-w-7xl flex-1 flex-col gap-6 p-4 md:p-6 lg:p-8">
+                <div className="flex flex-col gap-2">
+                  <h2 className="text-2xl font-semibold text-foreground">
+                    Editor
+                  </h2>
+                  <p className="text-sm text-muted-foreground">
+                    Configure your agent and manage its workspace.
+                  </p>
+                </div>
+                <div className="grid gap-6 lg:grid-cols-2 lg:items-start">
+                  <AgentEditor />
+                  <WorkspaceManager />
+                </div>
               </div>
-            </div>
-          </div>
-        )}
-
-        {currentView === "editor" && (
-          <div className="mx-auto flex w-full max-w-7xl flex-1 flex-col gap-6 p-4 md:p-6 lg:p-8">
-            <div className="flex flex-col gap-2">
-              <h2 className="text-2xl font-semibold text-foreground">
-                Editor
-              </h2>
-              <p className="text-sm text-muted-foreground">
-                Configure your agent and manage its workspace.
-              </p>
-            </div>
-            <div className="grid gap-6 lg:grid-cols-2 lg:items-start">
-              <AgentEditor />
-              <WorkspaceManager />
-            </div>
-          </div>
-        )}
-
-        {currentView === "schedules" && (
-          <div className="container mx-auto flex-1 overflow-y-auto p-4 md:p-6 lg:p-8">
-            <div className="mx-auto flex w-full max-w-5xl flex-col gap-6">
-              <div className="flex flex-col gap-2">
-                <h2 className="text-2xl font-semibold text-foreground">
-                  Schedules
-                </h2>
-                <p className="text-sm text-muted-foreground">
-                  Automate agent queries with scheduled tasks.
-                </p>
+            }
+          />
+          <Route
+            path="schedules"
+            element={
+              <div className="container mx-auto flex-1 overflow-y-auto p-4 md:p-6 lg:p-8">
+                <div className="mx-auto flex w-full max-w-5xl flex-col gap-6">
+                  <div className="flex flex-col gap-2">
+                    <h2 className="text-2xl font-semibold text-foreground">
+                      Schedules
+                    </h2>
+                    <p className="text-sm text-muted-foreground">
+                      Automate agent queries with scheduled tasks.
+                    </p>
+                  </div>
+                  <ScheduleManager />
+                </div>
               </div>
-              <ScheduleManager />
-            </div>
-          </div>
-        )}
+            }
+          />
+          <Route path="*" element={<Navigate to="chat" replace />} />
+        </Routes>
       </main>
 
       <LoginDialog

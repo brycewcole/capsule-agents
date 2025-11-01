@@ -3,7 +3,8 @@
   "private": true,
   "dependencies": {
     "@ai-sdk/gateway": "^1.0.15",
-    "@radix-ui/react-tooltip": "^1.2.8"
+    "@radix-ui/react-tooltip": "^1.2.8",
+    "react-router-dom": "^6.28.1"
   },
   "devDependencies": {
     "vite": "^6",

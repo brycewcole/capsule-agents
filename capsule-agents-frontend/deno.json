@@ -31,6 +31,7 @@
     "react": "npm:react@^19.1.1",
     "react/jsx-runtime": "npm:react@^19.1.1/jsx-runtime",
     "react-dom": "npm:react-dom@^19.1.1",
+    "react-router-dom": "npm:react-router-dom@^6.28.1",
     "react-markdown": "npm:react-markdown@^10.1.0",
     "remark-gfm": "npm:remark-gfm@^4.0.0",
     "sonner": "npm:sonner@^2.0.7",

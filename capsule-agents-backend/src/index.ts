@@ -104,9 +104,17 @@ app.route("/api", createChatController(chatService))
 app.route("/api", createScheduleController(scheduleService))
 app.route("/api", createWorkspaceController())
 
-// Serve static files at /editor
+// Serve frontend assets
 app.use(
-  "/editor/*",
+  "/editor/assets/*",
+  serveStatic({
+    root: "./static",
+    rewriteRequestPath: (path) => path.replace(/^\/editor/, ""),
+  }),
+)
+
+app.get(
+  "/editor/vite.svg",
   serveStatic({
     root: "./static",
     rewriteRequestPath: (path) => path.replace(/^\/editor/, ""),
@@ -116,6 +124,11 @@ app.use(
 // Serve editor SPA
 app.get(
   "/editor",
+  serveStatic({ root: "./static", rewriteRequestPath: () => "/index.html" }),
+)
+
+app.get(
+  "/editor/*",
   serveStatic({ root: "./static", rewriteRequestPath: () => "/index.html" }),
 )
 
