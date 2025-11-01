@@ -4,9 +4,9 @@ import { useEffect, useState } from "react"
 import { Input } from "./ui/input.tsx"
 import { Textarea } from "./ui/textarea.tsx"
 import { Label } from "./ui/label.tsx"
-import { Card, CardContent, CardHeader, CardTitle } from "./ui/card.tsx"
 import { Button } from "./ui/button.tsx"
 import {
+  Bot,
   Brain,
   Edit,
   HelpCircle,
@@ -15,6 +15,7 @@ import {
   Save,
   Terminal,
   Trash,
+  Zap,
 } from "lucide-react"
 import { toast } from "sonner"
 import {
@@ -494,12 +495,15 @@ export default function AgentEditor() {
 
   if (isLoading) {
     return (
-      <Card className="shadow-md">
-        <CardContent className="flex items-center justify-center p-8">
-          <Loader2 className="h-8 w-8 animate-spin text-primary" />
-          <span className="ml-2 text-lg">Loading agent information...</span>
-        </CardContent>
-      </Card>
+      <section
+        className="rounded-2xl border bg-white p-6 shadow-sm"
+        aria-labelledby="agent-heading"
+      >
+        <div className="flex h-40 flex-col items-center justify-center gap-3 text-muted-foreground">
+          <Loader2 className="h-6 w-6 animate-spin" />
+          <span>Loading agent information...</span>
+        </div>
+      </section>
     )
   }
 
@@ -507,21 +511,26 @@ export default function AgentEditor() {
     <TooltipProvider>
       <div className="space-y-4">
         {/* Agent Information Card */}
-        <Card className="shadow-md h-fit">
-          <CardHeader>
+        <section
+          className="rounded-2xl border bg-white p-6 shadow-sm"
+          aria-labelledby="agent-heading"
+        >
+          <div className="space-y-1 mb-6">
             <div className="flex items-center gap-2">
-              <CardTitle className="text-xl">Agent Information</CardTitle>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p>Configure your agent's name and description</p>
-                </TooltipContent>
-              </Tooltip>
+              <Bot className="h-5 w-5" />
+              <h3
+                id="agent-heading"
+                className="text-xl font-semibold text-foreground"
+              >
+                Agent Information
+              </h3>
             </div>
-          </CardHeader>
-          <CardContent className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Configure your agent's name and description
+            </p>
+          </div>
+
+          <div className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="agent-name">Name</Label>
               <Input
@@ -569,50 +578,60 @@ export default function AgentEditor() {
                   )}
               </Button>
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        </section>
 
         {/* Model Configuration Card */}
-        <Card className="shadow-md h-fit">
-          <CardHeader>
+        <section
+          className="rounded-2xl border bg-white p-6 shadow-sm"
+          aria-labelledby="model-heading"
+        >
+          <div className="space-y-1 mb-6">
             <div className="flex items-center gap-2">
-              <CardTitle className="text-xl">Model</CardTitle>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p>Select the AI model for your agent</p>
-                </TooltipContent>
-              </Tooltip>
+              <Brain className="h-5 w-5" />
+              <h3
+                id="model-heading"
+                className="text-xl font-semibold text-foreground"
+              >
+                Model
+              </h3>
             </div>
-          </CardHeader>
-          <CardContent className="space-y-2">
+            <p className="text-sm text-muted-foreground">
+              Select the AI model for your agent
+            </p>
+          </div>
+
+          <div className="space-y-2">
             <ModelPicker
               providers={providerInfo}
               value={selectedModel?.id || ""}
               onChange={handleModelSelect}
               placeholder="Select a model"
             />
-          </CardContent>
-        </Card>
+          </div>
+        </section>
 
         {/* Capabilities Card */}
-        <Card className="shadow-md h-fit">
-          <CardHeader>
+        <section
+          className="rounded-2xl border bg-white p-6 shadow-sm"
+          aria-labelledby="capabilities-heading"
+        >
+          <div className="space-y-1 mb-6">
             <div className="flex items-center gap-2">
-              <CardTitle className="text-xl">Capabilities</CardTitle>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p>Configure tools and integrations for your agent</p>
-                </TooltipContent>
-              </Tooltip>
+              <Zap className="h-5 w-5" />
+              <h3
+                id="capabilities-heading"
+                className="text-xl font-semibold text-foreground"
+              >
+                Capabilities
+              </h3>
             </div>
-          </CardHeader>
-          <CardContent className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Configure tools and integrations for your agent
+            </p>
+          </div>
+
+          <div className="space-y-4">
             {/* Prebuilt Capabilities Toggles */}
             <div className="space-y-3 p-4 bg-muted/50 rounded-lg">
               <div className="space-y-3">
@@ -781,8 +800,8 @@ export default function AgentEditor() {
                 Add
               </Button>
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        </section>
 
         {/* No Models Available Modal */}
         <Dialog open={showNoModelsModal} onOpenChange={setShowNoModelsModal}>

@@ -12,6 +12,7 @@ import {
   ChevronRight,
   Download,
   File,
+  FolderOpen,
   Folder,
   Inbox,
   Loader2,
@@ -267,12 +268,15 @@ export default function WorkspaceManager() {
     >
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="space-y-1">
-          <h3
-            id="workspace-heading"
-            className="text-xl font-semibold text-foreground"
-          >
-            Workspace
-          </h3>
+          <div className="flex items-center gap-2">
+            <FolderOpen className="h-5 w-5" />
+            <h3
+              id="workspace-heading"
+              className="text-xl font-semibold text-foreground"
+            >
+              Workspace
+            </h3>
+          </div>
           <p className="text-sm text-muted-foreground">
             Upload and manage files available to your agent.
           </p>

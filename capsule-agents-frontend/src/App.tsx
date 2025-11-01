@@ -212,14 +212,6 @@ function App() {
             element={
               <div className="flex-1 overflow-y-auto min-h-0">
                 <div className="mx-auto flex w-full max-w-[1600px] flex-col gap-6 p-4 md:p-6 lg:p-8">
-                  <div className="flex flex-col gap-2">
-                    <h2 className="text-2xl font-semibold text-foreground">
-                      Editor
-                    </h2>
-                    <p className="text-sm text-muted-foreground">
-                      Configure your agent and manage its workspace.
-                    </p>
-                  </div>
                   <div className="grid gap-6 lg:grid-cols-2 lg:items-start">
                     <AgentEditor />
                     <div className="flex flex-col gap-6">
