@@ -170,19 +170,7 @@ function App() {
             path="chat"
             element={
               <div className="container mx-auto flex flex-1 flex-col p-4 md:p-6 lg:p-8 min-h-0">
-                <div className="flex h-full min-h-0 flex-col gap-4 lg:gap-6">
-                  <div>
-                    <h2 className="text-lg font-semibold text-foreground">
-                      Chat
-                    </h2>
-                    <p className="text-sm text-muted-foreground">
-                      {currentChatId
-                        ? `Chatting in: ${
-                          currentChatData?.title || "Loading..."
-                        }`
-                        : "Converse with your agent and review task history."}
-                    </p>
-                  </div>
+                <div className="flex h-full min-h-0 flex-col">
                   <div className="flex-1 min-h-0">
                     <ChatInterface
                       contextId={currentChatId}
