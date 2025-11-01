@@ -72,6 +72,7 @@ export const ConfigFileSchema = z.object({
     }),
   ).optional().default({}),
   schedules: z.array(ScheduleConfigSchema).optional().default([]),
+  workspaceFiles: z.array(z.string()).optional().default([]),
 })
 
 // TypeScript types derived from schemas

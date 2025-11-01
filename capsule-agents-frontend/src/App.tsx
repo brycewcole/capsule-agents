@@ -4,13 +4,14 @@ import ChatInterface from "./components/chat-interface.tsx"
 // Sidebar is now rendered inside ChatInterface's sheet
 import AgentEditor from "./components/agent-editor.tsx"
 import ScheduleManager from "./components/schedule-manager.tsx"
+import WorkspaceManager from "./components/workspace-manager.tsx"
 import { LoginDialog } from "./components/login-dialog.tsx"
 import { Toaster } from "./components/ui/toaster.tsx"
 import { type ChatWithHistory, getChatById, testLogin } from "./lib/api.ts"
 import { showErrorToast } from "./lib/error-utils.ts"
 import "./App.css"
 
-type ViewType = "chat" | "schedules"
+type ViewType = "chat" | "schedules" | "workspace"
 
 function App() {
   const [showLogin, setShowLogin] = useState(false)
@@ -234,6 +235,20 @@ function App() {
               </p>
             </div>
             <ScheduleManager />
+          </div>
+        )}
+
+        {currentView === "workspace" && (
+          <div className="container mx-auto flex-1 p-4 md:p-6 lg:p-8 overflow-y-auto">
+            <div className="mb-6">
+              <h2 className="text-2xl font-semibold text-foreground">
+                Workspace
+              </h2>
+              <p className="text-sm text-muted-foreground">
+                Manage files in your agent's workspace directory
+              </p>
+            </div>
+            <WorkspaceManager />
           </div>
         )}
       </main>
