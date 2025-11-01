@@ -29,10 +29,6 @@ export default function Header() {
             <MessageSquare className="h-4 w-4" />
             Chat
           </NavLink>
-          <NavLink to="schedules" className={navLinkClasses}>
-            <Clock className="h-4 w-4" />
-            Schedules
-          </NavLink>
           <span className="text-sm font-medium text-muted-foreground opacity-50 cursor-not-allowed">
             Docs
           </span>

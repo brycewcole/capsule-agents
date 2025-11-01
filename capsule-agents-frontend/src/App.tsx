@@ -211,7 +211,7 @@ function App() {
             index
             element={
               <div className="flex-1 overflow-y-auto min-h-0">
-                <div className="mx-auto flex w-full max-w-7xl flex-col gap-6 p-4 md:p-6 lg:p-8">
+                <div className="mx-auto flex w-full max-w-[1600px] flex-col gap-6 p-4 md:p-6 lg:p-8">
                   <div className="flex flex-col gap-2">
                     <h2 className="text-2xl font-semibold text-foreground">
                       Editor
@@ -222,26 +222,11 @@ function App() {
                   </div>
                   <div className="grid gap-6 lg:grid-cols-2 lg:items-start">
                     <AgentEditor />
-                    <WorkspaceManager />
+                    <div className="flex flex-col gap-6">
+                      <WorkspaceManager />
+                      <ScheduleManager />
+                    </div>
                   </div>
-                </div>
-              </div>
-            }
-          />
-          <Route
-            path="schedules"
-            element={
-              <div className="flex-1 overflow-y-auto min-h-0">
-                <div className="container mx-auto flex w-full max-w-5xl flex-col gap-6 p-4 md:p-6 lg:p-8">
-                  <div className="flex flex-col gap-2">
-                    <h2 className="text-2xl font-semibold text-foreground">
-                      Schedules
-                    </h2>
-                    <p className="text-sm text-muted-foreground">
-                      Automate agent queries with scheduled tasks.
-                    </p>
-                  </div>
-                  <ScheduleManager />
                 </div>
               </div>
             }
