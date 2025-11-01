@@ -21,13 +21,13 @@ export default function Header() {
           Alpha
         </span>
         <nav className="ml-auto flex items-center gap-4">
-          <NavLink to="chat" className={navLinkClasses}>
-            <MessageSquare className="h-4 w-4" />
-            Chat
-          </NavLink>
           <NavLink to="/" end className={navLinkClasses}>
             <Settings2 className="h-4 w-4" />
             Editor
+          </NavLink>
+          <NavLink to="chat" className={navLinkClasses}>
+            <MessageSquare className="h-4 w-4" />
+            Chat
           </NavLink>
           <NavLink to="schedules" className={navLinkClasses}>
             <Clock className="h-4 w-4" />

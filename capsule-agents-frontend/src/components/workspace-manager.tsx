@@ -3,6 +3,13 @@
 import { useEffect, useRef, useState } from "react"
 import { Button } from "./ui/button.tsx"
 import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "./ui/collapsible.tsx"
+import {
+  ChevronDown,
+  ChevronRight,
   Download,
   File,
   Folder,
@@ -20,6 +27,159 @@ import {
   uploadWorkspaceFile,
   WorkspaceFile,
 } from "../lib/api.ts"
+
+interface FileTreeNode {
+  name: string
+  path: string
+  type: "file" | "directory"
+  size?: number
+  children?: FileTreeNode[]
+}
+
+function buildFileTree(files: WorkspaceFile[]): FileTreeNode[] {
+  const root: { [key: string]: FileTreeNode } = {}
+
+  // Sort files to ensure directories come before their contents
+  const sortedFiles = [...files].sort((a, b) => a.path.localeCompare(b.path))
+
+  for (const file of sortedFiles) {
+    const parts = file.path.split("/")
+    let current = root
+
+    for (let i = 0; i < parts.length; i++) {
+      const part = parts[i]
+      const isLast = i === parts.length - 1
+      const currentPath = parts.slice(0, i + 1).join("/")
+
+      if (!current[part]) {
+        current[part] = {
+          name: part,
+          path: currentPath,
+          type: isLast ? file.type : "directory",
+          size: isLast ? file.size : undefined,
+          children: {},
+        }
+      }
+
+      if (!isLast) {
+        current = current[part].children as any
+      }
+    }
+  }
+
+  // Convert to array and sort (directories first, then alphabetically)
+  function convertToArray(obj: { [key: string]: FileTreeNode }): FileTreeNode[] {
+    return Object.values(obj)
+      .map((node) => ({
+        ...node,
+        children: node.children ? convertToArray(node.children as any) : undefined,
+      }))
+      .sort((a, b) => {
+        if (a.type !== b.type) {
+          return a.type === "directory" ? -1 : 1
+        }
+        return a.name.localeCompare(b.name)
+      })
+  }
+
+  return convertToArray(root)
+}
+
+interface FileTreeItemProps {
+  node: FileTreeNode
+  onDownload: (path: string) => void
+  onDelete: (path: string, name: string) => void
+  level: number
+}
+
+function FileTreeItem(
+  { node, onDownload, onDelete, level }: FileTreeItemProps,
+) {
+  const [isOpen, setIsOpen] = useState(false)
+
+  const formatFileSize = (bytes?: number): string => {
+    if (!bytes) return "-"
+    if (bytes < 1024) return `${bytes} B`
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+  }
+
+  if (node.type === "directory") {
+    return (
+      <Collapsible open={isOpen} onOpenChange={setIsOpen}>
+        <div
+          className="flex items-center gap-2 py-1.5 px-2 hover:bg-accent rounded-sm group"
+          style={{ paddingLeft: `${level * 12 + 8}px` }}
+        >
+          <CollapsibleTrigger asChild>
+            <button className="flex items-center gap-1 flex-1 text-left">
+              {isOpen
+                ? <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                : <ChevronRight className="h-4 w-4 text-muted-foreground" />}
+              <Folder className="h-4 w-4 text-blue-500" />
+              <span className="font-medium">{node.name}</span>
+            </button>
+          </CollapsibleTrigger>
+          <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 w-7 p-0"
+              onClick={(e) => {
+                e.stopPropagation()
+                onDelete(node.path, node.name)
+              }}
+            >
+              <Trash className="h-3.5 w-3.5 text-red-500" />
+            </Button>
+          </div>
+        </div>
+        <CollapsibleContent>
+          {node.children?.map((child) => (
+            <FileTreeItem
+              key={child.path}
+              node={child}
+              onDownload={onDownload}
+              onDelete={onDelete}
+              level={level + 1}
+            />
+          ))}
+        </CollapsibleContent>
+      </Collapsible>
+    )
+  }
+
+  return (
+    <div
+      className="flex items-center gap-2 py-1.5 px-2 hover:bg-accent rounded-sm group"
+      style={{ paddingLeft: `${level * 12 + 8}px` }}
+    >
+      <File className="h-4 w-4 text-gray-500 ml-5" />
+      <span className="flex-1">{node.name}</span>
+      <span className="text-xs text-muted-foreground">
+        {formatFileSize(node.size)}
+      </span>
+      <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-7 w-7 p-0"
+          onClick={() => onDownload(node.path)}
+        >
+          <Download className="h-3.5 w-3.5" />
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-7 w-7 p-0"
+          onClick={() => onDelete(node.path, node.name)}
+        >
+          <Trash className="h-3.5 w-3.5 text-red-500" />
+        </Button>
+      </div>
+    </div>
+  )
+}
 
 export default function WorkspaceManager() {
   const [files, setFiles] = useState<WorkspaceFile[]>([])
@@ -73,24 +233,24 @@ export default function WorkspaceManager() {
     }
   }
 
-  const handleDownload = async (file: WorkspaceFile) => {
+  const handleDownload = async (path: string) => {
     try {
-      await downloadWorkspaceFile(file.path)
-      toast.success(`Downloaded ${file.name}`)
+      await downloadWorkspaceFile(path)
+      toast.success(`Downloaded ${path.split("/").pop()}`)
     } catch (error) {
       console.error("Failed to download file:", error)
       toast.error("Failed to download file")
     }
   }
 
-  const handleDelete = async (file: WorkspaceFile) => {
-    if (!confirm(`Are you sure you want to delete ${file.name}?`)) {
+  const handleDelete = async (path: string, name: string) => {
+    if (!confirm(`Are you sure you want to delete ${name}?`)) {
       return
     }
 
     try {
-      await deleteWorkspaceFile(file.path)
-      toast.success(`Deleted ${file.name}`)
+      await deleteWorkspaceFile(path)
+      toast.success(`Deleted ${name}`)
       await loadFiles()
     } catch (error) {
       console.error("Failed to delete file:", error)
@@ -98,12 +258,7 @@ export default function WorkspaceManager() {
     }
   }
 
-  const formatFileSize = (bytes?: number): string => {
-    if (bytes === undefined || bytes === null) return "-"
-    if (bytes < 1024) return `${bytes} B`
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
-  }
+  const fileTree = buildFileTree(files)
 
   return (
     <section
@@ -200,53 +355,17 @@ export default function WorkspaceManager() {
           )
           : (
             <div className="max-h-[360px] overflow-y-auto rounded-lg border">
-              <ul className="divide-y">
-                {files.map((file) => (
-                  <li
-                    key={file.path}
-                    className="flex items-center justify-between gap-3 p-4"
-                  >
-                    <div className="flex min-w-0 items-center gap-3">
-                      {file.type === "directory"
-                        ? <Folder className="h-5 w-5 text-blue-500" />
-                        : <File className="h-5 w-5 text-muted-foreground" />}
-                      <div className="min-w-0">
-                        <p className="truncate font-medium text-foreground">
-                          {file.name}
-                        </p>
-                        <p className="truncate text-xs text-muted-foreground">
-                          {file.path}
-                        </p>
-                      </div>
-                    </div>
-                    <div className="flex shrink-0 items-center gap-1.5">
-                      <span className="text-sm text-muted-foreground">
-                        {formatFileSize(file.size)}
-                      </span>
-                      {file.type === "file" && (
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => handleDownload(file)}
-                          aria-label={`Download ${file.name}`}
-                        >
-                          <Download className="h-4 w-4" />
-                        </Button>
-                      )}
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => handleDelete(file)}
-                        aria-label={`Delete ${file.name}`}
-                      >
-                        <Trash className="h-4 w-4 text-red-500" />
-                      </Button>
-                    </div>
-                  </li>
+              <div className="p-2">
+                {fileTree.map((node) => (
+                  <FileTreeItem
+                    key={node.path}
+                    node={node}
+                    onDownload={handleDownload}
+                    onDelete={handleDelete}
+                    level={0}
+                  />
                 ))}
-              </ul>
+              </div>
             </div>
           )}
       </div>

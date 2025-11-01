@@ -7,6 +7,12 @@ const logger = getLogger("workspace-controller")
 export function createWorkspaceController() {
   const router = new Hono()
 
+  // Log all requests to workspace routes
+  router.use("*", async (c, next) => {
+    logger.info(`Workspace request: ${c.req.method} ${c.req.path}`)
+    await next()
+  })
+
   /**
    * GET /api/workspace/files
    * List all files in the workspace
@@ -62,15 +68,19 @@ export function createWorkspaceController() {
    * GET /api/workspace/files/:path
    * Download a specific file from the workspace
    */
-  router.get("/workspace/files/*", async (c) => {
+  router.get("/workspace/files/:encodedPath", async (c) => {
     try {
-      // Get the full path after /workspace/files/
-      const fullPath = c.req.path
-      const path = fullPath.replace("/api/workspace/files/", "")
+      // Get the base64URL encoded path and decode it
+      const encodedPath = c.req.param("encodedPath")
 
-      if (!path) {
+      if (!encodedPath) {
         return c.json({ error: "File path is required" }, 400)
       }
+
+      // Decode base64URL: replace URL-safe chars back and add padding if needed
+      const base64 = encodedPath.replace(/-/g, "+").replace(/_/g, "/")
+      const padded = base64 + "=".repeat((4 - (base64.length % 4)) % 4)
+      const path = atob(padded)
 
       const content = await workspaceService.readFile(path)
 
@@ -95,21 +105,30 @@ export function createWorkspaceController() {
    * DELETE /api/workspace/files/:path
    * Delete a file or directory from the workspace
    */
-  router.delete("/workspace/files/*", async (c) => {
+  router.delete("/workspace/files/:encodedPath", async (c) => {
+    logger.info(`DELETE request received for path: ${c.req.path}`)
     try {
-      // Get the full path after /workspace/files/
-      const fullPath = c.req.path
-      const path = fullPath.replace("/api/workspace/files/", "")
+      // Get the base64URL encoded path and decode it
+      const encodedPath = c.req.param("encodedPath")
+      logger.info(`Encoded path parameter: ${encodedPath}`)
 
-      if (!path) {
+      if (!encodedPath) {
+        logger.error("Encoded path is empty!")
         return c.json({ error: "File path is required" }, 400)
       }
+
+      // Decode base64URL: replace URL-safe chars back and add padding if needed
+      const base64 = encodedPath.replace(/-/g, "+").replace(/_/g, "/")
+      const padded = base64 + "=".repeat((4 - (base64.length % 4)) % 4)
+      const path = atob(padded)
+      logger.info(`Decoded path: ${path}`)
 
       await workspaceService.deleteFile(path)
 
       return c.json({ success: true, path })
     } catch (error) {
       logger.error(`Error deleting file: ${error}`)
+      logger.error(`Error stack: ${error.stack}`)
       return c.json(
         { error: "Failed to delete file", details: String(error) },
         500,

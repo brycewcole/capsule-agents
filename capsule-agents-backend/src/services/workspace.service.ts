@@ -1,11 +1,13 @@
-import { join, normalize, resolve } from "@std/path"
+import { join, normalize, relative, resolve } from "@std/path"
 import { walk } from "@std/fs"
 import { ensureDir } from "@std/fs"
 import { getLogger } from "@std/log"
 
 const logger = getLogger("workspace-service")
 
-const WORKSPACE_DIR = Deno.env.get("WORKSPACE_DIR") || "/app/agent-workspace"
+const WORKSPACE_DIR = resolve(
+  Deno.env.get("WORKSPACE_DIR") ?? "/app/agent-workspace",
+)
 
 export interface WorkspaceFile {
   path: string
@@ -20,9 +22,16 @@ export interface WorkspaceFile {
 function validatePath(filePath: string): string {
   const normalizedPath = normalize(filePath)
   const resolvedPath = resolve(WORKSPACE_DIR, normalizedPath)
-  const workspaceResolved = resolve(WORKSPACE_DIR)
+  const relativeToWorkspace = relative(WORKSPACE_DIR, resolvedPath)
 
-  if (!resolvedPath.startsWith(workspaceResolved)) {
+  if (
+    relativeToWorkspace === "" || relativeToWorkspace === "." ||
+    relativeToWorkspace.startsWith("..")
+  ) {
+    if (relativeToWorkspace === "" || relativeToWorkspace === ".") {
+      // Reject attempts to operate directly on the workspace root itself
+      throw new Error("Operation on workspace root is not allowed")
+    }
     throw new Error("Path traversal detected - path must be within workspace")
   }
 
@@ -57,7 +66,14 @@ export async function listWorkspaceFiles(): Promise<WorkspaceFile[]> {
       // Skip the root directory itself
       if (entry.path === WORKSPACE_DIR) continue
 
-      const relativePath = entry.path.substring(WORKSPACE_DIR.length + 1)
+      const relativePathRaw = relative(WORKSPACE_DIR, entry.path)
+      if (
+        !relativePathRaw || relativePathRaw === "." ||
+        relativePathRaw.startsWith("..")
+      ) {
+        continue
+      }
+      const relativePath = relativePathRaw.replaceAll("\\", "/")
       logger.info(
         `Found entry: ${relativePath} (${entry.isFile ? "file" : "directory"})`,
       )
@@ -142,10 +158,13 @@ export async function readFile(relativePath: string): Promise<Uint8Array> {
  * Delete a file or directory from the workspace
  */
 export async function deleteFile(relativePath: string): Promise<void> {
+  logger.info(`Attempting to delete: ${relativePath}`)
   const fullPath = validatePath(relativePath)
+  logger.info(`Validated full path: ${fullPath}`)
 
   try {
     const stat = await Deno.stat(fullPath)
+    logger.info(`File stat: isDir=${stat.isDirectory}, path=${fullPath}`)
 
     if (stat.isDirectory) {
       await Deno.remove(fullPath, { recursive: true })
@@ -155,7 +174,14 @@ export async function deleteFile(relativePath: string): Promise<void> {
       logger.info(`Deleted file: ${relativePath}`)
     }
   } catch (error) {
+    if (error instanceof Deno.errors.NotFound) {
+      logger.warn(
+        `Delete requested for non-existent path, treating as success: ${relativePath}`,
+      )
+      return
+    }
     logger.error(`Error deleting ${relativePath}: ${error}`)
+    logger.error(`Full error details: ${JSON.stringify(error)}`)
     throw error
   }
 }

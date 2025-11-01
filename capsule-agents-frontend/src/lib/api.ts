@@ -1142,12 +1142,10 @@ export async function uploadWorkspaceFile(file: File): Promise<boolean> {
 
 export async function downloadWorkspaceFile(path: string): Promise<void> {
   try {
-    // Encode each path segment separately to preserve slashes
-    const encodedPath = path.split("/").map((segment) =>
-      encodeURIComponent(segment)
-    ).join("/")
+    // Base64URL encode the path to avoid routing issues with slashes
+    const base64Path = btoa(path).replace(/\+/g, "-").replace(/\//g, "_").replace(/=/g, "")
     const response = await fetch(
-      `${API_BASE_URL}/api/workspace/files/${encodedPath}`,
+      `${API_BASE_URL}/api/workspace/files/${base64Path}`,
       {
         headers: {
           ...authStore.getAuthHeaders(),
@@ -1187,12 +1185,10 @@ export async function downloadWorkspaceFile(path: string): Promise<void> {
 
 export async function deleteWorkspaceFile(path: string): Promise<boolean> {
   try {
-    // Encode each path segment separately to preserve slashes
-    const encodedPath = path.split("/").map((segment) =>
-      encodeURIComponent(segment)
-    ).join("/")
+    // Base64URL encode the path to avoid routing issues with slashes
+    const base64Path = btoa(path).replace(/\+/g, "-").replace(/\//g, "_").replace(/=/g, "")
     const response = await fetch(
-      `${API_BASE_URL}/api/workspace/files/${encodedPath}`,
+      `${API_BASE_URL}/api/workspace/files/${base64Path}`,
       {
         method: "DELETE",
         headers: {
