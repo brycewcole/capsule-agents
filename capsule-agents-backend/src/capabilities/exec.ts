@@ -1,6 +1,5 @@
 import type { AgentSkill } from "@a2a-js/sdk"
 import { tool } from "ai"
-import * as log from "https://deno.land/std@0.203.0/log/mod.ts"
 import { z } from "zod"
 
 // Default working directory for command execution
@@ -24,7 +23,7 @@ export const execTool = tool({
   }) => {
     const cwd = workingDirectory || DEFAULT_WORKING_DIR
 
-    log.info("🚀 Executing command:", {
+    console.info("🚀 Executing command:", {
       command,
       cwd,
     })
@@ -54,7 +53,7 @@ export const execTool = tool({
       const stderr = new TextDecoder().decode(output.stderr)
       const exitCode = output.code
 
-      log.info("✅ Command completed:", {
+      console.info("✅ Command completed:", {
         command,
         exitCode,
         stdoutLength: stdout.length,
@@ -72,7 +71,7 @@ export const execTool = tool({
       }
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : "Unknown error"
-      log.error("🚨 Command execution error:", {
+      console.error("🚨 Command execution error:", {
         command,
         cwd,
         error: message,

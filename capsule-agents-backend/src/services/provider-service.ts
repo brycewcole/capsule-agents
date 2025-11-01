@@ -2,7 +2,6 @@ import { anthropic } from "@ai-sdk/anthropic"
 import { google } from "@ai-sdk/google"
 import { openai } from "@ai-sdk/openai"
 import { loadApiKey } from "@ai-sdk/provider-utils"
-import * as log from "@std/log"
 import process from "node:process"
 import { getAllProviderConfigs, ModelEntry } from "../lib/model-registry.ts"
 
@@ -32,7 +31,7 @@ export class ProviderService {
     description: string,
   ): boolean {
     try {
-      log.info(
+      console.info(
         `Checking availability of ${envVar} for ${description} with result ${
           process.env[envVar] ? "FOUND" : "NOT FOUND"
         }`,
@@ -44,7 +43,7 @@ export class ProviderService {
       })
       return true
     } catch (error) {
-      log.debug(`Provider ${description} not available: ${error}`)
+      console.debug(`Provider ${description} not available: ${error}`)
       return false
     }
   }
@@ -71,7 +70,7 @@ export class ProviderService {
     }
 
     const availableCount = providers.filter((p) => p.available).length
-    log.info(
+    console.info(
       `Found ${availableCount}/${providers.length} available providers: ${
         providers.filter((p) => p.available).map((p) => p.name).join(", ")
       }`,
@@ -114,17 +113,17 @@ export class ProviderService {
 
     if (status.openai) {
       providers.openai = openai
-      log.info("Registered OpenAI provider")
+      console.info("Registered OpenAI provider")
     }
 
     if (status.anthropic) {
       providers.anthropic = anthropic
-      log.info("Registered Anthropic provider")
+      console.info("Registered Anthropic provider")
     }
 
     if (status.google) {
       providers.google = google
-      log.info("Registered Google provider")
+      console.info("Registered Google provider")
     }
 
     return providers

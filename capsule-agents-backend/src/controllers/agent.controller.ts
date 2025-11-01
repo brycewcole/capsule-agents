@@ -1,12 +1,11 @@
 import { Hono } from "hono"
-import * as log from "@std/log"
 import { AgentConfigService } from "../services/agent-config.ts"
 
 export function createAgentController(agentConfigService: AgentConfigService) {
   const router = new Hono()
 
   router.get("/agent", (c) => {
-    log.info("GET /api/agent - Getting agent configuration")
+    console.info("GET /api/agent - Getting agent configuration")
     try {
       const agentInfo = agentConfigService.getAgentInfo()
       const response = {
@@ -18,13 +17,13 @@ export function createAgentController(agentConfigService: AgentConfigService) {
       }
       return c.json(response)
     } catch (error) {
-      log.error("Error getting agent info:", error)
+      console.error("Error getting agent info:", error)
       return c.json({ error: "Failed to get agent configuration" }, 500)
     }
   })
 
   router.put("/agent", async (c) => {
-    log.info("PUT /api/agent - Updating agent configuration")
+    console.info("PUT /api/agent - Updating agent configuration")
     try {
       const body = await c.req.json()
       const agentInfo = {
@@ -44,7 +43,7 @@ export function createAgentController(agentConfigService: AgentConfigService) {
       }
       return c.json(response)
     } catch (error) {
-      log.error("Error updating agent info:", error)
+      console.error("Error updating agent info:", error)
       return c.json({
         error: error instanceof Error
           ? error.message
@@ -58,7 +57,7 @@ export function createAgentController(agentConfigService: AgentConfigService) {
       const models = agentConfigService.getAvailableModels()
       return c.json(models)
     } catch (error) {
-      log.error("Error getting models:", error)
+      console.error("Error getting models:", error)
       return c.json({ error: "Failed to get available models" }, 500)
     }
   })
@@ -68,7 +67,7 @@ export function createAgentController(agentConfigService: AgentConfigService) {
       const providerInfo = agentConfigService.getProviderInfo()
       return c.json(providerInfo)
     } catch (error) {
-      log.error("Error getting provider info:", error)
+      console.error("Error getting provider info:", error)
       return c.json({ error: "Failed to get provider information" }, 500)
     }
   })

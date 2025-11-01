@@ -4,6 +4,8 @@ services:
       context: ../../
       dockerfile: Dockerfile
     container_name: capsule-agents-dev
+    depends_on:
+      - otel-collector
     ports:
       - "8080:80"
     env_file:
@@ -11,6 +13,14 @@ services:
     environment:
       - NODE_ENV=development
       - AGENT_URL=http://localhost:8080
+      - OTEL_DENO=true
+      - OTEL_SERVICE_NAME=capsule-api
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318
+      - OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
+      - OTEL_TRACES_EXPORTER=otlp
+      - OTEL_LOGS_EXPORTER=otlp
+      - OTEL_METRICS_EXPORTER=otlp
+      - OTEL_RESOURCE_ATTRIBUTES=service.name=capsule-api,deployment.environment=development
     volumes:
       # Backend source code and config for hot reload
       - type: bind
@@ -34,9 +44,71 @@ services:
       "run",
       "--allow-all",
       "--unstable-cron",
+      "--unstable-otel",
       "--watch",
       "--node-modules-dir",
       "--no-lock",
       "src/index.ts",
     ]
     restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:latest
+    ports:
+      - "3000:3000"
+    depends_on:
+      - tempo
+      - prometheus
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+    restart: unless-stopped
+
+  tempo:
+    image: grafana/tempo:latest
+    command: ["-config.file=/etc/tempo.yaml"]
+    volumes:
+      - ./tempo/tempo.yaml:/etc/tempo.yaml:ro
+    ports:
+      - "3200:3200" # Tempo query API (Grafana uses this)
+      - "4318:4318" # OTLP HTTP ingest (agents send traces here)
+    # - "4317:4317" # (optional) OTLP gRPC ingest
+    restart: unless-stopped
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.105.0
+    command: ["--config=/etc/otelcol-config.yaml"]
+    volumes:
+      - ./otel-collector/config.yaml:/etc/otelcol-config.yaml:ro
+    ports:
+      - "4319:4318" # optional host exposure for debugging
+    depends_on:
+      - tempo
+      - loki
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:latest
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --web.enable-remote-write-receiver
+    volumes:
+      - ./prometheus/prometheus.yaml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "9090:9090"
+    depends_on:
+      - otel-collector
+    restart: unless-stopped
+
+  loki:
+    image: grafana/loki:latest
+    command: ["-config.file=/etc/loki/loki.yaml"]
+    volumes:
+      - ./loki/loki.yaml:/etc/loki/loki.yaml:ro
+    ports:
+      - "3100:3100" # Loki HTTP API
+    restart: unless-stopped
+
+networks:
+  default:
+    driver: bridge

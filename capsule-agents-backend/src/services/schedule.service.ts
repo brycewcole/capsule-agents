@@ -1,5 +1,4 @@
 import type * as A2A from "@a2a-js/sdk"
-import * as log from "@std/log"
 import { contextRepository } from "../repositories/context.repository.ts"
 import {
   Schedule,
@@ -21,11 +20,11 @@ export class ScheduleService {
   initializeSchedules(
     configSchedules?: ScheduleConfig[],
   ): void {
-    log.info("Initializing schedule service...")
+    console.info("Initializing schedule service...")
 
     // Load schedules from config file and upsert to database
     if (configSchedules && configSchedules.length > 0) {
-      log.info(
+      console.info(
         `Loading ${configSchedules.length} schedules from config file...`,
       )
       for (const configSchedule of configSchedules) {
@@ -40,9 +39,9 @@ export class ScheduleService {
             backoffSchedule: configSchedule.backoff?.schedule,
           }
           this.scheduleRepository.upsertScheduleByName(scheduleInput)
-          log.info(`Loaded schedule from config: ${configSchedule.name}`)
+          console.info(`Loaded schedule from config: ${configSchedule.name}`)
         } catch (error) {
-          log.error(
+          console.error(
             `Failed to load schedule ${configSchedule.name} from config:`,
             error,
           )
@@ -52,14 +51,14 @@ export class ScheduleService {
 
     // Register all enabled schedules
     const enabledSchedules = this.scheduleRepository.getEnabledSchedules()
-    log.info(`Registering ${enabledSchedules.length} enabled schedules...`)
+    console.info(`Registering ${enabledSchedules.length} enabled schedules...`)
 
     for (const schedule of enabledSchedules) {
       try {
         this.registerSchedule(schedule)
-        log.info(`Registered schedule: ${schedule.name}`)
+        console.info(`Registered schedule: ${schedule.name}`)
       } catch (error) {
-        log.error(
+        console.error(
           `Failed to register schedule ${schedule.name} error ${
             JSON.stringify(error)
           }`,
@@ -67,15 +66,15 @@ export class ScheduleService {
       }
     }
 
-    log.info("Schedule service initialized successfully")
+    console.info("Schedule service initialized successfully")
   }
 
   registerSchedule(schedule: Schedule): void {
     try {
-      log.info(
+      console.info(
         `Attempting to register schedule: ${schedule.name} with cron: ${schedule.cronExpression}`,
       )
-      log.info(
+      console.info(
         `Backoff enabled: ${schedule.backoffEnabled}, Schedule: ${
           JSON.stringify(schedule.backoffSchedule)
         }`,
@@ -87,7 +86,7 @@ export class ScheduleService {
 
       // Skip if already registered
       if (this.registeredCronJobs.has(schedule.id)) {
-        log.info(
+        console.info(
           `Schedule ${schedule.name} (${schedule.id}) already registered, skipping`,
         )
         return
@@ -119,18 +118,20 @@ export class ScheduleService {
       this.registeredCronJobs.set(schedule.id, () => {
         // Deno.cron doesn't expose an unregister API
         // The cron job will continue to run for the process lifetime
-        log.info(`Marked schedule as unregistered: ${schedule.name}`)
+        console.info(`Marked schedule as unregistered: ${schedule.name}`)
       })
 
-      log.info(
+      console.info(
         `Successfully registered cron job for schedule: ${schedule.name} (${schedule.cronExpression})`,
       )
     } catch (error) {
-      log.error(`Failed to register schedule ${schedule.name}:`, error)
-      log.error(
+      console.error(`Failed to register schedule ${schedule.name}:`, error)
+      console.error(
         `Error details: ${error instanceof Error ? error.message : "Unknown"}`,
       )
-      log.error(`Error stack: ${error instanceof Error ? error.stack : "N/A"}`)
+      console.error(
+        `Error stack: ${error instanceof Error ? error.stack : "N/A"}`,
+      )
       throw error
     }
   }
@@ -148,12 +149,12 @@ export class ScheduleService {
   }
 
   async executeSchedule(schedule: Schedule): Promise<void> {
-    log.info(`Executing schedule: ${schedule.name}`)
+    console.info(`Executing schedule: ${schedule.name}`)
 
     // Check if schedule is still enabled and registered
     const currentSchedule = this.scheduleRepository.getSchedule(schedule.id)
     if (!currentSchedule || !currentSchedule.enabled) {
-      log.info(
+      console.info(
         `Schedule ${schedule.name} is disabled or deleted, skipping execution`,
       )
       return
@@ -161,7 +162,7 @@ export class ScheduleService {
 
     // Check if still registered (not deleted)
     if (!this.registeredCronJobs.has(schedule.id)) {
-      log.info(
+      console.info(
         `Schedule ${schedule.name} is no longer registered, skipping execution`,
       )
       return
@@ -171,7 +172,7 @@ export class ScheduleService {
       // Ensure context exists or create new one
       let contextId = currentSchedule.contextId
       if (contextId && !contextRepository.getContext(contextId)) {
-        log.warn(
+        console.warn(
           `Context ${contextId} not found for schedule ${currentSchedule.name}, creating new one`,
         )
         contextId = undefined
@@ -180,7 +181,7 @@ export class ScheduleService {
       if (!contextId) {
         contextId = crypto.randomUUID()
         contextRepository.createContext(contextId)
-        log.info(
+        console.info(
           `Created new context ${contextId} for schedule ${currentSchedule.name}`,
         )
       }
@@ -215,9 +216,9 @@ export class ScheduleService {
       // Record successful execution
       this.scheduleRepository.recordExecution(schedule.id, true)
 
-      log.info(`Schedule ${schedule.name} executed successfully`)
+      console.info(`Schedule ${schedule.name} executed successfully`)
     } catch (error) {
-      log.error(`Failed to execute schedule ${schedule.name}:`, error)
+      console.error(`Failed to execute schedule ${schedule.name}:`, error)
 
       // Record failed execution
       this.scheduleRepository.recordExecution(schedule.id, false)
@@ -263,7 +264,7 @@ export class ScheduleService {
     // If cron or backoff is changing, we cannot update the Deno.cron job dynamically
     // Just update the database and warn that a restart is needed
     if (cronChanging || backoffChanging) {
-      log.warn(
+      console.warn(
         `Schedule ${existing.name} cron/backoff settings changed. Server restart required for changes to take effect.`,
       )
       // Mark as unregistered so old cron job won't execute

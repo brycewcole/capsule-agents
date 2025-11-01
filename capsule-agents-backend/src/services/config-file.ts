@@ -1,4 +1,3 @@
-import * as log from "https://deno.land/std@0.203.0/log/mod.ts"
 import type { AgentInfo } from "./agent-config.ts"
 import {
   ConfigFileSchema,
@@ -25,13 +24,13 @@ export class ConfigFileService {
       ConfigFileService.DEFAULT_CONFIG_PATH
 
     try {
-      log.info(`Attempting to load config file from: ${filePath}`)
+      console.info(`Attempting to load config file from: ${filePath}`)
 
       try {
         await Deno.stat(filePath)
       } catch (error) {
         if (error instanceof Deno.errors.NotFound) {
-          log.info(
+          console.info(
             `Config file not found at ${filePath}, using database defaults`,
           )
           return { agentInfo: null, schedules: [] }
@@ -45,7 +44,7 @@ export class ConfigFileService {
       try {
         parsedJson = JSON.parse(fileContent)
       } catch (parseError) {
-        log.error(`Failed to parse JSON from config file: ${parseError}`)
+        console.error(`Failed to parse JSON from config file: ${parseError}`)
         throw new Error(
           `Invalid JSON in config file ${filePath}: ${parseError}`,
         )
@@ -54,7 +53,7 @@ export class ConfigFileService {
       // Validate against schema
       const validationResult = ConfigFileSchema.safeParse(parsedJson)
       if (!validationResult.success) {
-        log.error(
+        console.error(
           "Config file validation failed:",
           validationResult.error.issues,
         )
@@ -65,7 +64,7 @@ export class ConfigFileService {
       }
 
       const configFile = validationResult.data
-      log.info(
+      console.info(
         `Successfully loaded and validated config file: ${configFile.agent.name}`,
       )
 
@@ -76,12 +75,12 @@ export class ConfigFileService {
       const schedules = configFile.schedules || []
 
       if (schedules.length > 0) {
-        log.info(`Loaded ${schedules.length} schedules from config file`)
+        console.info(`Loaded ${schedules.length} schedules from config file`)
       }
 
       return { agentInfo, schedules }
     } catch (error) {
-      log.error(`Failed to load config file from ${filePath}:`, error)
+      console.error(`Failed to load config file from ${filePath}:`, error)
       throw new Error(
         `Failed to load config file: ${
           error instanceof Error ? error.message : String(error)

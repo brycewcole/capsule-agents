@@ -43,7 +43,8 @@ FROM denoland/deno:${DENO_VERSION} AS runtime
 
 ENV DENO_NO_UPDATE_CHECK=1 \
   DENO_NO_PROMPT=1 \
-  DENO_DIR=/deno-dir
+  DENO_DIR=/deno-dir \
+  OTEL_DENO=true
 WORKDIR /app
 
 # bring code + caches
@@ -60,4 +61,4 @@ USER deno
 EXPOSE 80
 # Disable automatic lockfile writes in runtime container to avoid
 # permission issues when writing /app/deno.lock
-CMD ["deno", "run", "--allow-all", "--unstable-cron", "--node-modules-dir", "--no-lock", "src/index.ts"]
+CMD ["deno", "run", "--allow-all", "--unstable-cron","--unstable-otel", "--node-modules-dir", "--no-lock", "src/index.ts"]

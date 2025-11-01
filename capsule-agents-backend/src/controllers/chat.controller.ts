@@ -1,5 +1,4 @@
 import { Hono } from "hono"
-import * as log from "@std/log"
 import { ChatService } from "../services/chat.service.ts"
 
 export function createChatController(chatService: ChatService) {
@@ -16,7 +15,7 @@ export function createChatController(chatService: ChatService) {
       const chats = chatService.getChatsList()
       return c.json({ chats })
     } catch (error) {
-      log.error("Error getting chat list:", error)
+      console.error("Error getting chat list:", error)
       return c.json({ error: "Failed to get chat list" }, 500)
     }
   })
@@ -28,7 +27,7 @@ export function createChatController(chatService: ChatService) {
       if (!chat) return c.json({ error: "Chat not found" }, 404)
       return c.json(chat)
     } catch (error) {
-      log.error("Error getting chat history:", error)
+      console.error("Error getting chat history:", error)
       return c.json({ error: "Failed to get chat history" }, 500)
     }
   })
@@ -40,7 +39,7 @@ export function createChatController(chatService: ChatService) {
       if (!success) return c.json({ error: "Chat not found" }, 404)
       return c.json({ success: true })
     } catch (error) {
-      log.error("Error deleting chat:", error)
+      console.error("Error deleting chat:", error)
       return c.json({ error: "Failed to delete chat" }, 500)
     }
   })
@@ -53,7 +52,7 @@ export function createChatController(chatService: ChatService) {
       if (!success) return c.json({ error: "Chat not found" }, 404)
       return c.json({ success: true })
     } catch (error) {
-      log.error("Error updating chat metadata:", error)
+      console.error("Error updating chat metadata:", error)
       return c.json({ error: "Failed to update chat metadata" }, 500)
     }
   })

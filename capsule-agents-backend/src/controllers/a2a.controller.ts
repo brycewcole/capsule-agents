@@ -1,5 +1,4 @@
 import { JsonRpcTransportHandler } from "@a2a-js/sdk/server"
-import * as log from "@std/log"
 import { APICallError } from "ai"
 import { Hono } from "hono"
 import { streamSSE } from "hono/streaming"
@@ -20,7 +19,7 @@ async function handleStreamError(
   requestId: unknown,
 ): Promise<void> {
   if (APICallError.isInstance(error)) {
-    log.error("AI API Call Error details:", {
+    console.error("AI API Call Error details:", {
       url: error.url,
       statusCode: error.statusCode,
       responseBody: error.responseBody,
@@ -57,16 +56,16 @@ export function createA2AController(deps: {
   // Agent card endpoints
   const getAgentCardHandler = async (c) => {
     const path = c.req.path
-    log.info(`GET ${path} - Getting agent card`)
+    console.info(`GET ${path} - Getting agent card`)
     try {
       const agentCard = await deps.a2aRequestHandler.getAgentCard()
-      log.info("Agent card retrieved successfully:", {
+      console.info("Agent card retrieved successfully:", {
         name: agentCard.name,
         skillCount: agentCard.skills.length,
       })
       return c.json(agentCard)
     } catch (error) {
-      log.error("Failed to get agent card:", error)
+      console.error("Failed to get agent card:", error)
       return c.json({ error: "Failed to get agent card" }, 500)
     }
   }
@@ -76,7 +75,7 @@ export function createA2AController(deps: {
 
   // Main A2A JSON-RPC endpoint at root
   router.post("/", async (c) => {
-    log.info("POST / - A2A JSON-RPC endpoint called")
+    console.info("POST / - A2A JSON-RPC endpoint called")
 
     let body
     try {

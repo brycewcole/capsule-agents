@@ -1,7 +1,6 @@
 import type * as A2A from "@a2a-js/sdk"
 import type { A2ARequestHandler } from "@a2a-js/sdk/server"
 import { experimental_createMCPClient } from "@ai-sdk/mcp"
-import * as log from "@std/log"
 import * as Vercel from "ai"
 import { createProviderRegistry } from "ai"
 import { StreamableHTTPClientTransport } from "mcp/client/streamableHttp.js"
@@ -59,12 +58,12 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
   private taskAbortControllers = new Map<string, AbortController>()
 
   constructor(agentConfigService?: AgentConfigService) {
-    log.info("Initializing CapsuleAgentA2ARequestHandler...")
+    console.info("Initializing CapsuleAgentA2ARequestHandler...")
     try {
       this.agentConfigService = agentConfigService || new AgentConfigService()
-      log.info("AgentConfigService initialized successfully")
+      console.info("AgentConfigService initialized successfully")
     } catch (error) {
-      log.error("Failed to initialize AgentConfigService:", error)
+      console.error("Failed to initialize AgentConfigService:", error)
       throw error
     }
   }
@@ -91,7 +90,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
     const mcpCapabilities = agentInfo.capabilities.filter(isMCPCapability)
 
     try {
-      log.info(
+      console.info(
         "Connecting to MCP servers:",
         mcpCapabilities.map((c) => c.serverUrl),
       )
@@ -117,14 +116,14 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
       )
 
       const tools = Object.assign({}, ...toolSets)
-      log.info("MCP tools loaded:", Object.keys(tools))
+      console.info("MCP tools loaded:", Object.keys(tools))
 
       return {
         tools: tools,
         [Symbol.asyncDispose]: async () => {
-          log.info("Disposing MCP clients...")
+          console.info("Disposing MCP clients...")
           await Promise.all(clients.map((client) => client.close()))
-          log.info("MCP clients disposed")
+          console.info("MCP clients disposed")
         },
       }
     } catch (error) {
@@ -151,7 +150,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
         const agentUrl = capability.agentUrl
         if (agentUrl && typeof agentUrl === "string") {
           try {
-            log.info(
+            console.info(
               `Fetching agent card from: ${agentUrl}/.well-known/agent.json`,
             )
             const agentCardResponse = await fetch(
@@ -168,11 +167,11 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
               agentName = agentCard.name
               description =
                 `Communicate with ${agentCard.name}: ${agentCard.description}`
-              log.info(`Retrieved agent card for ${agentUrl}:`, {
+              console.info(`Retrieved agent card for ${agentUrl}:`, {
                 name: agentCard.name,
               })
             } else {
-              log.warn(
+              console.warn(
                 `Failed to fetch agent card from ${agentUrl} with status ${agentCardResponse.status}, using fallback`,
               )
             }
@@ -207,7 +206,10 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
               },
             }
           } catch (error) {
-            log.error(`Error setting up A2A capability for ${agentUrl}:`, error)
+            console.error(
+              `Error setting up A2A capability for ${agentUrl}:`,
+              error,
+            )
             capabilities[capability.name] = {
               description:
                 `Communicate with agent at ${agentUrl} (agent unavailable)`,
@@ -239,7 +241,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
       }
     }
 
-    log.info(
+    console.info(
       "Capabilities loaded from agent config:",
       Object.keys(capabilities),
     )
@@ -257,7 +259,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
     const agentInfo = this.agentConfigService.getAgentInfo()
     agentName = agentInfo.name
     agentDescription = agentInfo.description
-    log.info("Agent config loaded for card:", { name: agentName })
+    console.info("Agent config loaded for card:", { name: agentName })
 
     // Get enabled skills based on available tools
     const availableCapabilities = await this.getAvailableTools()
@@ -332,7 +334,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
   ): (stepResult: Vercel.StepResult<TOOLS>) => void {
     return (stepResult) => {
       const { text, toolCalls, toolResults, finishReason } = stepResult
-      log.info(
+      console.info(
         `Step finished - text: "${this.truncateForLog(text)}", toolCalls: ${
           this.truncateForLog(toolCalls)
         }, toolResults: ${this.truncateForLog(toolResults)}`,
@@ -417,12 +419,12 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
     statusHandler: StatusUpdateHandler,
   ): (params: { responseMessage: Vercel.UIMessage }) => Promise<void> {
     return async ({ responseMessage }) => {
-      log.info(
+      console.info(
         `Stream finished - responseMessage: ${
           this.truncateForLog(responseMessage)
         }`,
       )
-      log.info(
+      console.info(
         `Response message parts: ${
           JSON.stringify(
             responseMessage.parts.map((p) => ({
@@ -470,7 +472,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
       // Store for yielding after fullStream completes
       finalMessageHolder.message = a2aMessage
 
-      log.info("Saved assistant message to both Vercel and A2A storage")
+      console.info("Saved assistant message to both Vercel and A2A storage")
     }
   }
 
@@ -483,9 +485,9 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
         for await (const _ of uiMessageStream) {
           // Just consume to ensure onFinish fires
         }
-        log.info("UI message stream consumed successfully")
+        console.info("UI message stream consumed successfully")
       } catch (_error) {
-        log.error("🚨 UI Stream Message ERROR, Swallowing")
+        console.error("🚨 UI Stream Message ERROR, Swallowing")
       }
     })()
   }
@@ -497,11 +499,11 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
     currentTaskRef: { current: A2A.Task | null },
     statusHandler: StatusUpdateHandler,
   ): Promise<void> {
-    log.info("StreamText initialized, consuming stream...")
+    console.info("StreamText initialized, consuming stream...")
     for await (const e of fullStream) {
       switch (e.type) {
         case "tool-input-start":
-          log.info(`Tool input starting: ${e.toolName}`)
+          console.info(`Tool input starting: ${e.toolName}`)
           if (currentTaskRef.current) {
             const statusUpdate = this.taskService.transitionState(
               currentTaskRef.current,
@@ -511,10 +513,10 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
           }
           break
         case "tool-input-end":
-          log.info(`Tool input ready: ${e.id}`)
+          console.info(`Tool input ready: ${e.id}`)
           break
         case "tool-call":
-          log.info(`Tool called: ${e.toolName}`)
+          console.info(`Tool called: ${e.toolName}`)
           if (currentTaskRef.current) {
             const statusUpdate = this.taskService.transitionState(
               currentTaskRef.current,
@@ -524,7 +526,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
           }
           break
         case "tool-result":
-          log.info(`Tool completed: ${e.toolName}`)
+          console.info(`Tool completed: ${e.toolName}`)
           if (currentTaskRef.current) {
             const statusUpdate = this.taskService.transitionState(
               currentTaskRef.current,
@@ -534,10 +536,10 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
           }
           break
         case "finish-step":
-          log.info("Step finished")
+          console.info("Step finished")
           break
         case "finish":
-          log.info(`Finish event in stream: ${this.truncateForLog(e)}`)
+          console.info(`Finish event in stream: ${this.truncateForLog(e)}`)
           break
         default:
           break
@@ -581,13 +583,13 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
       const finalMessageHolder = { message: null as A2A.Message | null }
 
       const modelMessages = Vercel.convertToModelMessages(cleanedMessages)
-      log.info(
+      console.info(
         `Sending ${modelMessages.length} messages to model`,
       )
-      log.info(
+      console.info(
         `Model messages: ${JSON.stringify(modelMessages, null, 2)}`,
       )
-      log.debug("Sending message to model:", {
+      console.debug("Sending message to model:", {
         contextId: params.message.contextId,
         messages: modelMessages,
         tools: Object.keys(tools),
@@ -597,7 +599,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
       const result = Vercel.streamText({
         experimental_telemetry: {
           isEnabled: true,
-          functionId: "chat-complete",
+          functionId: "sendMessage",
         },
         onError: (error) => {
           this.handleStreamError(error)
@@ -609,7 +611,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
           ...tools,
           createArtifact: artifactTool,
         },
-        stopWhen: Vercel.stepCountIs(10),
+        stopWhen: Vercel.stepCountIs(100),
         onStepFinish: this.createOnStepFinishHandler(
           params,
           currentTaskRef,
@@ -676,7 +678,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
     // Abort the streaming if there's an active controller
     const abortController = this.taskAbortControllers.get(params.id)
     if (abortController) {
-      log.info(`Aborting task ${params.id}`)
+      console.info(`Aborting task ${params.id}`)
       abortController.abort()
       this.taskAbortControllers.delete(params.id)
     }
@@ -752,16 +754,16 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
         eventUpdateQueue.push(event)
       }
 
-      log.info(cleanedMessages)
+      console.info(cleanedMessages)
 
       const modelMessages = Vercel.convertToModelMessages(cleanedMessages)
-      log.info(
+      console.info(
         `Sending ${modelMessages.length} messages to model (streaming)`,
       )
-      log.info(
+      console.info(
         `Model messages: ${JSON.stringify(modelMessages, null, 2)}`,
       )
-      log.debug("Sending message to model:", {
+      console.debug("Sending message to model:", {
         contextId: params.message.contextId,
         messages: modelMessages,
         tools: Object.keys(tools),
@@ -774,7 +776,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
       const result = Vercel.streamText({
         experimental_telemetry: {
           isEnabled: true,
-          functionId: "chat-complete",
+          functionId: "sendMessageStream",
         },
         abortSignal: abortController.signal,
         system: agentInfo.description,
@@ -784,7 +786,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
           ...tools,
           createArtifact: artifactTool,
         },
-        stopWhen: Vercel.stepCountIs(10),
+        stopWhen: Vercel.stepCountIs(100),
         onError: (error) => {
           this.handleStreamError(error)
         },
@@ -808,11 +810,11 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
 
       this.consumeUIStream(uiMessageStream)
 
-      log.info("StreamText initialized, consuming stream...")
+      console.info("StreamText initialized, consuming stream...")
       for await (const e of result.fullStream) {
         switch (e.type) {
           case "tool-input-start":
-            log.info(`Tool input starting: ${e.toolName}`)
+            console.info(`Tool input starting: ${e.toolName}`)
             if (currentTaskRef.current) {
               const statusUpdate = this.taskService.transitionState(
                 currentTaskRef.current,
@@ -822,10 +824,10 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
             }
             break
           case "tool-input-end":
-            log.info(`Tool input ready: ${e.id}`)
+            console.info(`Tool input ready: ${e.id}`)
             break
           case "tool-call":
-            log.info(`Tool called: ${e.toolName}`)
+            console.info(`Tool called: ${e.toolName}`)
             if (currentTaskRef.current) {
               const statusUpdate = this.taskService.transitionState(
                 currentTaskRef.current,
@@ -835,7 +837,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
             }
             break
           case "tool-result":
-            log.info(`Tool completed: ${e.toolName}`)
+            console.info(`Tool completed: ${e.toolName}`)
             if (currentTaskRef.current) {
               const statusUpdate = this.taskService.transitionState(
                 currentTaskRef.current,
@@ -845,10 +847,10 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
             }
             break
           case "finish-step":
-            log.info("Step finished")
+            console.info("Step finished")
             break
           case "finish":
-            log.info(`Finish event in stream: ${this.truncateForLog(e)}`)
+            console.info(`Finish event in stream: ${this.truncateForLog(e)}`)
             break
           default:
             break
@@ -878,7 +880,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
 
       // Yield the final A2A message
       if (finalMessageHolder.message) {
-        log.info("Yielding final A2A message")
+        console.info("Yielding final A2A message")
         yield finalMessageHolder.message
       }
     } catch (error) {
@@ -908,7 +910,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
       throw new Error("No model configured for the agent")
     }
 
-    log.info(`Getting configured model: ${modelName}`)
+    console.info(`Getting configured model: ${modelName}`)
 
     const providerService = ProviderService.getInstance()
 
