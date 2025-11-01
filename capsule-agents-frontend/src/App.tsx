@@ -11,7 +11,7 @@ import { type ChatWithHistory, getChatById, testLogin } from "./lib/api.ts"
 import { showErrorToast } from "./lib/error-utils.ts"
 import "./App.css"
 
-type ViewType = "chat" | "schedules" | "workspace"
+type ViewType = "chat" | "schedules"
 
 function App() {
   const [showLogin, setShowLogin] = useState(false)
@@ -172,18 +172,33 @@ function App() {
 
         {currentView === "chat" && (
           <div className="container mx-auto flex flex-1 gap-6 p-4 md:p-6 lg:p-8 min-h-0">
-            {/* Agent Editor - Left Side */}
-            <div className="basis-1/3 flex flex-col min-h-0">
-              <div className="mb-4">
-                <h2 className="text-lg font-semibold text-foreground">
-                  Agent Configuration
-                </h2>
-                <p className="text-sm text-muted-foreground">
-                  Configure your agent's settings and capabilities
-                </p>
+            {/* Agent Editor & Workspace - Left Side */}
+            <div className="basis-1/3 flex flex-col min-h-0 gap-6">
+              <div className="flex flex-col min-h-0">
+                <div className="mb-4">
+                  <h2 className="text-lg font-semibold text-foreground">
+                    Agent Configuration
+                  </h2>
+                  <p className="text-sm text-muted-foreground">
+                    Configure your agent's settings and capabilities
+                  </p>
+                </div>
+                <div className="flex-1 overflow-y-auto min-h-0">
+                  <AgentEditor />
+                </div>
               </div>
-              <div className="flex-1 overflow-y-auto min-h-0">
-                <AgentEditor />
+              <div className="flex flex-col min-h-0">
+                <div className="mb-4">
+                  <h2 className="text-lg font-semibold text-foreground">
+                    Workspace
+                  </h2>
+                  <p className="text-sm text-muted-foreground">
+                    Manage files in your agent's workspace
+                  </p>
+                </div>
+                <div className="flex-1 overflow-y-auto min-h-0">
+                  <WorkspaceManager />
+                </div>
               </div>
             </div>
 
@@ -235,20 +250,6 @@ function App() {
               </p>
             </div>
             <ScheduleManager />
-          </div>
-        )}
-
-        {currentView === "workspace" && (
-          <div className="container mx-auto flex-1 p-4 md:p-6 lg:p-8 overflow-y-auto">
-            <div className="mb-6">
-              <h2 className="text-2xl font-semibold text-foreground">
-                Workspace
-              </h2>
-              <p className="text-sm text-muted-foreground">
-                Manage files in your agent's workspace directory
-              </p>
-            </div>
-            <WorkspaceManager />
           </div>
         )}
       </main>

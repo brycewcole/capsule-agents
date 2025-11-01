@@ -1,9 +1,9 @@
 import logoSrc from "@/assets/logo.png"
-import { Clock, FolderOpen, MessageSquare } from "lucide-react"
+import { Clock, MessageSquare } from "lucide-react"
 
 interface HeaderProps {
-  currentView?: "chat" | "schedules" | "workspace"
-  onViewChange?: (view: "chat" | "schedules" | "workspace") => void
+  currentView?: "chat" | "schedules"
+  onViewChange?: (view: "chat" | "schedules") => void
 }
 
 export default function Header(
@@ -43,18 +43,6 @@ export default function Header(
           >
             <Clock className="h-4 w-4" />
             Schedules
-          </button>
-          <button
-            type="button"
-            onClick={() => onViewChange?.("workspace")}
-            className={`text-sm font-medium flex items-center gap-1.5 transition-colors ${
-              currentView === "workspace"
-                ? "text-foreground"
-                : "text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            <FolderOpen className="h-4 w-4" />
-            Workspace
           </button>
           <span className="text-sm font-medium text-muted-foreground opacity-50 cursor-not-allowed">
             Docs
