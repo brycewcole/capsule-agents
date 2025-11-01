@@ -103,7 +103,9 @@ export class AgentConfigService {
           )
         }
       } else {
-        console.info(`Current model '${currentModelName}' is available and valid`)
+        console.info(
+          `Current model '${currentModelName}' is available and valid`,
+        )
       }
     } catch (error) {
       console.error("Error in ensureValidModel():", error)

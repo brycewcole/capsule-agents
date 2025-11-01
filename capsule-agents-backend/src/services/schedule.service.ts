@@ -129,7 +129,9 @@ export class ScheduleService {
       console.error(
         `Error details: ${error instanceof Error ? error.message : "Unknown"}`,
       )
-      console.error(`Error stack: ${error instanceof Error ? error.stack : "N/A"}`)
+      console.error(
+        `Error stack: ${error instanceof Error ? error.stack : "N/A"}`,
+      )
       throw error
     }
   }
