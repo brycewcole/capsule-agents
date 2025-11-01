@@ -11,13 +11,23 @@ import { type ChatWithHistory, getChatById, testLogin } from "./lib/api.ts"
 import { showErrorToast } from "./lib/error-utils.ts"
 import "./App.css"
 
-type ViewType = "chat" | "schedules"
+type ViewType = "chat" | "editor" | "schedules"
 
 function App() {
   const [showLogin, setShowLogin] = useState(false)
   const [loginError, setLoginError] = useState<string>()
   const [, setIsAuthenticated] = useState(true) // Temporarily always authenticated
-  const [currentView, setCurrentView] = useState<ViewType>("chat")
+  const [currentView, setCurrentView] = useState<ViewType>(() => {
+    try {
+      const stored = localStorage.getItem("ui:lastView")
+      if (stored === "chat" || stored === "editor" || stored === "schedules") {
+        return stored
+      }
+    } catch {
+      // Ignore storage access issues; default to chat view
+    }
+    return "chat"
+  })
 
   // Chat management state
   const [currentChatId, setCurrentChatId] = useState<string | null>(() => {
@@ -107,6 +117,14 @@ function App() {
     }
   }, [currentChatId])
 
+  useEffect(() => {
+    try {
+      localStorage.setItem("ui:lastView", currentView)
+    } catch {
+      // Ignore localStorage errors
+    }
+  }, [currentView])
+
   // Keyboard shortcut: Cmd/Ctrl+K to toggle conversations panel
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -162,56 +180,29 @@ function App() {
     setCurrentChatData(null)
   }
 
+  const mainScrollClass = currentView === "chat"
+    ? "overflow-hidden"
+    : "overflow-auto"
+
   return (
     <>
-      <main className="flex h-screen flex-col bg-slate-50 overflow-hidden">
+      <main className={`flex h-screen flex-col bg-slate-50 ${mainScrollClass}`}>
         <Header
           currentView={currentView}
           onViewChange={setCurrentView}
         />
 
         {currentView === "chat" && (
-          <div className="container mx-auto flex flex-1 gap-6 p-4 md:p-6 lg:p-8 min-h-0">
-            {/* Agent Editor & Workspace - Left Side */}
-            <div className="basis-1/3 flex flex-col min-h-0 gap-6">
-              <div className="flex flex-col min-h-0">
-                <div className="mb-4">
-                  <h2 className="text-lg font-semibold text-foreground">
-                    Agent Configuration
-                  </h2>
-                  <p className="text-sm text-muted-foreground">
-                    Configure your agent's settings and capabilities
-                  </p>
-                </div>
-                <div className="flex-1 overflow-y-auto min-h-0">
-                  <AgentEditor />
-                </div>
-              </div>
-              <div className="flex flex-col min-h-0">
-                <div className="mb-4">
-                  <h2 className="text-lg font-semibold text-foreground">
-                    Workspace
-                  </h2>
-                  <p className="text-sm text-muted-foreground">
-                    Manage files in your agent's workspace
-                  </p>
-                </div>
-                <div className="flex-1 overflow-y-auto min-h-0">
-                  <WorkspaceManager />
-                </div>
-              </div>
-            </div>
-
-            {/* Chat Interface - Middle */}
-            <div className="flex-1 flex flex-col min-h-0">
-              <div className="mb-4">
+          <div className="container mx-auto flex flex-1 flex-col p-4 md:p-6 lg:p-8 min-h-0">
+            <div className="flex h-full min-h-0 flex-col gap-4 lg:gap-6">
+              <div>
                 <h2 className="text-lg font-semibold text-foreground">
-                  Chat Interface
+                  Chat
                 </h2>
                 <p className="text-sm text-muted-foreground">
                   {currentChatId
                     ? `Chatting in: ${currentChatData?.title || "Loading..."}`
-                    : "Start a new conversation"}
+                    : "Converse with your agent and review task history."}
                 </p>
               </div>
               <div className="flex-1 min-h-0">
@@ -235,21 +226,39 @@ function App() {
                 />
               </div>
             </div>
-            {/* Sheet moved inside ChatInterface to keep it visually connected */}
+          </div>
+        )}
+
+        {currentView === "editor" && (
+          <div className="mx-auto flex w-full max-w-7xl flex-1 flex-col gap-6 p-4 md:p-6 lg:p-8">
+            <div className="flex flex-col gap-2">
+              <h2 className="text-2xl font-semibold text-foreground">
+                Editor
+              </h2>
+              <p className="text-sm text-muted-foreground">
+                Configure your agent and manage its workspace.
+              </p>
+            </div>
+            <div className="grid gap-6 lg:grid-cols-2 lg:items-start">
+              <AgentEditor />
+              <WorkspaceManager />
+            </div>
           </div>
         )}
 
         {currentView === "schedules" && (
-          <div className="container mx-auto flex-1 p-4 md:p-6 lg:p-8 overflow-y-auto">
-            <div className="mb-6">
-              <h2 className="text-2xl font-semibold text-foreground">
-                Schedules
-              </h2>
-              <p className="text-sm text-muted-foreground">
-                Automate agent queries with scheduled tasks
-              </p>
+          <div className="container mx-auto flex-1 overflow-y-auto p-4 md:p-6 lg:p-8">
+            <div className="mx-auto flex w-full max-w-5xl flex-col gap-6">
+              <div className="flex flex-col gap-2">
+                <h2 className="text-2xl font-semibold text-foreground">
+                  Schedules
+                </h2>
+                <p className="text-sm text-muted-foreground">
+                  Automate agent queries with scheduled tasks.
+                </p>
+              </div>
+              <ScheduleManager />
             </div>
-            <ScheduleManager />
           </div>
         )}
       </main>

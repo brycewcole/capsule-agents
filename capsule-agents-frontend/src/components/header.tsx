@@ -1,9 +1,9 @@
 import logoSrc from "@/assets/logo.png"
-import { Clock, MessageSquare } from "lucide-react"
+import { Clock, MessageSquare, Settings2 } from "lucide-react"
 
 interface HeaderProps {
-  currentView?: "chat" | "schedules"
-  onViewChange?: (view: "chat" | "schedules") => void
+  currentView?: "chat" | "editor" | "schedules"
+  onViewChange?: (view: "chat" | "editor" | "schedules") => void
 }
 
 export default function Header(
@@ -31,6 +31,18 @@ export default function Header(
           >
             <MessageSquare className="h-4 w-4" />
             Chat
+          </button>
+          <button
+            type="button"
+            onClick={() => onViewChange?.("editor")}
+            className={`text-sm font-medium flex items-center gap-1.5 transition-colors ${
+              currentView === "editor"
+                ? "text-foreground"
+                : "text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            <Settings2 className="h-4 w-4" />
+            Editor
           </button>
           <button
             type="button"
