@@ -231,7 +231,13 @@ async function copyDirectory(
   for await (
     const entry of walk(sourceDir, { includeFiles: true, includeDirs: false })
   ) {
-    const relativePath = entry.path.substring(sourceDir.length)
+    const relativePath = relative(sourceDir, entry.path)
+    if (!relativePath || relativePath.startsWith("..")) {
+      logger.warn(
+        `Skipping copy of ${entry.path} because it resolves outside ${sourceDir}`,
+      )
+      continue
+    }
     const destPath = join(destBase, relativeName, relativePath)
 
     // Ensure parent directory exists
