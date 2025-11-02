@@ -124,6 +124,11 @@ export default function AgentEditor() {
         capabilities: [...capabilities],
       })
 
+      // Update document title with new agent name
+      if (name) {
+        document.title = name
+      }
+
       toast.success("Agent saved", {
         description: "Name and description updated successfully.",
       })
