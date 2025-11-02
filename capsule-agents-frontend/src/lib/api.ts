@@ -1067,6 +1067,160 @@ export async function runScheduleNow(id: string): Promise<void> {
   }
 }
 
+// Workspace types and API functions
+export interface WorkspaceFile {
+  path: string
+  name: string
+  type: "file" | "directory"
+  size?: number
+}
+
+export async function fetchWorkspaceFiles(): Promise<WorkspaceFile[]> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/workspace/files`, {
+      headers: {
+        ...authStore.getAuthHeaders(),
+      },
+    })
+
+    if (!response.ok) {
+      throw {
+        code: response.status,
+        message: `Failed to fetch workspace files: ${response.status}`,
+        user_message: response.status === 401
+          ? "Please log in to view workspace files"
+          : "Could not load workspace files",
+        recovery_action: response.status === 401
+          ? "Log in and try again"
+          : "Try again later",
+        isAPIError: true,
+      }
+    }
+
+    const data = await response.json()
+    return data.files || []
+  } catch (error) {
+    console.error("Failed to fetch workspace files:", error)
+    throw error
+  }
+}
+
+export async function uploadWorkspaceFile(file: File): Promise<boolean> {
+  try {
+    const formData = new FormData()
+    formData.append("file", file)
+
+    const response = await fetch(`${API_BASE_URL}/api/workspace/files`, {
+      method: "POST",
+      headers: {
+        ...authStore.getAuthHeaders(),
+      },
+      body: formData,
+    })
+
+    if (!response.ok) {
+      throw {
+        code: response.status,
+        message: `Failed to upload file: ${response.status}`,
+        user_message: response.status === 401
+          ? "Please log in to upload files"
+          : "Could not upload file",
+        recovery_action: response.status === 401
+          ? "Log in and try again"
+          : "Try again later",
+        isAPIError: true,
+      }
+    }
+
+    const result = await response.json()
+    return result.success === true
+  } catch (error) {
+    console.error("Failed to upload workspace file:", error)
+    throw error
+  }
+}
+
+export async function downloadWorkspaceFile(path: string): Promise<void> {
+  try {
+    // Base64URL encode the path to avoid routing issues with slashes
+    const base64Path = btoa(path).replace(/\+/g, "-").replace(/\//g, "_")
+      .replace(/=/g, "")
+    const response = await fetch(
+      `${API_BASE_URL}/api/workspace/files/${base64Path}`,
+      {
+        headers: {
+          ...authStore.getAuthHeaders(),
+        },
+      },
+    )
+
+    if (!response.ok) {
+      throw {
+        code: response.status,
+        message: `Failed to download file: ${response.status}`,
+        user_message: response.status === 401
+          ? "Please log in to download files"
+          : "Could not download file",
+        recovery_action: response.status === 401
+          ? "Log in and try again"
+          : "Try again later",
+        isAPIError: true,
+      }
+    }
+
+    // Create a blob from the response and trigger download
+    const blob = await response.blob()
+    const url = globalThis.URL.createObjectURL(blob)
+    const a = document.createElement("a")
+    a.href = url
+    a.download = path.split("/").pop() || "download"
+    document.body.appendChild(a)
+    a.click()
+    globalThis.URL.revokeObjectURL(url)
+    document.body.removeChild(a)
+  } catch (error) {
+    console.error("Failed to download workspace file:", error)
+    throw error
+  }
+}
+
+export async function deleteWorkspaceFile(path: string): Promise<boolean> {
+  try {
+    // Base64URL encode the path to avoid routing issues with slashes
+    const base64Path = btoa(path).replace(/\+/g, "-").replace(/\//g, "_")
+      .replace(/=/g, "")
+    const response = await fetch(
+      `${API_BASE_URL}/api/workspace/files/${base64Path}`,
+      {
+        method: "DELETE",
+        headers: {
+          ...authStore.getAuthHeaders(),
+        },
+      },
+    )
+
+    if (!response.ok) {
+      throw {
+        code: response.status,
+        message: `Failed to delete file: ${response.status}`,
+        user_message: response.status === 401
+          ? "Please log in to delete files"
+          : "Could not delete file",
+        recovery_action: response.status === 401
+          ? "Log in and try again"
+          : "Try again later",
+        isAPIError: true,
+      }
+    }
+
+    const result = await response.json()
+    return result.success === true
+  } catch (error) {
+    console.error("Failed to delete workspace file:", error)
+    throw error
+  }
+}
+
 // Export A2A types for use in components
 export type {
   A2AMessage,

@@ -8,6 +8,7 @@ import {
 export interface ConfigFileResult {
   agentInfo: AgentInfo | null
   schedules: ScheduleConfig[]
+  workspaceFiles: string[]
 }
 
 export class ConfigFileService {
@@ -33,7 +34,7 @@ export class ConfigFileService {
           console.info(
             `Config file not found at ${filePath}, using database defaults`,
           )
-          return { agentInfo: null, schedules: [] }
+          return { agentInfo: null, schedules: [], workspaceFiles: [] }
         }
         throw error
       }
@@ -73,12 +74,19 @@ export class ConfigFileService {
         configFile.mcpServers,
       )
       const schedules = configFile.schedules || []
+      const workspaceFiles = configFile.workspaceFiles || []
 
       if (schedules.length > 0) {
         console.info(`Loaded ${schedules.length} schedules from config file`)
       }
 
-      return { agentInfo, schedules }
+      if (workspaceFiles.length > 0) {
+        console.info(
+          `Loaded ${workspaceFiles.length} workspace files from config file`,
+        )
+      }
+
+      return { agentInfo, schedules, workspaceFiles }
     } catch (error) {
       console.error(`Failed to load config file from ${filePath}:`, error)
       throw new Error(

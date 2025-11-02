@@ -15,6 +15,7 @@
     "jsr:@std/internal@^1.0.9": "1.0.10",
     "jsr:@std/io@~0.225.2": "0.225.2",
     "jsr:@std/log@*": "0.224.14",
+    "jsr:@std/path@*": "1.1.2",
     "jsr:@std/path@0.217": "0.217.0",
     "jsr:@std/path@1": "1.1.2",
     "jsr:@std/path@^1.1.1": "1.1.2",
@@ -29,8 +30,11 @@
     "npm:@deno/vite-plugin@^1.0.5": "1.0.5_vite@6.4.1__@types+node@24.9.1__picomatch@4.0.3_@types+node@24.9.1",
     "npm:@modelcontextprotocol/sdk@^1.17.5": "1.20.2_express@5.1.0_zod@3.25.76",
     "npm:@opentelemetry/api@1": "1.9.0",
+    "npm:@radix-ui/react-collapsible@^1.1.12": "1.1.12_@types+react@19.2.2_@types+react-dom@19.2.2__@types+react@19.2.2_react@19.2.0_react-dom@19.2.0__react@19.2.0",
+    "npm:@radix-ui/react-collapsible@^1.1.7": "1.1.12_@types+react@19.2.2_@types+react-dom@19.2.2__@types+react@19.2.2_react@19.2.0_react-dom@19.2.0__react@19.2.0",
     "npm:@radix-ui/react-dialog@^1.1.15": "1.1.15_@types+react@19.2.2_@types+react-dom@19.2.2__@types+react@19.2.2_react@19.2.0_react-dom@19.2.0__react@19.2.0",
     "npm:@radix-ui/react-label@^2.1.7": "2.1.7_@types+react@19.2.2_@types+react-dom@19.2.2__@types+react@19.2.2_react@19.2.0_react-dom@19.2.0__react@19.2.0",
+    "npm:@radix-ui/react-popover@^1.1.15": "1.1.15_@types+react@19.2.2_@types+react-dom@19.2.2__@types+react@19.2.2_react@19.2.0_react-dom@19.2.0__react@19.2.0",
     "npm:@radix-ui/react-select@^2.2.6": "2.2.6_@types+react@19.2.2_@types+react-dom@19.2.2__@types+react@19.2.2_react@19.2.0_react-dom@19.2.0__react@19.2.0",
     "npm:@radix-ui/react-separator@^1.1.7": "1.1.7_@types+react@19.2.2_@types+react-dom@19.2.2__@types+react@19.2.2_react@19.2.0_react-dom@19.2.0__react@19.2.0",
     "npm:@radix-ui/react-slot@^1.2.3": "1.2.3_@types+react@19.2.2_react@19.2.0",
@@ -53,6 +57,7 @@
     "npm:next-themes@~0.4.6": "0.4.6_react@19.2.0_react-dom@19.2.0__react@19.2.0",
     "npm:react-dom@^19.1.1": "19.2.0_react@19.2.0",
     "npm:react-markdown@^10.1.0": "10.1.0_@types+react@19.2.2_react@19.2.0",
+    "npm:react-router-dom@^6.28.1": "6.30.1_react@19.2.0_react-dom@19.2.0__react@19.2.0",
     "npm:react@^19.1.1": "19.2.0",
     "npm:remark-gfm@4": "4.0.1",
     "npm:sonner@^2.0.7": "2.0.7_react@19.2.0_react-dom@19.2.0__react@19.2.0",
@@ -579,6 +584,27 @@
         "@types/react-dom"
       ]
     },
+    "@radix-ui/react-collapsible@1.1.12_@types+react@19.2.2_@types+react-dom@19.2.2__@types+react@19.2.2_react@19.2.0_react-dom@19.2.0__react@19.2.0": {
+      "integrity": "sha512-Uu+mSh4agx2ib1uIGPP4/CKNULyajb3p92LsVXmH2EHVMTfZWpll88XJ0j4W0z3f8NK1eYl1+Mf/szHPmcHzyA==",
+      "dependencies": [
+        "@radix-ui/primitive",
+        "@radix-ui/react-compose-refs",
+        "@radix-ui/react-context",
+        "@radix-ui/react-id",
+        "@radix-ui/react-presence",
+        "@radix-ui/react-primitive",
+        "@radix-ui/react-use-controllable-state",
+        "@radix-ui/react-use-layout-effect",
+        "@types/react",
+        "@types/react-dom",
+        "react",
+        "react-dom"
+      ],
+      "optionalPeers": [
+        "@types/react",
+        "@types/react-dom"
+      ]
+    },
     "@radix-ui/react-collection@1.1.7_@types+react@19.2.2_@types+react-dom@19.2.2__@types+react@19.2.2_react@19.2.0_react-dom@19.2.0__react@19.2.0": {
       "integrity": "sha512-Fh9rGN0MoI4ZFUNyfFVNU4y9LUz93u9/0K+yLgA2bwRojxM8JU1DyvvMBabnZPBgMWREAJvU2jjVzq+LrFUglw==",
       "dependencies": [
@@ -716,6 +742,34 @@
         "@types/react-dom",
         "react",
         "react-dom"
+      ],
+      "optionalPeers": [
+        "@types/react",
+        "@types/react-dom"
+      ]
+    },
+    "@radix-ui/react-popover@1.1.15_@types+react@19.2.2_@types+react-dom@19.2.2__@types+react@19.2.2_react@19.2.0_react-dom@19.2.0__react@19.2.0": {
+      "integrity": "sha512-kr0X2+6Yy/vJzLYJUPCZEc8SfQcf+1COFoAqauJm74umQhta9M7lNJHP7QQS3vkvcGLQUbWpMzwrXYwrYztHKA==",
+      "dependencies": [
+        "@radix-ui/primitive",
+        "@radix-ui/react-compose-refs",
+        "@radix-ui/react-context",
+        "@radix-ui/react-dismissable-layer",
+        "@radix-ui/react-focus-guards",
+        "@radix-ui/react-focus-scope",
+        "@radix-ui/react-id",
+        "@radix-ui/react-popper",
+        "@radix-ui/react-portal",
+        "@radix-ui/react-presence",
+        "@radix-ui/react-primitive",
+        "@radix-ui/react-slot",
+        "@radix-ui/react-use-controllable-state",
+        "@types/react",
+        "@types/react-dom",
+        "aria-hidden",
+        "react",
+        "react-dom",
+        "react-remove-scroll"
       ],
       "optionalPeers": [
         "@types/react",
@@ -1020,6 +1074,9 @@
     },
     "@radix-ui/rect@1.1.1": {
       "integrity": "sha512-HPwpGIzkl28mWyZqG52jiqDJ12waP11Pa1lGoiyUkIEuMLBP0oeK/C89esbXrxsky5we7dfd8U58nm0SgAWpVw=="
+    },
+    "@remix-run/router@1.23.0": {
+      "integrity": "sha512-O3rHJzAQKamUz1fvE0Qaw0xSFqsA/yafi2iqeE0pvdFtCO1viYx8QL6f3Ln/aCCTLxs68SLf0KPM9eSeM8yBnA=="
     },
     "@rolldown/pluginutils@1.0.0-beta.43": {
       "integrity": "sha512-5Uxg7fQUCmfhax7FJke2+8B6cqgeUJUD9o2uXIKXhD+mG0mL6NObmVoi9wXEU1tY89mZKgAYA6fTbftx3q2ZPQ=="
@@ -2543,6 +2600,22 @@
         "@types/react"
       ]
     },
+    "react-router-dom@6.30.1_react@19.2.0_react-dom@19.2.0__react@19.2.0": {
+      "integrity": "sha512-llKsgOkZdbPU1Eg3zK8lCn+sjD9wMRZZPuzmdWWX5SUs8OFkN5HnFVC0u5KMeMaC9aoancFI/KoLuKPqN+hxHw==",
+      "dependencies": [
+        "@remix-run/router",
+        "react",
+        "react-dom",
+        "react-router"
+      ]
+    },
+    "react-router@6.30.1_react@19.2.0": {
+      "integrity": "sha512-X1m21aEmxGXqENEPG3T6u0Th7g0aS4ZmoNynhbs+Cn+q+QGTLt+d5IQ2bHAXKzKcxGJjxACpVbnYQSCRcfxHlQ==",
+      "dependencies": [
+        "@remix-run/router",
+        "react"
+      ]
+    },
     "react-style-singleton@2.2.3_@types+react@19.2.2_react@19.2.0": {
       "integrity": "sha512-b6jSvxvVnyptAiLjbkWLE/lOnR4lfTtDAl+eUC7RZy+QQWc6wRzIV2CE6xBuMmDxc2qIihtDCZD5NPOFl7fRBQ==",
       "dependencies": [
@@ -3015,8 +3088,10 @@
           "npm:@a2a-js/sdk@~0.3.2",
           "npm:@ai-sdk/react@^2.0.22",
           "npm:@deno/vite-plugin@^1.0.5",
+          "npm:@radix-ui/react-collapsible@^1.1.7",
           "npm:@radix-ui/react-dialog@^1.1.15",
           "npm:@radix-ui/react-label@^2.1.7",
+          "npm:@radix-ui/react-popover@^1.1.15",
           "npm:@radix-ui/react-select@^2.2.6",
           "npm:@radix-ui/react-separator@^1.1.7",
           "npm:@radix-ui/react-slot@^1.2.3",
@@ -3036,6 +3111,7 @@
           "npm:next-themes@~0.4.6",
           "npm:react-dom@^19.1.1",
           "npm:react-markdown@^10.1.0",
+          "npm:react-router-dom@^6.28.1",
           "npm:react@^19.1.1",
           "npm:remark-gfm@4",
           "npm:sonner@^2.0.7",
@@ -3047,8 +3123,10 @@
         "packageJson": {
           "dependencies": [
             "npm:@ai-sdk/gateway@^1.0.15",
+            "npm:@radix-ui/react-collapsible@^1.1.12",
             "npm:@radix-ui/react-tooltip@^1.2.8",
             "npm:@tailwindcss/vite@latest",
+            "npm:react-router-dom@^6.28.1",
             "npm:tailwindcss@4",
             "npm:vite@6"
           ]

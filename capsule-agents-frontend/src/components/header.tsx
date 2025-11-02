@@ -1,14 +1,13 @@
 import logoSrc from "@/assets/logo.png"
-import { Clock, MessageSquare } from "lucide-react"
+import { MessageSquare, Settings2 } from "lucide-react"
+import { NavLink } from "react-router-dom"
 
-interface HeaderProps {
-  currentView?: "chat" | "schedules"
-  onViewChange?: (view: "chat" | "schedules") => void
-}
+const navLinkClasses = ({ isActive }: { isActive: boolean }) =>
+  `text-sm font-medium flex items-center gap-1.5 transition-colors ${
+    isActive ? "text-foreground" : "text-muted-foreground hover:text-foreground"
+  }`
 
-export default function Header(
-  { currentView = "chat", onViewChange }: HeaderProps,
-) {
+export default function Header() {
   return (
     <header className="border-b bg-white shadow-sm">
       <div className="container mx-auto flex h-16 items-center px-4 md:px-6 lg:px-8">
@@ -20,30 +19,14 @@ export default function Header(
           Alpha
         </span>
         <nav className="ml-auto flex items-center gap-4">
-          <button
-            type="button"
-            onClick={() => onViewChange?.("chat")}
-            className={`text-sm font-medium flex items-center gap-1.5 transition-colors ${
-              currentView === "chat"
-                ? "text-foreground"
-                : "text-muted-foreground hover:text-foreground"
-            }`}
-          >
+          <NavLink to="/" end className={navLinkClasses}>
+            <Settings2 className="h-4 w-4" />
+            Editor
+          </NavLink>
+          <NavLink to="chat" className={navLinkClasses}>
             <MessageSquare className="h-4 w-4" />
             Chat
-          </button>
-          <button
-            type="button"
-            onClick={() => onViewChange?.("schedules")}
-            className={`text-sm font-medium flex items-center gap-1.5 transition-colors ${
-              currentView === "schedules"
-                ? "text-foreground"
-                : "text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            <Clock className="h-4 w-4" />
-            Schedules
-          </button>
+          </NavLink>
           <span className="text-sm font-medium text-muted-foreground opacity-50 cursor-not-allowed">
             Docs
           </span>

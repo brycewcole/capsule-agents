@@ -7,6 +7,7 @@ import { createAgentController } from "./controllers/agent.controller.ts"
 import { createChatController } from "./controllers/chat.controller.ts"
 import { createHealthController } from "./controllers/health.controller.ts"
 import { createScheduleController } from "./controllers/schedule.controller.ts"
+import { createWorkspaceController } from "./controllers/workspace.controller.ts"
 import { getDb } from "./infrastructure/db.ts"
 import { CapsuleAgentA2ARequestHandler } from "./lib/a2a-request-handler.ts"
 import { AgentConfigService, type AgentInfo } from "./services/agent-config.ts"
@@ -22,7 +23,7 @@ app.use(
   cors({
     origin: "*",
     allowHeaders: ["Content-Type", "Authorization", "Cache-Control"],
-    allowMethods: ["POST", "GET", "OPTIONS"],
+    allowMethods: ["POST", "GET", "OPTIONS", "DELETE", "PUT", "PATCH"],
     exposeHeaders: ["Content-Type"],
   }),
 )
@@ -52,16 +53,36 @@ try {
 console.info("Checking for configuration file...")
 let configFileAgentInfo: AgentInfo | null = null
 let configSchedules: import("./services/config-schema.ts").ScheduleConfig[] = []
+let workspaceFiles: string[] = []
 try {
   const configResult = await ConfigFileService.loadConfigFile()
   configFileAgentInfo = configResult.agentInfo
   configSchedules = configResult.schedules
+  workspaceFiles = configResult.workspaceFiles
   if (configFileAgentInfo) {
     console.info(`Loaded configuration from file: ${configFileAgentInfo.name}`)
   } else console.info("No configuration file found, using database defaults")
 } catch (error) {
   console.error("Failed to load configuration file:", error)
   throw error
+}
+
+// Copy workspace files from config if any
+if (workspaceFiles.length > 0) {
+  console.info("Copying workspace files from config...")
+  try {
+    const { copyConfigFilesToWorkspace } = await import(
+      "./services/workspace.service.ts"
+    )
+    const configDir =
+      Deno.env.get("AGENT_CONFIG_FILE")?.replace("/agent.config.json", "") ||
+      "/app/config"
+    await copyConfigFilesToWorkspace(workspaceFiles, configDir)
+    console.info(`Copied ${workspaceFiles.length} workspace file(s)`)
+  } catch (error) {
+    console.error("Failed to copy workspace files:", error)
+    // Don't throw - continue even if workspace files fail to copy
+  }
 }
 
 // Instantiate services/handlers
@@ -81,8 +102,9 @@ app.route("/api", createHealthController())
 app.route("/api", createAgentController(agentConfigService))
 app.route("/api", createChatController(chatService))
 app.route("/api", createScheduleController(scheduleService))
+app.route("/api", createWorkspaceController())
 
-// Serve static files at /editor
+// Serve frontend assets
 app.use(
   "/editor/assets/*",
   serveStatic({
@@ -102,6 +124,11 @@ app.get(
 // Serve editor SPA
 app.get(
   "/editor",
+  serveStatic({ root: "./static", rewriteRequestPath: () => "/index.html" }),
+)
+
+app.get(
+  "/editor/*",
   serveStatic({ root: "./static", rewriteRequestPath: () => "/index.html" }),
 )
 
