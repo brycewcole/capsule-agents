@@ -114,7 +114,7 @@ app.use(
 )
 
 app.get(
-  "/editor/vite.svg",
+  "/editor/favicon.svg",
   serveStatic({
     root: "./static",
     rewriteRequestPath: (path) => path.replace(/^\/editor/, ""),

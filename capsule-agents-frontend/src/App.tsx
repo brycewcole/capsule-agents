@@ -8,7 +8,12 @@ import ScheduleManager from "./components/schedule-manager.tsx"
 import WorkspaceManager from "./components/workspace-manager.tsx"
 import { LoginDialog } from "./components/login-dialog.tsx"
 import { Toaster } from "./components/ui/toaster.tsx"
-import { type ChatWithHistory, getChatById, testLogin } from "./lib/api.ts"
+import {
+  type ChatWithHistory,
+  getAgentInfo,
+  getChatById,
+  testLogin,
+} from "./lib/api.ts"
 import { showErrorToast } from "./lib/error-utils.ts"
 import "./App.css"
 
@@ -76,6 +81,23 @@ function App() {
     // Temporarily skip authentication for new backend
     setIsAuthenticated(true)
     setShowLogin(false)
+  }, [])
+
+  // Update document title with agent name
+  useEffect(() => {
+    const updateTitle = async () => {
+      try {
+        const agentInfo = await getAgentInfo()
+        if (agentInfo.name) {
+          document.title = agentInfo.name
+        }
+      } catch (error) {
+        console.error("Failed to fetch agent name for title:", error)
+        // Keep default title on error
+      }
+    }
+
+    updateTitle()
   }, [])
 
   // Restore last selected chat on first load
