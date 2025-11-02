@@ -128,7 +128,9 @@ export function createWorkspaceController() {
       return c.json({ success: true, path })
     } catch (error) {
       logger.error(`Error deleting file: ${error}`)
-      logger.error(`Error stack: ${error.stack}`)
+      if (error instanceof Error) {
+        logger.error(`Error stack: ${error.stack}`)
+      }
       return c.json(
         { error: "Failed to delete file", details: String(error) },
         500,

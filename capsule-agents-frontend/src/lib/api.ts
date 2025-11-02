@@ -1143,7 +1143,8 @@ export async function uploadWorkspaceFile(file: File): Promise<boolean> {
 export async function downloadWorkspaceFile(path: string): Promise<void> {
   try {
     // Base64URL encode the path to avoid routing issues with slashes
-    const base64Path = btoa(path).replace(/\+/g, "-").replace(/\//g, "_").replace(/=/g, "")
+    const base64Path = btoa(path).replace(/\+/g, "-").replace(/\//g, "_")
+      .replace(/=/g, "")
     const response = await fetch(
       `${API_BASE_URL}/api/workspace/files/${base64Path}`,
       {
@@ -1186,7 +1187,8 @@ export async function downloadWorkspaceFile(path: string): Promise<void> {
 export async function deleteWorkspaceFile(path: string): Promise<boolean> {
   try {
     // Base64URL encode the path to avoid routing issues with slashes
-    const base64Path = btoa(path).replace(/\+/g, "-").replace(/\//g, "_").replace(/=/g, "")
+    const base64Path = btoa(path).replace(/\+/g, "-").replace(/\//g, "_")
+      .replace(/=/g, "")
     const response = await fetch(
       `${API_BASE_URL}/api/workspace/files/${base64Path}`,
       {

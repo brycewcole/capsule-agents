@@ -24,11 +24,7 @@ import {
 import { Badge } from "./ui/badge.tsx"
 import { Clock, Edit, Info, Loader2, Play, Plus, Trash } from "lucide-react"
 import { toast } from "sonner"
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "./ui/popover.tsx"
+import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover.tsx"
 import { CronBuilder } from "./cron-builder.tsx"
 import { BackoffConfig } from "./backoff-config.tsx"
 import {
@@ -287,102 +283,105 @@ export default function ScheduleManager() {
                   </TableHeader>
                   <TableBody>
                     {schedules.map((schedule) => (
-                    <TableRow key={schedule.id}>
-                      <TableCell>
-                        <div className="space-y-1">
-                          <div className="font-medium">{schedule.name}</div>
-                          <div className="text-xs text-muted-foreground line-clamp-1">
-                            {schedule.prompt}
+                      <TableRow key={schedule.id}>
+                        <TableCell>
+                          <div className="space-y-1">
+                            <div className="font-medium">{schedule.name}</div>
+                            <div className="text-xs text-muted-foreground line-clamp-1">
+                              {schedule.prompt}
+                            </div>
                           </div>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant="outline" className="font-mono text-xs">
-                          {schedule.cronExpression}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        <Switch
-                          checked={schedule.enabled}
-                          onCheckedChange={() => handleToggle(schedule)}
-                        />
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex gap-1">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() =>
-                              handleRunNow(schedule.id, schedule.name)}
-                            disabled={runningScheduleId === schedule.id}
-                            title="Run now"
+                        </TableCell>
+                        <TableCell>
+                          <Badge
+                            variant="outline"
+                            className="font-mono text-xs"
                           >
-                            {runningScheduleId === schedule.id
-                              ? <Loader2 className="h-4 w-4 animate-spin" />
-                              : <Play className="h-4 w-4" />}
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleEdit(schedule)}
-                            title="Edit"
-                          >
-                            <Edit className="h-4 w-4" />
-                          </Button>
-                          <Popover>
-                            <PopoverTrigger asChild>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                title="View stats"
-                              >
-                                <Info className="h-4 w-4" />
-                              </Button>
-                            </PopoverTrigger>
-                            <PopoverContent className="w-auto">
-                              <div className="space-y-3">
-                                <h4 className="font-medium text-sm">
-                                  Schedule Information
-                                </h4>
-                                <div className="space-y-2">
-                                  <div>
-                                    <div className="text-xs text-muted-foreground mb-1">
-                                      Last Run
+                            {schedule.cronExpression}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          <Switch
+                            checked={schedule.enabled}
+                            onCheckedChange={() => handleToggle(schedule)}
+                          />
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex gap-1">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() =>
+                                handleRunNow(schedule.id, schedule.name)}
+                              disabled={runningScheduleId === schedule.id}
+                              title="Run now"
+                            >
+                              {runningScheduleId === schedule.id
+                                ? <Loader2 className="h-4 w-4 animate-spin" />
+                                : <Play className="h-4 w-4" />}
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleEdit(schedule)}
+                              title="Edit"
+                            >
+                              <Edit className="h-4 w-4" />
+                            </Button>
+                            <Popover>
+                              <PopoverTrigger asChild>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  title="View stats"
+                                >
+                                  <Info className="h-4 w-4" />
+                                </Button>
+                              </PopoverTrigger>
+                              <PopoverContent className="w-auto">
+                                <div className="space-y-3">
+                                  <h4 className="font-medium text-sm">
+                                    Schedule Information
+                                  </h4>
+                                  <div className="space-y-2">
+                                    <div>
+                                      <div className="text-xs text-muted-foreground mb-1">
+                                        Last Run
+                                      </div>
+                                      <div className="text-sm">
+                                        {formatDate(schedule.lastRunAt)}
+                                      </div>
                                     </div>
-                                    <div className="text-sm">
-                                      {formatDate(schedule.lastRunAt)}
-                                    </div>
-                                  </div>
-                                  <div className="flex flex-col gap-2">
-                                    <div className="flex items-center gap-2">
-                                      <Badge variant="secondary">
-                                        {schedule.runCount} runs
-                                      </Badge>
-                                    </div>
-                                    {schedule.failureCount > 0 && (
+                                    <div className="flex flex-col gap-2">
                                       <div className="flex items-center gap-2">
-                                        <Badge variant="destructive">
-                                          {schedule.failureCount} fails
+                                        <Badge variant="secondary">
+                                          {schedule.runCount} runs
                                         </Badge>
                                       </div>
-                                    )}
+                                      {schedule.failureCount > 0 && (
+                                        <div className="flex items-center gap-2">
+                                          <Badge variant="destructive">
+                                            {schedule.failureCount} fails
+                                          </Badge>
+                                        </div>
+                                      )}
+                                    </div>
                                   </div>
                                 </div>
-                              </div>
-                            </PopoverContent>
-                          </Popover>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() =>
-                              handleDelete(schedule.id, schedule.name)}
-                            title="Delete"
-                          >
-                            <Trash className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
+                              </PopoverContent>
+                            </Popover>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() =>
+                                handleDelete(schedule.id, schedule.name)}
+                              title="Delete"
+                            >
+                              <Trash className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
                     ))}
                   </TableBody>
                 </Table>

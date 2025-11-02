@@ -12,8 +12,8 @@ import {
   ChevronRight,
   Download,
   File,
-  FolderOpen,
   Folder,
+  FolderOpen,
   Inbox,
   Loader2,
   RefreshCw,
@@ -37,8 +37,16 @@ interface FileTreeNode {
   children?: FileTreeNode[]
 }
 
+interface FileTreeNodeBuilder {
+  name: string
+  path: string
+  type: "file" | "directory"
+  size?: number
+  children: { [key: string]: FileTreeNodeBuilder }
+}
+
 function buildFileTree(files: WorkspaceFile[]): FileTreeNode[] {
-  const root: { [key: string]: FileTreeNode } = {}
+  const root: { [key: string]: FileTreeNodeBuilder } = {}
 
   // Sort files to ensure directories come before their contents
   const sortedFiles = [...files].sort((a, b) => a.path.localeCompare(b.path))
@@ -63,17 +71,24 @@ function buildFileTree(files: WorkspaceFile[]): FileTreeNode[] {
       }
 
       if (!isLast) {
-        current = current[part].children as any
+        current = current[part].children
       }
     }
   }
 
   // Convert to array and sort (directories first, then alphabetically)
-  function convertToArray(obj: { [key: string]: FileTreeNode }): FileTreeNode[] {
+  function convertToArray(
+    obj: { [key: string]: FileTreeNodeBuilder },
+  ): FileTreeNode[] {
     return Object.values(obj)
       .map((node) => ({
-        ...node,
-        children: node.children ? convertToArray(node.children as any) : undefined,
+        name: node.name,
+        path: node.path,
+        type: node.type,
+        size: node.size,
+        children: Object.keys(node.children).length > 0
+          ? convertToArray(node.children)
+          : undefined,
       }))
       .sort((a, b) => {
         if (a.type !== b.type) {
@@ -113,7 +128,10 @@ function FileTreeItem(
           style={{ paddingLeft: `${level * 12 + 8}px` }}
         >
           <CollapsibleTrigger asChild>
-            <button className="flex items-center gap-1 flex-1 text-left">
+            <button
+              type="button"
+              className="flex items-center gap-1 flex-1 text-left"
+            >
               {isOpen
                 ? <ChevronDown className="h-4 w-4 text-muted-foreground" />
                 : <ChevronRight className="h-4 w-4 text-muted-foreground" />}

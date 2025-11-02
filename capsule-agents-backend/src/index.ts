@@ -5,15 +5,15 @@ import { serveStatic } from "hono/deno"
 import { createA2AController } from "./controllers/a2a.controller.ts"
 import { createAgentController } from "./controllers/agent.controller.ts"
 import { createChatController } from "./controllers/chat.controller.ts"
+import { createHealthController } from "./controllers/health.controller.ts"
 import { createScheduleController } from "./controllers/schedule.controller.ts"
 import { createWorkspaceController } from "./controllers/workspace.controller.ts"
-import { ChatService } from "./services/chat.service.ts"
-import { ScheduleService } from "./services/schedule.service.ts"
-import { createHealthController } from "./controllers/health.controller.ts"
 import { getDb } from "./infrastructure/db.ts"
 import { CapsuleAgentA2ARequestHandler } from "./lib/a2a-request-handler.ts"
 import { AgentConfigService, type AgentInfo } from "./services/agent-config.ts"
+import { ChatService } from "./services/chat.service.ts"
 import { ConfigFileService } from "./services/config-file.ts"
+import { ScheduleService } from "./services/schedule.service.ts"
 
 const app = new Hono()
 

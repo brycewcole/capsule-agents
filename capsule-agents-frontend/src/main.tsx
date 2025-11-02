@@ -5,8 +5,8 @@ import "./index.css"
 import App from "./App.tsx"
 
 const resolveBasePath = () => {
-  if (typeof window === "undefined") return "/"
-  return window.location.pathname.startsWith("/editor") ? "/editor" : "/"
+  if (typeof globalThis.window === "undefined") return "/"
+  return globalThis.location.pathname.startsWith("/editor") ? "/editor" : "/"
 }
 
 createRoot(document.getElementById("root")!).render(

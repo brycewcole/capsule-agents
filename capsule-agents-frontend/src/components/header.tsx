@@ -1,12 +1,10 @@
 import logoSrc from "@/assets/logo.png"
-import { Clock, MessageSquare, Settings2 } from "lucide-react"
+import { MessageSquare, Settings2 } from "lucide-react"
 import { NavLink } from "react-router-dom"
 
 const navLinkClasses = ({ isActive }: { isActive: boolean }) =>
   `text-sm font-medium flex items-center gap-1.5 transition-colors ${
-    isActive
-      ? "text-foreground"
-      : "text-muted-foreground hover:text-foreground"
+    isActive ? "text-foreground" : "text-muted-foreground hover:text-foreground"
   }`
 
 export default function Header() {

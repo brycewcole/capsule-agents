@@ -18,12 +18,7 @@ import {
   Zap,
 } from "lucide-react"
 import { toast } from "sonner"
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "./ui/tooltip.tsx"
+import { TooltipProvider } from "./ui/tooltip.tsx"
 import { ModelPicker } from "./model-picker.tsx"
 import { Switch } from "./ui/switch.tsx"
 import {
