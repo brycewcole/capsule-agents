@@ -205,6 +205,11 @@ export default function AgentEditor() {
         setSelectedModel(selectedModelFromBackend || null)
         setCapabilities(agentInfo.capabilities || [])
 
+        // Update document title with agent name from config
+        if (agentInfo.name) {
+          document.title = agentInfo.name
+        }
+
         // Set prebuilt capability states based on existing capabilities
         const currentCapabilities = agentInfo.capabilities || []
         setExecEnabled(
