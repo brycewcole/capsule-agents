@@ -29,7 +29,8 @@ jobs:
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
-            const run = require('./.github/scripts/check-next-changes.js');
+            const path = require('path');
+            const run = require(path.join(process.env.GITHUB_WORKSPACE, '.github/scripts/check-next-changes.js'));
             await run({ github, core, context });
 
       - name: Create Pull Request
@@ -41,7 +42,8 @@ jobs:
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
-            const run = require('./.github/scripts/create-weekly-release-pr.js');
+            const path = require('path');
+            const run = require(path.join(process.env.GITHUB_WORKSPACE, '.github/scripts/create-weekly-release-pr.js'));
             await run({ github, core, context });
 
       - name: No changes to merge
