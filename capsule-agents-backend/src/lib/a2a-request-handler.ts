@@ -417,6 +417,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
     currentTaskRef: { current: A2A.Task | null },
     finalMessageHolder: { message: A2A.Message | null },
     statusHandler: StatusUpdateHandler,
+    onFinishComplete?: () => void,
   ): (params: { responseMessage: Vercel.UIMessage }) => Promise<void> {
     return async ({ responseMessage }) => {
       console.info(
@@ -473,6 +474,11 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
       finalMessageHolder.message = a2aMessage
 
       console.info("Saved assistant message to both Vercel and A2A storage")
+
+      // Signal that onFinish has completed
+      if (onFinishComplete) {
+        onFinishComplete()
+      }
     }
   }
 
@@ -582,6 +588,12 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
       const currentTaskRef = { current: null as A2A.Task | null }
       const finalMessageHolder = { message: null as A2A.Message | null }
 
+      // Promise to track when onFinish completes
+      let resolveOnFinish: () => void
+      const onFinishPromise = new Promise<void>((resolve) => {
+        resolveOnFinish = resolve
+      })
+
       const modelMessages = Vercel.convertToModelMessages(cleanedMessages)
       console.info(
         `Sending ${modelMessages.length} messages to model`,
@@ -627,6 +639,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
           currentTaskRef,
           finalMessageHolder,
           () => {},
+          () => resolveOnFinish(),
         ),
       })
 
@@ -638,8 +651,12 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
         () => {},
       )
 
-      // Wait a moment for onFinish to complete
-      await new Promise((resolve) => setTimeout(resolve, 100))
+      console.info("fullStream completed, waiting for onFinish to complete...")
+
+      // Wait for onFinish to complete before returning
+      await onFinishPromise
+
+      console.info("onFinish completed, returning result")
 
       if (currentTaskRef.current) {
         return currentTaskRef.current
@@ -754,6 +771,12 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
         eventUpdateQueue.push(event)
       }
 
+      // Promise to track when onFinish completes
+      let resolveOnFinish: () => void
+      const onFinishPromise = new Promise<void>((resolve) => {
+        resolveOnFinish = resolve
+      })
+
       console.info(cleanedMessages)
 
       const modelMessages = Vercel.convertToModelMessages(cleanedMessages)
@@ -805,6 +828,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
           currentTaskRef,
           finalMessageHolder,
           queueStatusHandler,
+          () => resolveOnFinish(),
         ),
       })
 
@@ -863,16 +887,14 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
         }
       }
 
-      // Final drain in case onFinish enqueued after the final event
-      while (eventUpdateQueue.length > 0) {
-        const statusUpdate = eventUpdateQueue.shift()!
-        yield statusUpdate
-      }
+      console.info("fullStream completed, waiting for onFinish to complete...")
 
-      // Wait a moment for onFinish to complete
-      await new Promise((resolve) => setTimeout(resolve, 100))
+      // Wait for onFinish to complete before final drain
+      await onFinishPromise
 
-      // Drain any status updates added by onFinish (e.g., "completed" status)
+      console.info("onFinish completed, performing final drain of event queue")
+
+      // Final drain - all status updates should be queued by now
       while (eventUpdateQueue.length > 0) {
         const statusUpdate = eventUpdateQueue.shift()!
         yield statusUpdate
