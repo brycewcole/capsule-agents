@@ -4,7 +4,7 @@ module.exports = async ({ github, core, context }) => {
   const head = process.env.PR_HEAD_BRANCH || "next"
   const { owner, repo } = context.repo
 
-  const compare = await github.rest.repos.compareCommits({
+  const { data: compare } = await github.rest.repos.compareCommits({
     owner,
     repo,
     base,
