@@ -1,0 +1,52 @@
+name: Scheduled Release Merge
+
+on:
+  schedule:
+    # Runs at 11:00 UTC every Monday (7am EDT / 6am EST)
+    - cron: "0 11 * * 1"
+  workflow_dispatch: # Allows manual triggering
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  merge-next-to-main:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Check if next has changes
+        id: check_changes
+        uses: actions/github-script@v7
+        env:
+          PR_BASE_BRANCH: main
+          PR_HEAD_BRANCH: next
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const path = require('path');
+            const run = require(path.join(process.env.GITHUB_WORKSPACE, '.github/scripts/check-next-changes.js'));
+            await run({ github, core, context });
+
+      - name: Create Pull Request
+        if: steps.check_changes.outputs.has_changes == 'true'
+        uses: actions/github-script@v7
+        env:
+          PR_BASE_BRANCH: main
+          PR_HEAD_BRANCH: next
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const path = require('path');
+            const run = require(path.join(process.env.GITHUB_WORKSPACE, '.github/scripts/create-weekly-release-pr.js'));
+            await run({ github, core, context });
+
+      - name: No changes to merge
+        if: steps.check_changes.outputs.has_changes == 'false'
+        run: |
+          echo "✓ No changes to merge from next to main"
