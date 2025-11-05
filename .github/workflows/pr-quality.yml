@@ -1,6 +1,9 @@
 name: PR Quality
 
-on: push
+on:
+  push:
+  pull_request:
+    branches: [main, next]
 
 jobs:
   quality-checks:
