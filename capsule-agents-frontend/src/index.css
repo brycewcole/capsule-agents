@@ -166,7 +166,8 @@
   }
 
   .prose code {
-    @apply rounded bg-slate-200 dark:bg-slate-800 px-1.5 py-0.5 text-slate-900 dark:text-slate-100;
+    @apply rounded bg-slate-200 dark:bg-slate-800 px-1.5 py-0.5 text-slate-900
+      dark:text-slate-100;
     font-size: 0.875em;
   }
 
