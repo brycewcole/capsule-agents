@@ -3,8 +3,8 @@ name: Scheduled Release Merge
 on:
   schedule:
     # Runs at 11:00 UTC every Monday (7am EDT / 6am EST)
-    - cron: '0 11 * * 1'
-  workflow_dispatch:  # Allows manual triggering
+    - cron: "0 11 * * 1"
+  workflow_dispatch: # Allows manual triggering
 
 permissions:
   contents: write
