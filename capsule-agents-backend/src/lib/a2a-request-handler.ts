@@ -18,6 +18,10 @@ import { TaskService } from "../services/task.service.ts"
 import { VercelService } from "../services/vercel.service.ts"
 import { artifactTool } from "./artifact-tool.ts"
 import { isMCPCapability } from "./capability-types.ts"
+import {
+  buildSystemPrompt,
+  type BuiltInPromptUsage,
+} from "./default-prompts.ts"
 import { AnyToolCall, AnyToolResult } from "./types.ts"
 
 interface MCPToolsDisposable {
@@ -307,6 +311,8 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
     model: Vercel.LanguageModel
     agentInfo: ReturnType<AgentConfigService["getAgentInfo"]>
     cleanedMessages: Vercel.UIMessage[]
+    systemPrompt: string
+    defaultPromptUsage: BuiltInPromptUsage[]
   }> {
     let tools = await this.getAvailableTools()
     const mcpTools = await this.getMCPServers()
@@ -323,7 +329,34 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
       ),
     }))
 
-    return { tools, mcpTools, model, agentInfo, cleanedMessages }
+    const { prompt: systemPrompt, prompts: defaultPromptUsage } =
+      buildSystemPrompt({
+        userPrompt: agentInfo.description,
+        modelId: agentInfo.model_name,
+        enabled: agentInfo.built_in_prompts_enabled !== false,
+      })
+
+    if (agentInfo.built_in_prompts_enabled) {
+      const activePrompts = defaultPromptUsage
+        .filter((prompt) => prompt.matchesModel)
+        .map((prompt) => prompt.id)
+      console.debug("Default prompts applied:", {
+        activePromptIds: activePrompts,
+        model: agentInfo.model_name,
+      })
+    } else {
+      console.debug("Default prompts disabled by configuration.")
+    }
+
+    return {
+      tools,
+      mcpTools,
+      model,
+      agentInfo,
+      cleanedMessages,
+      systemPrompt,
+      defaultPromptUsage,
+    }
   }
 
   private createOnStepFinishHandler<TOOLS extends Vercel.ToolSet>(
@@ -574,7 +607,13 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
     await this.saveUserMessage(params.message, contextId)
 
     try {
-      const { tools, mcpTools, model, agentInfo, cleanedMessages } = await this
+      const {
+        tools,
+        mcpTools,
+        model,
+        cleanedMessages,
+        systemPrompt,
+      } = await this
         .prepareStreamContext(contextId)
 
       await using _mcpTools = mcpTools
@@ -593,7 +632,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
         contextId: params.message.contextId,
         messages: modelMessages,
         tools: Object.keys(tools),
-        systemPrompt: agentInfo.description,
+        systemPrompt,
       })
 
       const result = Vercel.streamText({
@@ -604,7 +643,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
         onError: (error) => {
           this.handleStreamError(error)
         },
-        system: agentInfo.description,
+        system: systemPrompt || undefined,
         model,
         messages: Vercel.convertToModelMessages(cleanedMessages),
         tools: {
@@ -742,7 +781,13 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
     const currentTaskRef = { current: null as A2A.Task | null }
 
     try {
-      const { tools, mcpTools, model, agentInfo, cleanedMessages } = await this
+      const {
+        tools,
+        mcpTools,
+        model,
+        cleanedMessages,
+        systemPrompt,
+      } = await this
         .prepareStreamContext(contextId)
 
       await using _mcpTools = mcpTools
@@ -767,7 +812,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
         contextId: params.message.contextId,
         messages: modelMessages,
         tools: Object.keys(tools),
-        systemPrompt: agentInfo.description,
+        systemPrompt,
       })
 
       // Create AbortController for this task stream
@@ -779,7 +824,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
           functionId: "sendMessageStream",
         },
         abortSignal: abortController.signal,
-        system: agentInfo.description,
+        system: systemPrompt || undefined,
         model,
         messages: modelMessages,
         tools: {

@@ -15,6 +15,9 @@
       "memory": {
         "enabled": false
       }
+    },
+    "defaultPrompts": {
+      "enabled": true
     }
   },
   "workspaceFiles": [

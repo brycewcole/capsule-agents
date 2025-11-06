@@ -23,14 +23,17 @@ import { ModelPicker } from "./model-picker.tsx"
 import { Switch } from "./ui/switch.tsx"
 import {
   Dialog,
+  DialogClose,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "./ui/dialog.tsx"
 import {
   type AgentInfo,
   type Capability,
+  type DefaultPrompt,
   getAgentInfo,
   getAvailableModels,
   getProviderInfo,
@@ -75,6 +78,7 @@ export default function AgentEditor() {
       description: string
       modelName: string
       capabilities: Capability[]
+      builtInPromptsEnabled: boolean
     } | null
   >(null)
 
@@ -90,6 +94,9 @@ export default function AgentEditor() {
   // Prebuilt capabilities state
   const [execEnabled, setExecEnabled] = useState(false)
   const [memoryEnabled, setMemoryEnabled] = useState(false)
+  const [builtInPromptsEnabled, setDefaultPromptsEnabled] = useState(true)
+  const [builtInPrompts, setDefaultPrompts] = useState<DefaultPrompt[]>([])
+  const [showDefaultPromptDialog, setShowDefaultPromptDialog] = useState(false)
 
   const handleSaveNameDescription = async () => {
     // Validate agent name before saving
@@ -109,16 +116,21 @@ export default function AgentEditor() {
         modelName: selectedModel?.id || "",
         modelParameters: {},
         capabilities: capabilities,
+        builtInPromptsEnabled,
       }
-      await updateAgentInfo(agentInfo)
+      const updated = await updateAgentInfo(agentInfo)
 
       // Update original state after successful save
       setOriginalState({
-        name,
-        description,
-        modelName: selectedModel?.id || "",
-        capabilities: [...capabilities],
+        name: updated.name,
+        description: updated.description,
+        modelName: updated.modelName,
+        capabilities: [...(updated.capabilities ?? capabilities)],
+        builtInPromptsEnabled: updated.builtInPromptsEnabled,
       })
+      setCapabilities(updated.capabilities ?? capabilities)
+      setDefaultPrompts(updated.builtInPrompts ?? [])
+      setDefaultPromptsEnabled(updated.builtInPromptsEnabled)
 
       // Update document title with new agent name
       if (name) {
@@ -147,12 +159,15 @@ export default function AgentEditor() {
     nextModel?: Model | null,
     nextName?: string,
     nextDescription?: string,
+    nextDefaultPromptsEnabled?: boolean,
   ) => {
     try {
       const finalName = nextName ?? name
       const finalDescription = nextDescription ?? description
       const finalModel = nextModel ?? selectedModel
       const finalCapabilities = nextCapabilities ?? capabilities
+      const finalDefaultPromptsEnabled = nextDefaultPromptsEnabled ??
+        builtInPromptsEnabled
 
       const agentInfo: AgentInfo = {
         name: finalName,
@@ -160,16 +175,21 @@ export default function AgentEditor() {
         modelName: finalModel?.id || "",
         modelParameters: {},
         capabilities: finalCapabilities,
+        builtInPromptsEnabled: finalDefaultPromptsEnabled,
       }
-      await updateAgentInfo(agentInfo)
+      const updated = await updateAgentInfo(agentInfo)
 
       // Update original state after successful save
       setOriginalState({
-        name: finalName,
-        description: finalDescription,
-        modelName: finalModel?.id || "",
-        capabilities: [...finalCapabilities],
+        name: updated.name,
+        description: updated.description,
+        modelName: updated.modelName,
+        capabilities: [...(updated.capabilities ?? finalCapabilities)],
+        builtInPromptsEnabled: updated.builtInPromptsEnabled,
       })
+      setCapabilities(updated.capabilities ?? finalCapabilities)
+      setDefaultPrompts(updated.builtInPrompts ?? [])
+      setDefaultPromptsEnabled(updated.builtInPromptsEnabled)
     } catch (error) {
       console.error("Error auto-saving agent:", error)
       toast.error("Error auto-saving", {
@@ -204,6 +224,10 @@ export default function AgentEditor() {
         )
         setSelectedModel(selectedModelFromBackend || null)
         setCapabilities(agentInfo.capabilities || [])
+        setDefaultPromptsEnabled(
+          agentInfo.builtInPromptsEnabled ?? true,
+        )
+        setDefaultPrompts(agentInfo.builtInPrompts ?? [])
 
         // Update document title with agent name from config
         if (agentInfo.name) {
@@ -231,6 +255,7 @@ export default function AgentEditor() {
           description: agentInfo.description,
           modelName: agentInfo.modelName,
           capabilities: currentCapabilities,
+          builtInPromptsEnabled: agentInfo.builtInPromptsEnabled ?? true,
         })
       } catch (error) {
         console.error("Failed to fetch data:", error)
@@ -498,6 +523,33 @@ export default function AgentEditor() {
     setTimeout(() => autoSaveAgent(), 0)
   }
 
+  const handleDefaultPromptToggle = (enabled: boolean) => {
+    setDefaultPromptsEnabled(enabled)
+    toast.success(
+      enabled ? "Default prompts enabled" : "Default prompts disabled",
+      {
+        description: enabled
+          ? "Combined prompt includes the built-in defaults."
+          : "The agent will only use your custom description.",
+      },
+    )
+    setTimeout(
+      () =>
+        autoSaveAgent(
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          enabled,
+        ),
+      0,
+    )
+  }
+
+  const applicablePrompts = builtInPrompts.filter((prompt) =>
+    prompt.matchesModel
+  )
+
   if (isLoading) {
     return (
       <section
@@ -536,6 +588,15 @@ export default function AgentEditor() {
           </div>
 
           <div className="space-y-4">
+            <Button
+              type="button"
+              variant="link"
+              size="sm"
+              className="h-auto p-0 text-muted-foreground"
+              onClick={() => setShowDefaultPromptDialog(true)}
+            >
+              View built-in prompts
+            </Button>
             <div className="space-y-2">
               <Label htmlFor="agent-name">Name</Label>
               <Input
@@ -807,6 +868,91 @@ export default function AgentEditor() {
             </div>
           </div>
         </section>
+
+        <Dialog
+          open={showDefaultPromptDialog}
+          onOpenChange={setShowDefaultPromptDialog}
+        >
+          <DialogContent className="sm:max-w-2xl">
+            <DialogHeader>
+              <DialogTitle>Built-in prompts</DialogTitle>
+              <DialogDescription>
+                Capsule’s built-in instructions that prepend your custom
+                description when enabled.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-muted/30 p-4">
+              <div>
+                <p className="text-sm font-medium text-foreground">
+                  {builtInPromptsEnabled
+                    ? "Built-in prompts enabled"
+                    : "Built-in prompts disabled"}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Toggle to control whether built-in prompts prepend your custom
+                  description.
+                </p>
+              </div>
+              <Switch
+                checked={builtInPromptsEnabled}
+                onCheckedChange={handleDefaultPromptToggle}
+                aria-label="Toggle default prompts"
+              />
+            </div>
+
+            {applicablePrompts.length === 0
+              ? (
+                <div className="rounded-md border border-dashed bg-muted/30 p-4 text-sm text-muted-foreground">
+                  No default prompts currently target this model.
+                </div>
+              )
+              : (
+                <div className="max-h-[60vh] overflow-y-auto space-y-5 pr-1">
+                  {!builtInPromptsEnabled && (
+                    <div className="rounded-md border border-dashed bg-amber-50 p-3 text-sm text-amber-900">
+                      Built-in prompts are disabled. Enable them to include the
+                      instructions below.
+                    </div>
+                  )}
+
+                  {applicablePrompts.map((prompt) => (
+                    <div
+                      key={prompt.id}
+                      className="space-y-4 rounded-2xl border bg-muted/20 p-5"
+                    >
+                      <div>
+                        <h4 className="text-base font-semibold text-foreground">
+                          {prompt.title}
+                        </h4>
+                      </div>
+                      <div className="rounded-xl border border-dashed bg-background/70 p-4 text-sm leading-relaxed text-muted-foreground whitespace-pre-wrap">
+                        {prompt.text}
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        {prompt.modelFilter?.include &&
+                            prompt.modelFilter.include.length > 0
+                          ? (
+                            <>
+                              Matches:{" "}
+                              <span className="font-medium text-foreground">
+                                {prompt.modelFilter.include.join(", ")}
+                              </span>
+                            </>
+                          )
+                          : "Applies to all models."}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+            <DialogFooter>
+              <DialogClose asChild>
+                <Button variant="outline">Close</Button>
+              </DialogClose>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
         {/* No Models Available Modal */}
         <Dialog open={showNoModelsModal} onOpenChange={setShowNoModelsModal}>

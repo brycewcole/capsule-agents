@@ -20,6 +20,7 @@ interface AgentInfoRow {
   model_name: string
   model_parameters: string
   capabilities: string
+  built_in_prompts_enabled: number | null
 }
 
 export type AgentInfo = {
@@ -28,6 +29,7 @@ export type AgentInfo = {
   model_name?: string
   model_parameters?: Record<string, unknown>
   capabilities: Capability[]
+  built_in_prompts_enabled: boolean
 }
 
 export class AgentConfigService {
@@ -117,7 +119,7 @@ export class AgentConfigService {
       this.ensureValidModel()
 
       const stmt = this.db.prepare(`
-        SELECT name, description, model_name, model_parameters, tools as capabilities 
+        SELECT name, description, model_name, model_parameters, tools as capabilities, built_in_prompts_enabled 
         FROM agent_info WHERE key = 1
       `)
 
@@ -146,6 +148,7 @@ export class AgentConfigService {
       const modelParameters = JSON.parse(row.model_parameters || "{}")
 
       const expandedCapabilities = expandEnvVarsInObject(capabilities)
+      const builtInPromptsEnabled = row.built_in_prompts_enabled !== 0
 
       const result = {
         name: row.name,
@@ -153,6 +156,7 @@ export class AgentConfigService {
         model_name: row.model_name,
         model_parameters: modelParameters,
         capabilities: expandedCapabilities,
+        built_in_prompts_enabled: builtInPromptsEnabled,
       }
 
       console.debug("AgentConfigService.getAgentInfo() returning:", {
@@ -178,11 +182,12 @@ export class AgentConfigService {
     try {
       // Validate capabilities using new type system
       this.validateCapabilities(info.capabilities)
+      const builtInPromptsEnabled = info.built_in_prompts_enabled !== false
 
       console.info("Preparing database update...")
       const stmt = this.db.prepare(`
-        INSERT OR REPLACE INTO agent_info(key, name, description, model_name, model_parameters, tools)
-        VALUES(1, ?, ?, ?, ?, ?)
+        INSERT OR REPLACE INTO agent_info(key, name, description, model_name, model_parameters, tools, built_in_prompts_enabled)
+        VALUES(1, ?, ?, ?, ?, ?, ?)
       `)
 
       console.info("Executing database update...")
@@ -192,10 +197,14 @@ export class AgentConfigService {
         info.model_name || null,
         JSON.stringify(info.model_parameters || {}),
         JSON.stringify(info.capabilities),
+        builtInPromptsEnabled ? 1 : 0,
       )
 
       console.info("Database update completed successfully")
-      return info
+      return {
+        ...info,
+        built_in_prompts_enabled: builtInPromptsEnabled,
+      }
     } catch (error) {
       console.error(
         "Error in AgentConfigService.updateAgentInfo():",
