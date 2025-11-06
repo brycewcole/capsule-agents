@@ -397,7 +397,7 @@ export async function getAgentInfo(): Promise<AgentInfo> {
 
 // Function to update agent configuration
 export async function updateAgentInfo(info: AgentInfo): Promise<AgentInfo> {
-  const { builtInPrompts, ...body } = info
+  const { builtInPrompts: _builtInPrompts, ...body } = info
   const response = await fetch(`${API_BASE_URL}/api/agent`, {
     method: "PUT",
     headers: {

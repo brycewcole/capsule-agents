@@ -23,12 +23,12 @@ import { ModelPicker } from "./model-picker.tsx"
 import { Switch } from "./ui/switch.tsx"
 import {
   Dialog,
+  DialogClose,
   DialogContent,
   DialogDescription,
-  DialogHeader,
   DialogFooter,
+  DialogHeader,
   DialogTitle,
-  DialogClose,
 } from "./ui/dialog.tsx"
 import {
   type AgentInfo,
@@ -72,13 +72,15 @@ export default function AgentEditor() {
   const [editIndex, setEditIndex] = useState<number | null>(null)
 
   // State to track original values for change detection
-  const [originalState, setOriginalState] = useState<{
-    name: string
-    description: string
-    modelName: string
-    capabilities: Capability[]
-    builtInPromptsEnabled: boolean
-  } | null>(null)
+  const [originalState, setOriginalState] = useState<
+    {
+      name: string
+      description: string
+      modelName: string
+      capabilities: Capability[]
+      builtInPromptsEnabled: boolean
+    } | null
+  >(null)
 
   // New state for capability form
   const [capabilityName, setCapabilityName] = useState("")
@@ -164,8 +166,8 @@ export default function AgentEditor() {
       const finalDescription = nextDescription ?? description
       const finalModel = nextModel ?? selectedModel
       const finalCapabilities = nextCapabilities ?? capabilities
-      const finalDefaultPromptsEnabled =
-        nextDefaultPromptsEnabled ?? builtInPromptsEnabled
+      const finalDefaultPromptsEnabled = nextDefaultPromptsEnabled ??
+        builtInPromptsEnabled
 
       const agentInfo: AgentInfo = {
         name: finalName,
@@ -914,33 +916,33 @@ export default function AgentEditor() {
                   )}
 
                   {applicablePrompts.map((prompt) => (
-                      <div
-                        key={prompt.id}
-                        className="space-y-4 rounded-2xl border bg-muted/20 p-5"
-                      >
-                        <div>
-                          <h4 className="text-base font-semibold text-foreground">
-                            {prompt.title}
-                          </h4>
-                        </div>
-                        <div className="rounded-xl border border-dashed bg-background/70 p-4 text-sm leading-relaxed text-muted-foreground whitespace-pre-wrap">
-                          {prompt.text}
-                        </div>
-                        <p className="text-xs text-muted-foreground">
-                          {prompt.modelFilter?.include &&
-                              prompt.modelFilter.include.length > 0
-                            ? (
-                              <>
-                                Matches:{" "}
-                                <span className="font-medium text-foreground">
-                                  {prompt.modelFilter.include.join(", ")}
-                                </span>
-                              </>
-                            )
-                            : "Applies to all models."}
-                        </p>
+                    <div
+                      key={prompt.id}
+                      className="space-y-4 rounded-2xl border bg-muted/20 p-5"
+                    >
+                      <div>
+                        <h4 className="text-base font-semibold text-foreground">
+                          {prompt.title}
+                        </h4>
                       </div>
-                    ))}
+                      <div className="rounded-xl border border-dashed bg-background/70 p-4 text-sm leading-relaxed text-muted-foreground whitespace-pre-wrap">
+                        {prompt.text}
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        {prompt.modelFilter?.include &&
+                            prompt.modelFilter.include.length > 0
+                          ? (
+                            <>
+                              Matches:{" "}
+                              <span className="font-medium text-foreground">
+                                {prompt.modelFilter.include.join(", ")}
+                              </span>
+                            </>
+                          )
+                          : "Applies to all models."}
+                      </p>
+                    </div>
+                  ))}
                 </div>
               )}
 
