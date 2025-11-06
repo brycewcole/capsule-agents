@@ -144,6 +144,19 @@ export type CapabilityCall = {
 
 // Legacy alias removed - use CapabilityCall directly
 
+export type ModelFilterConfig = {
+  include?: string[]
+}
+
+export type DefaultPrompt = {
+  id: string
+  title: string
+  text: string
+  modelFilter?: ModelFilterConfig
+  matchesModel: boolean
+  willApply: boolean
+}
+
 // Types for agent configuration
 export type AgentInfo = {
   name: string
@@ -151,6 +164,8 @@ export type AgentInfo = {
   modelName: string
   modelParameters: Record<string, unknown>
   capabilities?: Capability[]
+  builtInPromptsEnabled: boolean
+  builtInPrompts?: DefaultPrompt[]
 }
 
 export async function fetchTaskById(
@@ -382,7 +397,7 @@ export async function getAgentInfo(): Promise<AgentInfo> {
 
 // Function to update agent configuration
 export async function updateAgentInfo(info: AgentInfo): Promise<AgentInfo> {
-  const body = { ...info }
+  const { builtInPrompts, ...body } = info
   const response = await fetch(`${API_BASE_URL}/api/agent`, {
     method: "PUT",
     headers: {

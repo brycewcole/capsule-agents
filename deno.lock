@@ -19,6 +19,9 @@
     "jsr:@std/path@0.217": "0.217.0",
     "jsr:@std/path@1": "1.1.2",
     "jsr:@std/path@^1.1.1": "1.1.2",
+    "jsr:@std/yaml@1.0.10": "1.0.10",
+    "jsr:@std/yaml@^1.0.10": "1.0.10",
+    "jsr:@std/yaml@^1.0.5": "1.0.10",
     "npm:@a2a-js/sdk@~0.3.2": "0.3.2",
     "npm:@ai-sdk/anthropic@2": "2.0.37_zod@3.25.76",
     "npm:@ai-sdk/gateway@^1.0.15": "1.0.41_zod@3.25.76",
@@ -131,6 +134,9 @@
       "dependencies": [
         "jsr:@std/internal@^1.0.10"
       ]
+    },
+    "@std/yaml@1.0.10": {
+      "integrity": "245706ea3511cc50c8c6d00339c23ea2ffa27bd2c7ea5445338f8feff31fa58e"
     }
   },
   "npm": {
@@ -3071,6 +3077,7 @@
           "jsr:@std/fs@1",
           "jsr:@std/log@*",
           "jsr:@std/path@1",
+          "jsr:@std/yaml@^1.0.10",
           "npm:@a2a-js/sdk@~0.3.2",
           "npm:@ai-sdk/anthropic@2",
           "npm:@ai-sdk/google@2",

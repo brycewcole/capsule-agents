@@ -18,6 +18,10 @@ export const CapabilitiesConfigSchema = z.object({
   }),
 })
 
+export const DefaultPromptsConfigSchema = z.object({
+  enabled: z.boolean().default(true),
+}).default({ enabled: true })
+
 export const A2AAgentConfigSchema = z.object({
   name: z.string().min(1, "A2A agent name is required"),
   agent_url: z.string().url("Invalid A2A agent URL"),
@@ -47,6 +51,9 @@ export const AgentConfigSchema = z.object({
     exec: { enabled: true },
   }),
   a2a: z.array(A2AAgentConfigSchema).optional().default([]),
+  builtInPrompts: DefaultPromptsConfigSchema.optional().default({
+    enabled: true,
+  }),
 })
 
 export const ConfigFileSchema = z.object({
@@ -58,6 +65,9 @@ export const ConfigFileSchema = z.object({
       exec: { enabled: true },
     },
     a2a: [],
+    builtInPrompts: {
+      enabled: true,
+    },
   }),
   // Support top-level mcpServers format (standard MCP config format)
   mcpServers: z.record(
@@ -85,6 +95,7 @@ export type A2AAgentConfig = z.infer<typeof A2AAgentConfigSchema>
 export type ScheduleBackoffConfig = z.infer<typeof ScheduleBackoffConfigSchema>
 export type ScheduleConfig = z.infer<typeof ScheduleConfigSchema>
 export type AgentConfig = z.infer<typeof AgentConfigSchema>
+export type DefaultPromptsConfig = z.infer<typeof DefaultPromptsConfigSchema>
 export type ConfigFile = z.infer<typeof ConfigFileSchema>
 
 export const BUILTIN_CAPABILITIES = [
@@ -148,6 +159,7 @@ export function transformConfigToAgentInfo(
     model_name: config.model?.name,
     model_parameters: config.model?.parameters,
     capabilities: capabilities,
+    built_in_prompts_enabled: config.builtInPrompts?.enabled ?? true,
   }
 }
 
@@ -197,6 +209,9 @@ export function transformAgentInfoToConfig(agentInfo: AgentInfo): {
     description: agentInfo.description,
     tools,
     a2a: a2aAgents,
+    builtInPrompts: {
+      enabled: agentInfo.built_in_prompts_enabled ?? true,
+    },
   }
 
   if (agentInfo.model_name) {
