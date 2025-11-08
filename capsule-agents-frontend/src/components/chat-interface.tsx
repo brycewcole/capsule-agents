@@ -369,6 +369,35 @@ export default function ChatInterface({
     }).format(new Date(seconds * 1000))
   }, [])
 
+  // Load draft from localStorage when contextId changes
+  useEffect(() => {
+    try {
+      const draftKey = contextId ? `chat:draft:${contextId}` : "chat:draft:new"
+      const savedDraft = localStorage.getItem(draftKey)
+      if (savedDraft) {
+        setInput(savedDraft)
+      } else {
+        setInput("")
+      }
+    } catch {
+      // Ignore localStorage errors
+    }
+  }, [contextId])
+
+  // Save draft to localStorage when input changes
+  useEffect(() => {
+    try {
+      const draftKey = contextId ? `chat:draft:${contextId}` : "chat:draft:new"
+      if (input.trim()) {
+        localStorage.setItem(draftKey, input)
+      } else {
+        localStorage.removeItem(draftKey)
+      }
+    } catch {
+      // Ignore localStorage errors
+    }
+  }, [input, contextId])
+
   useEffect(() => {
     taskLocationsRef.current = taskLocations
   }, [taskLocations])
@@ -508,6 +537,15 @@ export default function ChatInterface({
     timelineEntriesRef.current = []
     taskLocationsRef.current = {}
     setContextId(null)
+    setInput("")
+
+    // Clear draft from localStorage for new chat
+    try {
+      localStorage.removeItem("chat:draft:new")
+    } catch {
+      // Ignore localStorage errors
+    }
+
     // Inform parent to clear its selected chat
     if (onNewChat) onNewChat()
   }, [onNewChat])
@@ -747,6 +785,15 @@ export default function ChatInterface({
 
     const userMessage = input.trim()
     setInput("")
+
+    // Clear draft from localStorage
+    try {
+      const draftKey = contextId ? `chat:draft:${contextId}` : "chat:draft:new"
+      localStorage.removeItem(draftKey)
+    } catch {
+      // Ignore localStorage errors
+    }
+
     setIsLoading(true)
 
     const timestamp = Date.now() / 1000
