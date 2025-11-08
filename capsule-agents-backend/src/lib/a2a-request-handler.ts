@@ -325,7 +325,10 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
     const cleanedMessages = vercelMessages.map((msg) => ({
       ...msg,
       parts: msg.parts.filter((part) =>
-        part.type !== "reasoning" && part.type !== "step-start"
+        part.type !== "reasoning" &&
+        part.type !== "step-start" &&
+        !part.type.startsWith("tool-") &&
+        part.type !== "dynamic-tool"
       ),
     }))
 
