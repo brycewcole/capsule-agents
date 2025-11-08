@@ -259,15 +259,6 @@ export default function ScheduleManager() {
                     Create your first scheduled task to automate agent queries
                   </p>
                 </div>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="secondary"
-                  onClick={handleCreateNew}
-                >
-                  <Plus className="mr-2 h-4 w-4" />
-                  Create Schedule
-                </Button>
               </div>
             )
             : (
