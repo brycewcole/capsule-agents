@@ -322,14 +322,25 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
     const agentInfo = this.agentConfigService.getAgentInfo()
     const vercelMessages = this.vercelService.fromContext(contextId)
 
+    // For Claude/Anthropic models, filter out tool parts as they cause validation errors
+    // when converted back from UIMessage to ModelMessage format.
+    // Claude requires strict tool_use/tool_result sequencing that doesn't work with
+    // the all-in-one assistant message structure from toUIMessageStream.
+    // Other models (like OpenAI) handle this structure fine.
+    const isAnthropicModel = agentInfo.model_name?.startsWith("anthropic/")
+
     const cleanedMessages = vercelMessages.map((msg) => ({
       ...msg,
-      parts: msg.parts.filter((part) =>
-        part.type !== "reasoning" &&
-        part.type !== "step-start" &&
-        !part.type.startsWith("tool-") &&
-        part.type !== "dynamic-tool"
-      ),
+      parts: msg.parts.filter((part) => {
+        if (part.type === "reasoning" || part.type === "step-start") {
+          return false
+        }
+        // Filter out tool parts for Anthropic models to avoid conversion errors
+        if (isAnthropicModel && (part.type.startsWith("tool-") || part.type === "dynamic-tool")) {
+          return false
+        }
+        return true
+      }),
     }))
 
     const { prompt: systemPrompt, prompts: defaultPromptUsage } =
@@ -466,10 +477,13 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
             responseMessage.parts.map((p) => ({
               type: p.type,
               state: (p as Record<string, unknown>).state,
+              toolCallId: (p as Record<string, unknown>).toolCallId,
+              toolName: (p as Record<string, unknown>).toolName,
             })),
           )
         }`,
       )
+      console.info(`Full response message: ${JSON.stringify(responseMessage, null, 2)}`)
 
       if (currentTaskRef.current) {
         // Clean up the AbortController
@@ -627,6 +641,9 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
       const modelMessages = Vercel.convertToModelMessages(cleanedMessages)
       console.info(
         `Sending ${modelMessages.length} messages to model`,
+      )
+      console.info(
+        `Cleaned messages before conversion: ${JSON.stringify(cleanedMessages, null, 2)}`,
       )
       console.info(
         `Model messages: ${JSON.stringify(modelMessages, null, 2)}`,
