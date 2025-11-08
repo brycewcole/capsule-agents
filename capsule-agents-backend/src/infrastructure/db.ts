@@ -134,7 +134,7 @@ function createTables(db: Database) {
     CREATE TABLE IF NOT EXISTS agent_info (
         key                 INTEGER PRIMARY KEY CHECK (key = 1),
         name                TEXT NOT NULL DEFAULT 'Capsule Agent',
-        description         TEXT NOT NULL DEFAULT 'A configurable agent powered by the A2A protocol',
+        description         TEXT NOT NULL DEFAULT 'A friendly and helpful assistant.',
         model_name          TEXT,
         model_parameters    TEXT NOT NULL DEFAULT '{}',
         tools               TEXT NOT NULL DEFAULT '[]',

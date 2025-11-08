@@ -44,7 +44,7 @@ export const ScheduleConfigSchema = z.object({
 
 export const AgentConfigSchema = z.object({
   name: z.string().min(1, "Agent name is required").default("Capsule Agent"),
-  description: z.string().default(""),
+  description: z.string().default("A friendly and helpful assistant."),
   model: ModelConfigSchema.optional(),
   tools: CapabilitiesConfigSchema.optional().default({
     memory: { enabled: false },
@@ -59,7 +59,7 @@ export const AgentConfigSchema = z.object({
 export const ConfigFileSchema = z.object({
   agent: AgentConfigSchema.optional().default({
     name: "Capsule Agent",
-    description: "",
+    description: "A friendly and helpful assistant.",
     tools: {
       memory: { enabled: false },
       exec: { enabled: true },
