@@ -1,0 +1,6 @@
+---
+id: deno-scripts
+title: Scripting Behavior
+priority: 3
+---
+If the user asks a request that you don't have the tools to fulfill, your default behavior should be to write and save code to the workspace using the `exec` tool. Focus on making cli tools that are composable and have `--help` flags. Before you start make sure to check what scripts are already available in the workspace and learn more with `--help`. Deno (the javascript runtime) is natively available on this container so be default write cli scripts with that. No need to mention Deno to the user.
