@@ -322,12 +322,26 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
     const agentInfo = this.agentConfigService.getAgentInfo()
     const vercelMessages = this.vercelService.fromContext(contextId)
 
+    console.info(`[DEBUG] Loaded ${vercelMessages.length} messages from DB for context ${contextId}`)
+    vercelMessages.forEach((msg, i) => {
+      console.info(`[DEBUG] Message ${i}: id=${msg.id}, role=${msg.role}, parts=${msg.parts.length}`, {
+        partTypes: msg.parts.map(p => p.type),
+      })
+    })
+
     const cleanedMessages = vercelMessages.map((msg) => ({
       ...msg,
       parts: msg.parts.filter((part) =>
         part.type !== "reasoning" && part.type !== "step-start"
       ),
     }))
+
+    console.info(`[DEBUG] After filtering, ${cleanedMessages.length} messages remain`)
+    cleanedMessages.forEach((msg, i) => {
+      console.info(`[DEBUG] Cleaned message ${i}: id=${msg.id}, role=${msg.role}, parts=${msg.parts.length}`, {
+        partTypes: msg.parts.map(p => p.type),
+      })
+    })
 
     const { prompt: systemPrompt, prompts: defaultPromptUsage } =
       buildSystemPrompt({
@@ -488,32 +502,45 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
         responseMessage.id = crypto.randomUUID()
       }
 
-      // For Anthropic compatibility: When a message contains tool calls,
-      // we need to split it into multiple messages to comply with Anthropic's
-      // format requirement that tool_use blocks must be at the end of a message
+      // For Anthropic compatibility: Reorganize parts to group all tool calls together
+      // at the end of the message, with any non-tool content before them.
+      // If there's content after tool calls, split into multiple messages.
       const parts = responseMessage.parts
-      const lastToolPartIndex = parts.findLastIndex((p) =>
+
+      // Find all tool parts
+      const toolParts = parts.filter((p) =>
         (p.type.startsWith("tool-") || p.type === "dynamic-tool") &&
-        "state" in p &&
-        p.state === "output-available"
+        "state" in p
       )
 
-      if (lastToolPartIndex !== -1 && lastToolPartIndex < parts.length - 1) {
-        // There are parts after the last tool result
-        // Split into two messages:
-        // 1. Everything up to and including tool results
-        // 2. Everything after tool results
+      // Find the index of the last tool part in the original array
+      const lastToolPartIndex = parts.findLastIndex((p) =>
+        (p.type.startsWith("tool-") || p.type === "dynamic-tool") &&
+        "state" in p
+      )
 
-        const partsBeforeAndIncludingTools = parts.slice(
-          0,
-          lastToolPartIndex + 1,
+      // Check if there are any non-tool, non-step-start, non-reasoning parts after the last tool
+      const partsAfterLastTool = lastToolPartIndex !== -1
+        ? parts.slice(lastToolPartIndex + 1).filter((p) =>
+          p.type !== "step-start" && p.type !== "reasoning"
         )
-        const partsAfterTools = parts.slice(lastToolPartIndex + 1)
+        : []
 
-        // Save first message (with tool results)
+      if (toolParts.length > 0 && partsAfterLastTool.length > 0) {
+        // We have tools AND content after them - need to reorganize and split
+
+        // Get all non-tool parts that come before the first tool
+        const firstToolIndex = parts.findIndex((p) =>
+          (p.type.startsWith("tool-") || p.type === "dynamic-tool") &&
+          "state" in p
+        )
+
+        const partsBeforeTools = parts.slice(0, firstToolIndex)
+
+        // Create first message: content before tools + all tool parts grouped together
         const firstMessage = {
           ...responseMessage,
-          parts: partsBeforeAndIncludingTools,
+          parts: [...partsBeforeTools, ...toolParts],
         }
 
         await this.vercelService.upsertMessage({
@@ -528,11 +555,11 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
         )
         this.a2aMessageRepository.createMessage(firstA2AMessage)
 
-        // Save second message (content after tools)
+        // Create second message: content after tools
         const secondMessage: Vercel.UIMessage = {
           id: crypto.randomUUID(),
           role: "assistant",
-          parts: partsAfterTools,
+          parts: partsAfterLastTool,
         }
 
         await this.vercelService.upsertMessage({
@@ -548,13 +575,39 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
         this.a2aMessageRepository.createMessage(secondA2AMessage)
 
         console.info(
-          "Split assistant message into two messages (before/after tools)",
+          "Reorganized and split assistant message (grouped tools, split after-content)",
         )
 
         // Store the last message for yielding
         finalMessageHolder.message = secondA2AMessage
+      } else if (toolParts.length > 0) {
+        // We have tools but no content after - reorganize to group tools at the end
+        const nonToolParts = parts.filter((p) =>
+          !(p.type.startsWith("tool-") || p.type === "dynamic-tool") ||
+          !("state" in p)
+        )
+
+        const reorganizedMessage = {
+          ...responseMessage,
+          parts: [...nonToolParts, ...toolParts],
+        }
+
+        await this.vercelService.upsertMessage({
+          message: reorganizedMessage,
+          contextId,
+        })
+
+        const a2aMessage = this.vercelService.fromUIMessageToA2A(
+          reorganizedMessage,
+          contextId,
+          currentTaskRef.current?.id,
+        )
+        this.a2aMessageRepository.createMessage(a2aMessage)
+
+        console.info("Reorganized assistant message to group tools at end")
+        finalMessageHolder.message = a2aMessage
       } else {
-        // No tool results or no parts after tools - save as-is
+        // No tool parts - save as-is
         await this.vercelService.upsertMessage({
           message: responseMessage,
           contextId,
