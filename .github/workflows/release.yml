@@ -2,7 +2,7 @@ name: Release & Publish Docker
 
 on:
   push:
-    branches: [main]
+    branches: [main, next]
   workflow_dispatch:
 
 permissions:
@@ -33,16 +33,34 @@ jobs:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
-      - name: Build and push Docker image
-        if: steps.semantic.outputs.new_release_published == 'true'
+      - name: Build and push Docker image (main)
+        if: steps.semantic.outputs.new_release_published == 'true' && github.ref == 'refs/heads/main'
         uses: docker/build-push-action@v4
         with:
           context: .
           file: Dockerfile
+          build-args: |
+            VERSION=${{ steps.semantic.outputs.new_release_version }}
           push: true
           tags: |
             brycewcole/capsule-agents:v${{ steps.semantic.outputs.new_release_version }}
             brycewcole/capsule-agents:latest
+          labels: |
+            org.opencontainers.image.version=v${{ steps.semantic.outputs.new_release_version }}
+            org.opencontainers.image.source=${{ github.repositoryUrl }}
+
+      - name: Build and push Docker image (next)
+        if: steps.semantic.outputs.new_release_published == 'true' && github.ref == 'refs/heads/next'
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          file: Dockerfile
+          build-args: |
+            VERSION=${{ steps.semantic.outputs.new_release_version }}
+          push: true
+          tags: |
+            brycewcole/capsule-agents:v${{ steps.semantic.outputs.new_release_version }}
+            brycewcole/capsule-agents:next
           labels: |
             org.opencontainers.image.version=v${{ steps.semantic.outputs.new_release_version }}
             org.opencontainers.image.source=${{ github.repositoryUrl }}

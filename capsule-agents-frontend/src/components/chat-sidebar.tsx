@@ -46,13 +46,6 @@ export function ChatSidebar({
     }
   }, [refreshKey])
 
-  // Optionally reload when switching conversations to keep last-activity fresh
-  useEffect(() => {
-    if (currentChatId) {
-      loadChats()
-    }
-  }, [currentChatId])
-
   // Filter chats based on search query
   useEffect(() => {
     if (searchQuery.trim() === "") {

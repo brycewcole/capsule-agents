@@ -134,10 +134,11 @@ function createTables(db: Database) {
     CREATE TABLE IF NOT EXISTS agent_info (
         key                 INTEGER PRIMARY KEY CHECK (key = 1),
         name                TEXT NOT NULL DEFAULT 'Capsule Agent',
-        description         TEXT NOT NULL DEFAULT 'A configurable agent powered by the A2A protocol',
+        description         TEXT NOT NULL DEFAULT 'A friendly and helpful assistant.',
         model_name          TEXT,
         model_parameters    TEXT NOT NULL DEFAULT '{}',
-        tools               TEXT NOT NULL DEFAULT '[]'
+        tools               TEXT NOT NULL DEFAULT '[]',
+        built_in_prompts_enabled INTEGER NOT NULL DEFAULT 1
     );
 
     -- Schedules: Automated tasks that run on cron schedules
@@ -175,6 +176,7 @@ function createTables(db: Database) {
   `)
 
   ensureMessagesMetadataColumn(db)
+  ensureAgentInfoBuiltInPromptsColumn(db)
 
   console.log("Clean database schema created successfully.")
 }
@@ -188,6 +190,33 @@ function ensureMessagesMetadataColumn(db: Database) {
   if (!hasMetadata) {
     db.exec(
       "ALTER TABLE messages ADD COLUMN metadata TEXT NOT NULL DEFAULT '{}'",
+    )
+  }
+}
+
+function ensureAgentInfoBuiltInPromptsColumn(db: Database) {
+  const columns = db.prepare("PRAGMA table_info(agent_info)").all() as {
+    name: string
+  }[]
+
+  // Check for old column name and rename if exists
+  const hasOldColumn = columns.some((column) =>
+    column.name === "default_prompts_enabled"
+  )
+  const hasNewColumn = columns.some((column) =>
+    column.name === "built_in_prompts_enabled"
+  )
+
+  if (hasOldColumn && !hasNewColumn) {
+    // SQLite doesn't support RENAME COLUMN directly in older versions,
+    // so we copy the data
+    db.exec(`
+      ALTER TABLE agent_info ADD COLUMN built_in_prompts_enabled INTEGER NOT NULL DEFAULT 1;
+      UPDATE agent_info SET built_in_prompts_enabled = default_prompts_enabled;
+    `)
+  } else if (!hasNewColumn) {
+    db.exec(
+      "ALTER TABLE agent_info ADD COLUMN built_in_prompts_enabled INTEGER NOT NULL DEFAULT 1",
     )
   }
 }

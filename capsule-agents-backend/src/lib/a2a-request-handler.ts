@@ -18,7 +18,10 @@ import { TaskService } from "../services/task.service.ts"
 import { VercelService } from "../services/vercel.service.ts"
 import { artifactTool } from "./artifact-tool.ts"
 import { isMCPCapability } from "./capability-types.ts"
-import { AnyToolCall, AnyToolResult } from "./types.ts"
+import {
+  buildSystemPrompt,
+  type BuiltInPromptUsage,
+} from "./default-prompts.ts"
 
 interface MCPToolsDisposable {
   tools: Record<string, Vercel.Tool>
@@ -306,7 +309,9 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
     mcpTools: MCPToolsDisposable
     model: Vercel.LanguageModel
     agentInfo: ReturnType<AgentConfigService["getAgentInfo"]>
-    cleanedMessages: Vercel.UIMessage[]
+    messages: Vercel.UIMessage[]
+    systemPrompt: string
+    defaultPromptUsage: BuiltInPromptUsage[]
   }> {
     let tools = await this.getAvailableTools()
     const mcpTools = await this.getMCPServers()
@@ -316,14 +321,47 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
     const agentInfo = this.agentConfigService.getAgentInfo()
     const vercelMessages = this.vercelService.fromContext(contextId)
 
-    const cleanedMessages = vercelMessages.map((msg) => ({
-      ...msg,
-      parts: msg.parts.filter((part) =>
-        part.type !== "reasoning" && part.type !== "step-start"
-      ),
-    }))
+    console.info(
+      `[DEBUG] Loaded ${vercelMessages.length} messages from DB for context ${contextId}`,
+    )
+    vercelMessages.forEach((msg, i) => {
+      console.info(
+        `[DEBUG] Message ${i}: id=${msg.id}, role=${msg.role}, parts=${msg.parts.length}`,
+        {
+          partTypes: msg.parts.map((p) => p.type),
+        },
+      )
+    })
+    console.info("[DEBUG] Using stored messages without additional filtering")
 
-    return { tools, mcpTools, model, agentInfo, cleanedMessages }
+    const { prompt: systemPrompt, prompts: defaultPromptUsage } =
+      buildSystemPrompt({
+        userPrompt: agentInfo.description,
+        modelId: agentInfo.model_name,
+        enabled: agentInfo.built_in_prompts_enabled !== false,
+      })
+
+    if (agentInfo.built_in_prompts_enabled) {
+      const activePrompts = defaultPromptUsage
+        .filter((prompt) => prompt.matchesModel)
+        .map((prompt) => prompt.id)
+      console.debug("Default prompts applied:", {
+        activePromptIds: activePrompts,
+        model: agentInfo.model_name,
+      })
+    } else {
+      console.debug("Default prompts disabled by configuration.")
+    }
+
+    return {
+      tools,
+      mcpTools,
+      model,
+      agentInfo,
+      messages: vercelMessages,
+      systemPrompt,
+      defaultPromptUsage,
+    }
   }
 
   private createOnStepFinishHandler<TOOLS extends Vercel.ToolSet>(
@@ -367,17 +405,6 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
           }
           statusHandler(currentTaskRef.current)
         }
-        const pendingToolCalls = this.checkForPendingToolCalls(
-          toolCalls || [],
-          toolResults || [],
-        )
-        if (pendingToolCalls.length > 0) {
-          throw new Error(
-            `Tool calls returned without matching results: ${
-              this.truncateForLog(pendingToolCalls)
-            }`,
-          )
-        }
 
         console.log("checking: " + JSON.stringify(toolResults))
         for (const toolResult of toolResults || []) {
@@ -417,22 +444,16 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
     currentTaskRef: { current: A2A.Task | null },
     finalMessageHolder: { message: A2A.Message | null },
     statusHandler: StatusUpdateHandler,
-  ): (params: { responseMessage: Vercel.UIMessage }) => Promise<void> {
-    return async ({ responseMessage }) => {
+    originalMessageCount: number,
+  ): Vercel.UIMessageStreamOnFinishCallback<Vercel.UIMessage> {
+    return async ({ messages, responseMessage }) => {
       console.info(
         `Stream finished - responseMessage: ${
           this.truncateForLog(responseMessage)
         }`,
       )
       console.info(
-        `Response message parts: ${
-          JSON.stringify(
-            responseMessage.parts.map((p) => ({
-              type: p.type,
-              state: (p as Record<string, unknown>).state,
-            })),
-          )
-        }`,
+        `Total messages available for persistence: ${messages.length}`,
       )
 
       if (currentTaskRef.current) {
@@ -450,44 +471,56 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
         }
       }
 
-      // Ensure the message has a valid ID
-      if (!responseMessage.id) {
-        responseMessage.id = crypto.randomUUID()
+      const newMessages = messages.slice(originalMessageCount)
+
+      if (newMessages.length === 0) {
+        console.warn("No new messages returned from stream finish callback")
+        return
       }
 
-      // Save to Vercel storage
-      await this.vercelService.upsertMessage({
-        message: responseMessage,
-        contextId,
-      })
+      for (const message of newMessages) {
+        if (!message.id) {
+          message.id = crypto.randomUUID()
+        }
 
-      // Convert to A2A message and save
-      const a2aMessage = this.vercelService.fromUIMessageToA2A(
-        responseMessage,
-        contextId,
-        currentTaskRef.current?.id,
+        await this.vercelService.upsertMessage({
+          message,
+          contextId,
+          taskId: currentTaskRef.current?.id,
+        })
+
+        if (message.role === "assistant") {
+          const a2aMessage = this.vercelService.fromUIMessageToA2A(
+            message,
+            contextId,
+            currentTaskRef.current?.id,
+          )
+          this.a2aMessageRepository.createMessage(a2aMessage)
+          finalMessageHolder.message = a2aMessage
+        }
+      }
+
+      console.info(
+        `Persisted ${newMessages.length} new message(s) via UI stream response`,
       )
-      this.a2aMessageRepository.createMessage(a2aMessage)
-
-      // Store for yielding after fullStream completes
-      finalMessageHolder.message = a2aMessage
-
-      console.info("Saved assistant message to both Vercel and A2A storage")
     }
   }
 
-  private consumeUIStream(
-    uiMessageStream: AsyncIterable<unknown>,
-  ): void {
-    // Consume in background to ensure onFinish fires
+  private consumeUIResponse(response: Response): void {
     ;(async () => {
       try {
-        for await (const _ of uiMessageStream) {
-          // Just consume to ensure onFinish fires
+        if (!response.body) {
+          console.warn("UI response stream has no body to consume")
+          return
         }
-        console.info("UI message stream consumed successfully")
-      } catch (_error) {
-        console.error("🚨 UI Stream Message ERROR, Swallowing")
+        const reader = response.body.getReader()
+        while (true) {
+          const { done } = await reader.read()
+          if (done) break
+        }
+        console.info("UI response stream consumed successfully")
+      } catch (error) {
+        console.error("🚨 UI Response Stream ERROR, Swallowing", error)
       }
     })()
   }
@@ -574,7 +607,13 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
     await this.saveUserMessage(params.message, contextId)
 
     try {
-      const { tools, mcpTools, model, agentInfo, cleanedMessages } = await this
+      const {
+        tools,
+        mcpTools,
+        model,
+        messages,
+        systemPrompt,
+      } = await this
         .prepareStreamContext(contextId)
 
       await using _mcpTools = mcpTools
@@ -582,7 +621,20 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
       const currentTaskRef = { current: null as A2A.Task | null }
       const finalMessageHolder = { message: null as A2A.Message | null }
 
-      const modelMessages = Vercel.convertToModelMessages(cleanedMessages)
+      const allTools = {
+        ...tools,
+        ...mcpTools.tools,
+        createArtifact: artifactTool,
+        exec: execTool,
+      }
+
+      console.info(
+        `Prepared ${Object.keys(allTools)} tools for message sending`,
+      )
+
+      const modelMessages = Vercel.convertToModelMessages(messages, {
+        tools: allTools,
+      })
       console.info(
         `Sending ${modelMessages.length} messages to model`,
       )
@@ -592,8 +644,8 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
       console.debug("Sending message to model:", {
         contextId: params.message.contextId,
         messages: modelMessages,
-        tools: Object.keys(tools),
-        systemPrompt: agentInfo.description,
+        tools: Object.keys(allTools),
+        systemPrompt,
       })
 
       const result = Vercel.streamText({
@@ -604,13 +656,10 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
         onError: (error) => {
           this.handleStreamError(error)
         },
-        system: agentInfo.description,
+        system: systemPrompt || undefined,
         model,
-        messages: Vercel.convertToModelMessages(cleanedMessages),
-        tools: {
-          ...tools,
-          createArtifact: artifactTool,
-        },
+        messages: modelMessages,
+        tools: allTools,
         stopWhen: Vercel.stepCountIs(100),
         onStepFinish: this.createOnStepFinishHandler(
           params,
@@ -620,17 +669,20 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
         ),
       })
 
-      const uiMessageStream = result.toUIMessageStream({
-        originalMessages: cleanedMessages,
+      const originalMessageCount = messages.length
+      const uiResponse = result.toUIMessageStreamResponse({
+        originalMessages: messages,
+        generateMessageId: () => crypto.randomUUID(),
         onFinish: this.createOnFinishHandler(
           contextId,
           currentTaskRef,
           finalMessageHolder,
           () => {},
+          originalMessageCount,
         ),
       })
 
-      this.consumeUIStream(uiMessageStream)
+      this.consumeUIResponse(uiResponse)
 
       await this.processStreamEvents(
         result.fullStream,
@@ -708,20 +760,6 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
     return str.length > maxLen ? str.slice(0, maxLen) + "..." : str
   }
 
-  private checkForPendingToolCalls(
-    toolCalls: AnyToolCall[],
-    toolResults: AnyToolResult[],
-  ): AnyToolCall[] {
-    if (!toolCalls || toolCalls.length === 0) return []
-    const resultIds = new Set<string>()
-    for (const r of toolResults || []) {
-      resultIds.add(r.toolCallId)
-    }
-    return (toolCalls || []).filter((tc) => {
-      return resultIds.has(tc.toolCallId) === false
-    })
-  }
-
   async *sendMessageStream(
     params: A2A.MessageSendParams,
   ): AsyncGenerator<
@@ -742,21 +780,37 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
     const currentTaskRef = { current: null as A2A.Task | null }
 
     try {
-      const { tools, mcpTools, model, agentInfo, cleanedMessages } = await this
+      const {
+        tools,
+        mcpTools,
+        model,
+        messages,
+        systemPrompt,
+      } = await this
         .prepareStreamContext(contextId)
 
       await using _mcpTools = mcpTools
 
       const finalMessageHolder = { message: null as A2A.Message | null }
+      const originalMessageCount = messages.length
 
       // Queue-based status handler for streaming version
       const queueStatusHandler: StatusUpdateHandler = (event) => {
         eventUpdateQueue.push(event)
       }
 
-      console.info(cleanedMessages)
+      console.info(messages)
 
-      const modelMessages = Vercel.convertToModelMessages(cleanedMessages)
+      const allTools = {
+        ...tools,
+        ...mcpTools.tools,
+        createArtifact: artifactTool,
+        exec: execTool,
+      }
+
+      const modelMessages = Vercel.convertToModelMessages(messages, {
+        tools: allTools,
+      })
       console.info(
         `Sending ${modelMessages.length} messages to model (streaming)`,
       )
@@ -766,8 +820,8 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
       console.debug("Sending message to model:", {
         contextId: params.message.contextId,
         messages: modelMessages,
-        tools: Object.keys(tools),
-        systemPrompt: agentInfo.description,
+        tools: Object.keys(allTools),
+        systemPrompt,
       })
 
       // Create AbortController for this task stream
@@ -779,13 +833,10 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
           functionId: "sendMessageStream",
         },
         abortSignal: abortController.signal,
-        system: agentInfo.description,
+        system: systemPrompt || undefined,
         model,
         messages: modelMessages,
-        tools: {
-          ...tools,
-          createArtifact: artifactTool,
-        },
+        tools: allTools,
         stopWhen: Vercel.stepCountIs(100),
         onError: (error) => {
           this.handleStreamError(error)
@@ -798,17 +849,19 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
         ),
       })
 
-      const uiMessageStream = result.toUIMessageStream({
-        originalMessages: cleanedMessages,
+      const uiResponse = result.toUIMessageStreamResponse({
+        originalMessages: messages,
+        generateMessageId: () => crypto.randomUUID(),
         onFinish: this.createOnFinishHandler(
           contextId,
           currentTaskRef,
           finalMessageHolder,
           queueStatusHandler,
+          originalMessageCount,
         ),
       })
 
-      this.consumeUIStream(uiMessageStream)
+      this.consumeUIResponse(uiResponse)
 
       console.info("StreamText initialized, consuming stream...")
       for await (const e of result.fullStream) {
