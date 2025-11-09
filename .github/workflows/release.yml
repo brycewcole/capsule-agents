@@ -39,6 +39,8 @@ jobs:
         with:
           context: .
           file: Dockerfile
+          build-args: |
+            VERSION=${{ steps.semantic.outputs.new_release_version }}
           push: true
           tags: |
             brycewcole/capsule-agents:v${{ steps.semantic.outputs.new_release_version }}
@@ -53,6 +55,8 @@ jobs:
         with:
           context: .
           file: Dockerfile
+          build-args: |
+            VERSION=${{ steps.semantic.outputs.new_release_version }}
           push: true
           tags: |
             brycewcole/capsule-agents:v${{ steps.semantic.outputs.new_release_version }}
