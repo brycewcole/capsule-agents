@@ -9,12 +9,14 @@
 ![Discord](https://img.shields.io/discord/1429513340975190320?style=plastic&logo=discord&logoColor=blueviolet&label=Join%20Us!&labelColor=lightgrey)
 
 Capsule Agents is designed to make it as easy as possible to create [Agent-to-Agent (A2A) protocol](https://github.com/google/A2A) compatible agents, with full no-code GUI support.
+
 ## Guiding Principles
+
 1. **Full shell environments** — Agents should leverage existing CLI tools and create their own for complex tasks, using MCP judciously.
 2. **Context over personas** — Rather than prompting agents to act as experts, agents should exist to manage context and communicate through the A2A protocol.
 3. **Agents as Open Source Containers** – Each agent should be a self-contained, open container with its own state and tools for portability and integration.
 4. **Code optional** — Agents should be creatable without programming knowledge and built to solve broader problems than just writing code.
-<img width="1341" height="1016" alt="Screenshot 2025-11-09 at 2 07 38 PM" src="https://github.com/user-attachments/assets/1789adea-d9a2-434d-8748-40686baada7d" />
+   <img width="1341" height="1016" alt="Screenshot 2025-11-09 at 2 07 38 PM" src="https://github.com/user-attachments/assets/1789adea-d9a2-434d-8748-40686baada7d" />
 
 ## Features
 
@@ -25,12 +27,13 @@ Capsule Agents is designed to make it as easy as possible to create [Agent-to-Ag
 - **Full Shell Access**: Each agent runs in a real shell environment with the ability to execute and create reusable CLI tools
 - **Interactive Workspace**: View and manage your agent’s scripts, files, and tools directly from an integrated workspace UI
 
+## Demo
 
-## Demo   
 <video src="https://github.com/user-attachments/assets/2ea61510-61be-4b25-aac3-2c7dd6ca3c89?raw=1" width="600" controls>
 </video>
 
 ## Quick Start
+
 1. Ensure [Docker](https://docs.docker.com/get-started/get-docker/) is installed on your system
 
 2. **Set up environment variables**
