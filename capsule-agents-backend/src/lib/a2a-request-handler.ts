@@ -22,7 +22,6 @@ import {
   buildSystemPrompt,
   type BuiltInPromptUsage,
 } from "./default-prompts.ts"
-import { AnyToolCall, AnyToolResult } from "./types.ts"
 
 interface MCPToolsDisposable {
   tools: Record<string, Vercel.Tool>
@@ -328,20 +327,8 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
         partTypes: msg.parts.map(p => p.type),
       })
     })
-
-    const cleanedMessages = vercelMessages.map((msg) => ({
-      ...msg,
-      parts: msg.parts.filter((part) =>
-        part.type !== "reasoning" && part.type !== "step-start"
-      ),
-    }))
-
-    console.info(`[DEBUG] After filtering, ${cleanedMessages.length} messages remain`)
-    cleanedMessages.forEach((msg, i) => {
-      console.info(`[DEBUG] Cleaned message ${i}: id=${msg.id}, role=${msg.role}, parts=${msg.parts.length}`, {
-        partTypes: msg.parts.map(p => p.type),
-      })
-    })
+    console.info("[DEBUG] Using stored messages without additional filtering")
+    const cleanedMessages = vercelMessages
 
     const { prompt: systemPrompt, prompts: defaultPromptUsage } =
       buildSystemPrompt({
@@ -409,25 +396,14 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
           const taskWithHistory = this.taskStorage.getTask(
             currentTaskRef.current.id,
           )
-          if (taskWithHistory) {
-            currentTaskRef.current = taskWithHistory
-          }
-          statusHandler(currentTaskRef.current)
+        if (taskWithHistory) {
+          currentTaskRef.current = taskWithHistory
         }
-        const pendingToolCalls = this.checkForPendingToolCalls(
-          toolCalls || [],
-          toolResults || [],
-        )
-        if (pendingToolCalls.length > 0) {
-          throw new Error(
-            `Tool calls returned without matching results: ${
-              this.truncateForLog(pendingToolCalls)
-            }`,
-          )
-        }
+        statusHandler(currentTaskRef.current)
+      }
 
-        console.log("checking: " + JSON.stringify(toolResults))
-        for (const toolResult of toolResults || []) {
+      console.log("checking: " + JSON.stringify(toolResults))
+      for (const toolResult of toolResults || []) {
           if (
             toolResult.dynamic !== true &&
             toolResult.toolName === "createArtifact" && currentTaskRef.current
@@ -464,22 +440,16 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
     currentTaskRef: { current: A2A.Task | null },
     finalMessageHolder: { message: A2A.Message | null },
     statusHandler: StatusUpdateHandler,
-  ): (params: { responseMessage: Vercel.UIMessage }) => Promise<void> {
-    return async ({ responseMessage }) => {
+    originalMessageCount: number,
+  ): Vercel.UIMessageStreamOnFinishCallback<Vercel.UIMessage> {
+    return async ({ messages, responseMessage }) => {
       console.info(
         `Stream finished - responseMessage: ${
           this.truncateForLog(responseMessage)
         }`,
       )
       console.info(
-        `Response message parts: ${
-          JSON.stringify(
-            responseMessage.parts.map((p) => ({
-              type: p.type,
-              state: (p as Record<string, unknown>).state,
-            })),
-          )
-        }`,
+        `Total messages available for persistence: ${messages.length}`,
       )
 
       if (currentTaskRef.current) {
@@ -497,149 +467,56 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
         }
       }
 
-      // Ensure the message has a valid ID
-      if (!responseMessage.id) {
-        responseMessage.id = crypto.randomUUID()
+      const newMessages = messages.slice(originalMessageCount)
+
+      if (newMessages.length === 0) {
+        console.warn("No new messages returned from stream finish callback")
+        return
       }
 
-      // For Anthropic compatibility: Reorganize parts to group all tool calls together
-      // at the end of the message, with any non-tool content before them.
-      // If there's content after tool calls, split into multiple messages.
-      const parts = responseMessage.parts
-
-      // Find all tool parts
-      const toolParts = parts.filter((p) =>
-        (p.type.startsWith("tool-") || p.type === "dynamic-tool") &&
-        "state" in p
-      )
-
-      // Find the index of the last tool part in the original array
-      const lastToolPartIndex = parts.findLastIndex((p) =>
-        (p.type.startsWith("tool-") || p.type === "dynamic-tool") &&
-        "state" in p
-      )
-
-      // Check if there are any non-tool, non-step-start, non-reasoning parts after the last tool
-      const partsAfterLastTool = lastToolPartIndex !== -1
-        ? parts.slice(lastToolPartIndex + 1).filter((p) =>
-          p.type !== "step-start" && p.type !== "reasoning"
-        )
-        : []
-
-      if (toolParts.length > 0 && partsAfterLastTool.length > 0) {
-        // We have tools AND content after them - need to reorganize and split
-
-        // Get all non-tool parts that come before the first tool
-        const firstToolIndex = parts.findIndex((p) =>
-          (p.type.startsWith("tool-") || p.type === "dynamic-tool") &&
-          "state" in p
-        )
-
-        const partsBeforeTools = parts.slice(0, firstToolIndex)
-
-        // Create first message: content before tools + all tool parts grouped together
-        const firstMessage = {
-          ...responseMessage,
-          parts: [...partsBeforeTools, ...toolParts],
+      for (const message of newMessages) {
+        if (!message.id) {
+          message.id = crypto.randomUUID()
         }
 
         await this.vercelService.upsertMessage({
-          message: firstMessage,
+          message,
           contextId,
+          taskId: currentTaskRef.current?.id,
         })
 
-        const firstA2AMessage = this.vercelService.fromUIMessageToA2A(
-          firstMessage,
-          contextId,
-          currentTaskRef.current?.id,
-        )
-        this.a2aMessageRepository.createMessage(firstA2AMessage)
-
-        // Create second message: content after tools
-        const secondMessage: Vercel.UIMessage = {
-          id: crypto.randomUUID(),
-          role: "assistant",
-          parts: partsAfterLastTool,
+        if (message.role === "assistant") {
+          const a2aMessage = this.vercelService.fromUIMessageToA2A(
+            message,
+            contextId,
+            currentTaskRef.current?.id,
+          )
+          this.a2aMessageRepository.createMessage(a2aMessage)
+          finalMessageHolder.message = a2aMessage
         }
-
-        await this.vercelService.upsertMessage({
-          message: secondMessage,
-          contextId,
-        })
-
-        const secondA2AMessage = this.vercelService.fromUIMessageToA2A(
-          secondMessage,
-          contextId,
-          currentTaskRef.current?.id,
-        )
-        this.a2aMessageRepository.createMessage(secondA2AMessage)
-
-        console.info(
-          "Reorganized and split assistant message (grouped tools, split after-content)",
-        )
-
-        // Store the last message for yielding
-        finalMessageHolder.message = secondA2AMessage
-      } else if (toolParts.length > 0) {
-        // We have tools but no content after - reorganize to group tools at the end
-        const nonToolParts = parts.filter((p) =>
-          !(p.type.startsWith("tool-") || p.type === "dynamic-tool") ||
-          !("state" in p)
-        )
-
-        const reorganizedMessage = {
-          ...responseMessage,
-          parts: [...nonToolParts, ...toolParts],
-        }
-
-        await this.vercelService.upsertMessage({
-          message: reorganizedMessage,
-          contextId,
-        })
-
-        const a2aMessage = this.vercelService.fromUIMessageToA2A(
-          reorganizedMessage,
-          contextId,
-          currentTaskRef.current?.id,
-        )
-        this.a2aMessageRepository.createMessage(a2aMessage)
-
-        console.info("Reorganized assistant message to group tools at end")
-        finalMessageHolder.message = a2aMessage
-      } else {
-        // No tool parts - save as-is
-        await this.vercelService.upsertMessage({
-          message: responseMessage,
-          contextId,
-        })
-
-        const a2aMessage = this.vercelService.fromUIMessageToA2A(
-          responseMessage,
-          contextId,
-          currentTaskRef.current?.id,
-        )
-        this.a2aMessageRepository.createMessage(a2aMessage)
-
-        console.info("Saved assistant message to both Vercel and A2A storage")
-
-        // Store for yielding after fullStream completes
-        finalMessageHolder.message = a2aMessage
       }
+
+      console.info(
+        `Persisted ${newMessages.length} new message(s) via UI stream response`,
+      )
     }
   }
 
-  private consumeUIStream(
-    uiMessageStream: AsyncIterable<unknown>,
-  ): void {
-    // Consume in background to ensure onFinish fires
+  private consumeUIResponse(response: Response): void {
     ;(async () => {
       try {
-        for await (const _ of uiMessageStream) {
-          // Just consume to ensure onFinish fires
+        if (!response.body) {
+          console.warn("UI response stream has no body to consume")
+          return
         }
-        console.info("UI message stream consumed successfully")
-      } catch (_error) {
-        console.error("🚨 UI Stream Message ERROR, Swallowing")
+        const reader = response.body.getReader()
+        while (true) {
+          const { done } = await reader.read()
+          if (done) break
+        }
+        console.info("UI response stream consumed successfully")
+      } catch (error) {
+        console.error("🚨 UI Response Stream ERROR, Swallowing", error)
       }
     })()
   }
@@ -788,17 +665,20 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
         ),
       })
 
-      const uiMessageStream = result.toUIMessageStream({
+      const originalMessageCount = cleanedMessages.length
+      const uiResponse = result.toUIMessageStreamResponse({
         originalMessages: cleanedMessages,
+        generateMessageId: () => crypto.randomUUID(),
         onFinish: this.createOnFinishHandler(
           contextId,
           currentTaskRef,
           finalMessageHolder,
           () => {},
+          originalMessageCount,
         ),
       })
 
-      this.consumeUIStream(uiMessageStream)
+      this.consumeUIResponse(uiResponse)
 
       await this.processStreamEvents(
         result.fullStream,
@@ -876,20 +756,6 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
     return str.length > maxLen ? str.slice(0, maxLen) + "..." : str
   }
 
-  private checkForPendingToolCalls(
-    toolCalls: AnyToolCall[],
-    toolResults: AnyToolResult[],
-  ): AnyToolCall[] {
-    if (!toolCalls || toolCalls.length === 0) return []
-    const resultIds = new Set<string>()
-    for (const r of toolResults || []) {
-      resultIds.add(r.toolCallId)
-    }
-    return (toolCalls || []).filter((tc) => {
-      return resultIds.has(tc.toolCallId) === false
-    })
-  }
-
   async *sendMessageStream(
     params: A2A.MessageSendParams,
   ): AsyncGenerator<
@@ -922,6 +788,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
       await using _mcpTools = mcpTools
 
       const finalMessageHolder = { message: null as A2A.Message | null }
+      const originalMessageCount = cleanedMessages.length
 
       // Queue-based status handler for streaming version
       const queueStatusHandler: StatusUpdateHandler = (event) => {
@@ -978,17 +845,19 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
         ),
       })
 
-      const uiMessageStream = result.toUIMessageStream({
+      const uiResponse = result.toUIMessageStreamResponse({
         originalMessages: cleanedMessages,
+        generateMessageId: () => crypto.randomUUID(),
         onFinish: this.createOnFinishHandler(
           contextId,
           currentTaskRef,
           finalMessageHolder,
           queueStatusHandler,
+          originalMessageCount,
         ),
       })
 
-      this.consumeUIStream(uiMessageStream)
+      this.consumeUIResponse(uiResponse)
 
       console.info("StreamText initialized, consuming stream...")
       for await (const e of result.fullStream) {
