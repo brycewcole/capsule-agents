@@ -8,7 +8,7 @@ const navLinkClasses = ({ isActive }: { isActive: boolean }) =>
   }`
 
 export default function Header() {
-  const version = import.meta.env.VITE_APP_VERSION || 'dev'
+  const version = import.meta.env.VITE_APP_VERSION || "dev"
 
   return (
     <header className="border-b bg-white shadow-sm">
