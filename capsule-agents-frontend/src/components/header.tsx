@@ -34,7 +34,7 @@ export default function Header() {
             Examples
           </span>
           <a
-            href="https://github.com/TrackSpike/capsule-agents"
+            href="https://github.com/brycewcole/capsule-agents"
             className="text-sm font-medium text-muted-foreground hover:text-foreground"
           >
             GitHub
