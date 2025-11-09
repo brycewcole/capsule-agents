@@ -1332,8 +1332,8 @@ export default function ChatInterface({
                             )}
 
                             {showAgentCard && entry.agent && (
-                              <div className="rounded-2xl border border-violet-400/60 bg-violet-200/70 px-4 py-3 text-slate-900 shadow-sm dark:border-violet-900/70 dark:bg-violet-900/40 dark:text-violet-50">
-                                <div className="mb-2 flex items-center justify-between text-xs font-semibold uppercase tracking-wide text-slate-700/80 dark:text-violet-200/80">
+                              <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-slate-900 shadow-sm dark:border-slate-700 dark:bg-slate-900/60 dark:text-slate-100">
+                                <div className="mb-2 flex items-center justify-between text-xs font-semibold uppercase tracking-wide text-slate-700/80 dark:text-slate-200/80">
                                   <span>Agent</span>
                                   <span>
                                     {formatTimestamp(entry.agent.timestamp)}
@@ -1494,7 +1494,7 @@ export default function ChatInterface({
                                                 update.role === "user"
                                                   ? "border-sky-400/60 bg-sky-200/70 dark:border-sky-900/70 dark:bg-sky-900/40"
                                                   : update.role === "agent"
-                                                  ? "border-violet-400/60 bg-violet-200/70 dark:border-violet-900/70 dark:bg-violet-900/40"
+                                                  ? "border-slate-200 bg-white text-slate-900 dark:border-slate-700 dark:bg-slate-900/60 dark:text-slate-100"
                                                   : "border-border/60 bg-card/95 dark:border-border/70 dark:bg-slate-950/50"
                                               }`}
                                             >
@@ -1503,7 +1503,7 @@ export default function ChatInterface({
                                                   update.role === "user"
                                                     ? "text-slate-700/80 dark:text-sky-200/80"
                                                     : update.role === "agent"
-                                                    ? "text-slate-700/80 dark:text-violet-200/80"
+                                                    ? "text-slate-700/80 dark:text-slate-200/80"
                                                     : "text-emerald-800/80 dark:text-emerald-100/80"
                                                 }`}
                                               >
