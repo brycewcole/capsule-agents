@@ -488,24 +488,90 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
         responseMessage.id = crypto.randomUUID()
       }
 
-      // Save to Vercel storage
-      await this.vercelService.upsertMessage({
-        message: responseMessage,
-        contextId,
-      })
-
-      // Convert to A2A message and save
-      const a2aMessage = this.vercelService.fromUIMessageToA2A(
-        responseMessage,
-        contextId,
-        currentTaskRef.current?.id,
+      // For Anthropic compatibility: When a message contains tool calls,
+      // we need to split it into multiple messages to comply with Anthropic's
+      // format requirement that tool_use blocks must be at the end of a message
+      const parts = responseMessage.parts
+      const lastToolPartIndex = parts.findLastIndex((p) =>
+        (p.type.startsWith("tool-") || p.type === "dynamic-tool") &&
+        "state" in p &&
+        p.state === "output-available"
       )
-      this.a2aMessageRepository.createMessage(a2aMessage)
 
-      // Store for yielding after fullStream completes
-      finalMessageHolder.message = a2aMessage
+      if (lastToolPartIndex !== -1 && lastToolPartIndex < parts.length - 1) {
+        // There are parts after the last tool result
+        // Split into two messages:
+        // 1. Everything up to and including tool results
+        // 2. Everything after tool results
 
-      console.info("Saved assistant message to both Vercel and A2A storage")
+        const partsBeforeAndIncludingTools = parts.slice(
+          0,
+          lastToolPartIndex + 1,
+        )
+        const partsAfterTools = parts.slice(lastToolPartIndex + 1)
+
+        // Save first message (with tool results)
+        const firstMessage = {
+          ...responseMessage,
+          parts: partsBeforeAndIncludingTools,
+        }
+
+        await this.vercelService.upsertMessage({
+          message: firstMessage,
+          contextId,
+        })
+
+        const firstA2AMessage = this.vercelService.fromUIMessageToA2A(
+          firstMessage,
+          contextId,
+          currentTaskRef.current?.id,
+        )
+        this.a2aMessageRepository.createMessage(firstA2AMessage)
+
+        // Save second message (content after tools)
+        const secondMessage: Vercel.UIMessage = {
+          id: crypto.randomUUID(),
+          role: "assistant",
+          parts: partsAfterTools,
+        }
+
+        await this.vercelService.upsertMessage({
+          message: secondMessage,
+          contextId,
+        })
+
+        const secondA2AMessage = this.vercelService.fromUIMessageToA2A(
+          secondMessage,
+          contextId,
+          currentTaskRef.current?.id,
+        )
+        this.a2aMessageRepository.createMessage(secondA2AMessage)
+
+        console.info(
+          "Split assistant message into two messages (before/after tools)",
+        )
+
+        // Store the last message for yielding
+        finalMessageHolder.message = secondA2AMessage
+      } else {
+        // No tool results or no parts after tools - save as-is
+        await this.vercelService.upsertMessage({
+          message: responseMessage,
+          contextId,
+        })
+
+        const a2aMessage = this.vercelService.fromUIMessageToA2A(
+          responseMessage,
+          contextId,
+          currentTaskRef.current?.id,
+        )
+        this.a2aMessageRepository.createMessage(a2aMessage)
+
+        console.info("Saved assistant message to both Vercel and A2A storage")
+
+        // Store for yielding after fullStream completes
+        finalMessageHolder.message = a2aMessage
+      }
     }
   }
 
@@ -621,7 +687,20 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
       const currentTaskRef = { current: null as A2A.Task | null }
       const finalMessageHolder = { message: null as A2A.Message | null }
 
-      const modelMessages = Vercel.convertToModelMessages(cleanedMessages)
+      const allTools = {
+        ...tools,
+        ...mcpTools.tools,
+        createArtifact: artifactTool,
+        exec: execTool,
+      }
+
+      console.info(
+        `Prepared ${Object.keys(allTools)} tools for message sending`,
+      )
+
+      const modelMessages = Vercel.convertToModelMessages(cleanedMessages, {
+        tools: allTools,
+      })
       console.info(
         `Sending ${modelMessages.length} messages to model`,
       )
@@ -631,7 +710,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
       console.debug("Sending message to model:", {
         contextId: params.message.contextId,
         messages: modelMessages,
-        tools: Object.keys(tools),
+        tools: Object.keys(allTools),
         systemPrompt,
       })
 
@@ -645,11 +724,8 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
         },
         system: systemPrompt || undefined,
         model,
-        messages: Vercel.convertToModelMessages(cleanedMessages),
-        tools: {
-          ...tools,
-          createArtifact: artifactTool,
-        },
+        messages: modelMessages,
+        tools: allTools,
         stopWhen: Vercel.stepCountIs(100),
         onStepFinish: this.createOnStepFinishHandler(
           params,
@@ -801,7 +877,16 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
 
       console.info(cleanedMessages)
 
-      const modelMessages = Vercel.convertToModelMessages(cleanedMessages)
+      const allTools = {
+        ...tools,
+        ...mcpTools.tools,
+        createArtifact: artifactTool,
+        exec: execTool,
+      }
+
+      const modelMessages = Vercel.convertToModelMessages(cleanedMessages, {
+        tools: allTools,
+      })
       console.info(
         `Sending ${modelMessages.length} messages to model (streaming)`,
       )
@@ -811,7 +896,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
       console.debug("Sending message to model:", {
         contextId: params.message.contextId,
         messages: modelMessages,
-        tools: Object.keys(tools),
+        tools: Object.keys(allTools),
         systemPrompt,
       })
 
@@ -827,10 +912,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
         system: systemPrompt || undefined,
         model,
         messages: modelMessages,
-        tools: {
-          ...tools,
-          createArtifact: artifactTool,
-        },
+        tools: allTools,
         stopWhen: Vercel.stepCountIs(100),
         onError: (error) => {
           this.handleStreamError(error)

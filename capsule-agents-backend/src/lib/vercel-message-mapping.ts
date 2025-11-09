@@ -137,10 +137,17 @@ export function mapUIMessagePartsToDBParts(
             errorText?: string
           }
 
+          // Extract tool name from type if not explicitly provided
+          // For static tools: "tool-exec" -> "exec"
+          // For dynamic tools: use toolName property
+          const toolName = part.type === "dynamic-tool"
+            ? toolPart.toolName
+            : (toolPart.toolName || part.type.replace(/^tool-/, ""))
+
           return {
             ...basePart,
             tool_toolCallId: toolPart.toolCallId,
-            tool_toolName: toolPart.toolName,
+            tool_toolName: toolName,
             tool_state: toolPart.state,
             tool_input: toolPart.state === "input-available" ||
                 toolPart.state === "output-available" ||
