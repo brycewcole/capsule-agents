@@ -309,7 +309,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
     mcpTools: MCPToolsDisposable
     model: Vercel.LanguageModel
     agentInfo: ReturnType<AgentConfigService["getAgentInfo"]>
-    cleanedMessages: Vercel.UIMessage[]
+    messages: Vercel.UIMessage[]
     systemPrompt: string
     defaultPromptUsage: BuiltInPromptUsage[]
   }> {
@@ -328,7 +328,6 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
       })
     })
     console.info("[DEBUG] Using stored messages without additional filtering")
-    const cleanedMessages = vercelMessages
 
     const { prompt: systemPrompt, prompts: defaultPromptUsage } =
       buildSystemPrompt({
@@ -354,7 +353,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
       mcpTools,
       model,
       agentInfo,
-      cleanedMessages,
+      messages: vercelMessages,
       systemPrompt,
       defaultPromptUsage,
     }
@@ -607,7 +606,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
         tools,
         mcpTools,
         model,
-        cleanedMessages,
+        messages,
         systemPrompt,
       } = await this
         .prepareStreamContext(contextId)
@@ -628,7 +627,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
         `Prepared ${Object.keys(allTools)} tools for message sending`,
       )
 
-      const modelMessages = Vercel.convertToModelMessages(cleanedMessages, {
+      const modelMessages = Vercel.convertToModelMessages(messages, {
         tools: allTools,
       })
       console.info(
@@ -665,9 +664,9 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
         ),
       })
 
-      const originalMessageCount = cleanedMessages.length
+      const originalMessageCount = messages.length
       const uiResponse = result.toUIMessageStreamResponse({
-        originalMessages: cleanedMessages,
+        originalMessages: messages,
         generateMessageId: () => crypto.randomUUID(),
         onFinish: this.createOnFinishHandler(
           contextId,
@@ -780,7 +779,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
         tools,
         mcpTools,
         model,
-        cleanedMessages,
+        messages,
         systemPrompt,
       } = await this
         .prepareStreamContext(contextId)
@@ -788,14 +787,14 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
       await using _mcpTools = mcpTools
 
       const finalMessageHolder = { message: null as A2A.Message | null }
-      const originalMessageCount = cleanedMessages.length
+      const originalMessageCount = messages.length
 
       // Queue-based status handler for streaming version
       const queueStatusHandler: StatusUpdateHandler = (event) => {
         eventUpdateQueue.push(event)
       }
 
-      console.info(cleanedMessages)
+      console.info(messages)
 
       const allTools = {
         ...tools,
@@ -804,7 +803,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
         exec: execTool,
       }
 
-      const modelMessages = Vercel.convertToModelMessages(cleanedMessages, {
+      const modelMessages = Vercel.convertToModelMessages(messages, {
         tools: allTools,
       })
       console.info(
@@ -846,7 +845,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
       })
 
       const uiResponse = result.toUIMessageStreamResponse({
-        originalMessages: cleanedMessages,
+        originalMessages: messages,
         generateMessageId: () => crypto.randomUUID(),
         onFinish: this.createOnFinishHandler(
           contextId,
