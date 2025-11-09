@@ -488,24 +488,36 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
         responseMessage.id = crypto.randomUUID()
       }
 
-      // Save to Vercel storage
-      await this.vercelService.upsertMessage({
-        message: responseMessage,
-        contextId,
-      })
-
-      // Convert to A2A message and save
-      const a2aMessage = this.vercelService.fromUIMessageToA2A(
-        responseMessage,
-        contextId,
-        currentTaskRef.current?.id,
+      const nonToolParts = responseMessage.parts.filter(
+        (part) => !this.isToolUIPart(part),
       )
-      this.a2aMessageRepository.createMessage(a2aMessage)
 
-      // Store for yielding after fullStream completes
-      finalMessageHolder.message = a2aMessage
+      if (nonToolParts.length > 0) {
+        responseMessage.parts = nonToolParts
 
-      console.info("Saved assistant message to both Vercel and A2A storage")
+        // Save to Vercel storage
+        await this.vercelService.upsertMessage({
+          message: responseMessage,
+          contextId,
+        })
+
+        // Convert to A2A message and save
+        const a2aMessage = this.vercelService.fromUIMessageToA2A(
+          responseMessage,
+          contextId,
+          currentTaskRef.current?.id,
+        )
+        this.a2aMessageRepository.createMessage(a2aMessage)
+
+        // Store for yielding after fullStream completes
+        finalMessageHolder.message = a2aMessage
+
+        console.info("Saved assistant message to both Vercel and A2A storage")
+      }
+
+      if (nonToolParts.length === 0) {
+        console.info("Assistant message contained only tool results; skipping")
+      }
     }
   }
 
@@ -531,6 +543,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
     >,
     currentTaskRef: { current: A2A.Task | null },
     statusHandler: StatusUpdateHandler,
+    contextId: string,
   ): Promise<void> {
     console.info("StreamText initialized, consuming stream...")
     for await (const e of fullStream) {
@@ -567,6 +580,25 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
             )
             statusHandler(statusUpdate)
           }
+          this.saveToolMessage(contextId, {
+            toolName: e.toolName,
+            toolCallId: e.toolCallId,
+            input: e.input,
+            output: e.output,
+            state: "output-available",
+          })
+          break
+        case "tool-error":
+          console.error(`Tool error: ${e.toolName}`, e.error)
+          this.saveToolMessage(contextId, {
+            toolName: e.toolName,
+            toolCallId: e.toolCallId,
+            input: e.input,
+            state: "output-error",
+            errorText: typeof e.error === "string"
+              ? e.error
+              : JSON.stringify(e.error),
+          })
           break
         case "finish-step":
           console.info("Step finished")
@@ -675,6 +707,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
         result.fullStream,
         currentTaskRef,
         () => {},
+        contextId,
       )
 
       // Wait a moment for onFinish to complete
@@ -890,6 +923,25 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
               )
               queueStatusHandler(statusUpdate)
             }
+            this.saveToolMessage(contextId, {
+              toolName: e.toolName,
+              toolCallId: e.toolCallId,
+              input: e.input,
+              output: e.output,
+              state: "output-available",
+            })
+            break
+          case "tool-error":
+            console.error(`Tool error: ${e.toolName}`, e.error)
+            this.saveToolMessage(contextId, {
+              toolName: e.toolName,
+              toolCallId: e.toolCallId,
+              input: e.input,
+              state: "output-error",
+              errorText: typeof e.error === "string"
+                ? e.error
+                : JSON.stringify(e.error),
+            })
             break
           case "finish-step":
             console.info("Step finished")
@@ -978,5 +1030,53 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
     }
 
     return registry.languageModel(`${provider}:${model}`)
+  }
+
+  private saveToolMessage(
+    contextId: string,
+    params: {
+      toolName: string
+      toolCallId: string
+      input?: unknown
+      output?: unknown
+      state: "output-available" | "output-error"
+      errorText?: string
+    },
+  ): void {
+    const part: Vercel.UIMessagePart<Vercel.UIDataTypes, Vercel.UITools> =
+      params.state === "output-available"
+        ? {
+          type: `tool-${params.toolName}` as const,
+          toolCallId: params.toolCallId,
+          state: "output-available",
+          input: params.input ?? {},
+          output: params.output,
+        }
+        : {
+          type: `tool-${params.toolName}` as const,
+          toolCallId: params.toolCallId,
+          state: "output-error",
+          input: params.input,
+          errorText: params.errorText ?? "Unknown error",
+        }
+
+    const message: Vercel.UIMessage = {
+      id: crypto.randomUUID(),
+      role: "assistant",
+      parts: [part],
+    }
+
+    this.vercelService.upsertMessage({
+      message,
+      contextId,
+    })
+  }
+
+  private isToolUIPart(
+    part: Vercel.UIMessagePart<Vercel.UIDataTypes, Vercel.UITools>,
+  ): part is Vercel.ToolUIPart<Vercel.UITools> | Vercel.DynamicToolUIPart {
+    const partType = (part as { type?: string }).type
+    return typeof partType === "string" &&
+      (partType === "dynamic-tool" || partType.startsWith("tool-"))
   }
 }
