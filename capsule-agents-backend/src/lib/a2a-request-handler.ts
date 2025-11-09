@@ -321,11 +321,16 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
     const agentInfo = this.agentConfigService.getAgentInfo()
     const vercelMessages = this.vercelService.fromContext(contextId)
 
-    console.info(`[DEBUG] Loaded ${vercelMessages.length} messages from DB for context ${contextId}`)
+    console.info(
+      `[DEBUG] Loaded ${vercelMessages.length} messages from DB for context ${contextId}`,
+    )
     vercelMessages.forEach((msg, i) => {
-      console.info(`[DEBUG] Message ${i}: id=${msg.id}, role=${msg.role}, parts=${msg.parts.length}`, {
-        partTypes: msg.parts.map(p => p.type),
-      })
+      console.info(
+        `[DEBUG] Message ${i}: id=${msg.id}, role=${msg.role}, parts=${msg.parts.length}`,
+        {
+          partTypes: msg.parts.map((p) => p.type),
+        },
+      )
     })
     console.info("[DEBUG] Using stored messages without additional filtering")
 
@@ -395,14 +400,14 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
           const taskWithHistory = this.taskStorage.getTask(
             currentTaskRef.current.id,
           )
-        if (taskWithHistory) {
-          currentTaskRef.current = taskWithHistory
+          if (taskWithHistory) {
+            currentTaskRef.current = taskWithHistory
+          }
+          statusHandler(currentTaskRef.current)
         }
-        statusHandler(currentTaskRef.current)
-      }
 
-      console.log("checking: " + JSON.stringify(toolResults))
-      for (const toolResult of toolResults || []) {
+        console.log("checking: " + JSON.stringify(toolResults))
+        for (const toolResult of toolResults || []) {
           if (
             toolResult.dynamic !== true &&
             toolResult.toolName === "createArtifact" && currentTaskRef.current
