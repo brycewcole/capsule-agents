@@ -172,10 +172,6 @@
   }
 
   .prose :not(pre) > code {
-    white-space: nowrap;
-    display: inline-block;
-    max-width: 100%;
-    overflow-x: auto;
-    overflow-y: hidden;
+    display: inline;
   }
 }
