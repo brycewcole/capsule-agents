@@ -12,6 +12,7 @@ import {
   type ChatWithHistory,
   getAgentInfo,
   getChatById,
+  getChatsList,
   testLogin,
 } from "./lib/api.ts"
 import { showErrorToast } from "./lib/error-utils.ts"
@@ -100,16 +101,46 @@ function App() {
     updateTitle()
   }, [])
 
-  // Restore last selected chat on first load
+  // Restore last selected chat on first load or fall back to most recent chat
   useEffect(() => {
-    try {
-      const savedId = localStorage.getItem("chat:lastContextId")
-      if (savedId) {
-        // Load chat data for saved id
-        handleChatSelect(savedId)
+    let isActive = true
+
+    const restoreLastOrLatest = async () => {
+      try {
+        const savedId = localStorage.getItem("chat:lastContextId")
+        if (savedId) {
+          const restored = await handleChatSelect(savedId)
+          if (restored) return
+        }
+      } catch {
+        // Ignore localStorage errors when reading saved chat
       }
-    } catch {
-      // Ignore localStorage errors
+
+      try {
+        const chats = await getChatsList()
+        if (!isActive || chats.length === 0) return
+
+        const [latestChat] = [...chats].sort((a, b) => {
+          if (b.lastActivity !== a.lastActivity) {
+            return b.lastActivity - a.lastActivity
+          }
+          return b.createTime - a.createTime
+        })
+
+        if (!latestChat || !isActive) return
+
+        await handleChatSelect(latestChat.id)
+      } catch (error) {
+        if (isActive) {
+          console.error("Failed to auto-select latest chat:", error)
+        }
+      }
+    }
+
+    restoreLastOrLatest()
+
+    return () => {
+      isActive = false
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -155,15 +186,17 @@ function App() {
     }
   }
 
-  const handleChatSelect = async (chatId: string) => {
-    if (chatId === currentChatId && currentChatData) return // Already loaded
+  const handleChatSelect = async (chatId: string): Promise<boolean> => {
+    if (chatId === currentChatId && currentChatData) return true // Already loaded
+
+    setIsLoadingChat(true)
 
     try {
-      setIsLoadingChat(true)
       setCurrentChatId(chatId)
 
       const chatData = await getChatById(chatId)
       setCurrentChatData(chatData)
+      return true
     } catch (error) {
       console.error("Failed to load chat:", error)
       showErrorToast(error, {
@@ -172,6 +205,7 @@ function App() {
       // Reset to no chat selected on error
       setCurrentChatId(null)
       setCurrentChatData(null)
+      return false
     } finally {
       setIsLoadingChat(false)
     }
