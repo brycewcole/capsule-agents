@@ -22,6 +22,7 @@ import {
   buildSystemPrompt,
   type BuiltInPromptUsage,
 } from "./default-prompts.ts"
+import { getProviderOptions } from "./provider-options.ts"
 
 interface MCPToolsDisposable {
   tools: Record<string, Vercel.Tool>
@@ -312,6 +313,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
     messages: Vercel.UIMessage[]
     systemPrompt: string
     defaultPromptUsage: BuiltInPromptUsage[]
+    providerOptions: ReturnType<typeof getProviderOptions>
   }> {
     let tools = await this.getAvailableTools()
     const mcpTools = await this.getMCPServers()
@@ -320,11 +322,12 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
     const model = this.getConfiguredModel()
     const agentInfo = this.agentConfigService.getAgentInfo()
     const vercelMessages = this.vercelService.fromContext(contextId)
+    const sanitizedMessages = this.removeReasoningParts(vercelMessages)
 
     console.info(
-      `[DEBUG] Loaded ${vercelMessages.length} messages from DB for context ${contextId}`,
+      `[DEBUG] Loaded ${sanitizedMessages.length} messages from DB for context ${contextId}`,
     )
-    vercelMessages.forEach((msg, i) => {
+    sanitizedMessages.forEach((msg, i) => {
       console.info(
         `[DEBUG] Message ${i}: id=${msg.id}, role=${msg.role}, parts=${msg.parts.length}`,
         {
@@ -358,9 +361,10 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
       mcpTools,
       model,
       agentInfo,
-      messages: vercelMessages,
+      messages: sanitizedMessages,
       systemPrompt,
       defaultPromptUsage,
+      providerOptions: getProviderOptions(),
     }
   }
 
@@ -584,6 +588,41 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
     throw error
   }
 
+  private removeReasoningParts(
+    messages: Vercel.UIMessage[],
+  ): Vercel.UIMessage[] {
+    let removedCount = 0
+
+    const cleaned = messages
+      .map((message) => {
+        const filteredParts = message.parts.filter((part) => {
+          const isReasoning = part.type === "reasoning"
+          if (isReasoning) {
+            removedCount++
+          }
+          return !isReasoning
+        })
+
+        if (filteredParts.length === message.parts.length) {
+          return message
+        }
+
+        return {
+          ...message,
+          parts: filteredParts,
+        }
+      })
+      .filter((message) => message.parts.length > 0)
+
+    if (removedCount > 0) {
+      console.info(
+        `Removed ${removedCount} reasoning part(s) from stored context before model call`,
+      )
+    }
+
+    return cleaned
+  }
+
   private ensureContext(contextId?: string): string {
     if (contextId == null) {
       const newContextId = crypto.randomUUID()
@@ -613,6 +652,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
         model,
         messages,
         systemPrompt,
+        providerOptions,
       } = await this
         .prepareStreamContext(contextId)
 
@@ -660,6 +700,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
         model,
         messages: modelMessages,
         tools: allTools,
+        providerOptions,
         stopWhen: Vercel.stepCountIs(100),
         onStepFinish: this.createOnStepFinishHandler(
           params,
@@ -786,6 +827,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
         model,
         messages,
         systemPrompt,
+        providerOptions,
       } = await this
         .prepareStreamContext(contextId)
 
@@ -837,6 +879,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
         model,
         messages: modelMessages,
         tools: allTools,
+        providerOptions,
         stopWhen: Vercel.stepCountIs(100),
         onError: (error) => {
           this.handleStreamError(error)
