@@ -1709,7 +1709,7 @@ export default function ChatInterface({
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder="Type your message... (Shift+Enter for new line)"
+              placeholder="Type your message here"
               className="flex-1 rounded-2xl min-h-[44px]"
               disabled={isLoading || !isBackendConnected}
               autoResize
