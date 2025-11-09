@@ -4,10 +4,12 @@ ARG DENO_VERSION=2.5.4
 
 # ─── Stage 1: Build Vite frontend (Deno) ─────────────────────────
 FROM denoland/deno:${DENO_VERSION} AS frontend-builder
+ARG VERSION=unknown
 
 ENV DENO_NO_UPDATE_CHECK=1 \
   DENO_NO_PROMPT=1 \
-  DENO_DIR=/deno-dir
+  DENO_DIR=/deno-dir \
+  VITE_APP_VERSION=${VERSION}
 
 WORKDIR /home/app/capsule-agents-frontend
 
