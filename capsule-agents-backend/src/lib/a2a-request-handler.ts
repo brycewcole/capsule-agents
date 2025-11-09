@@ -414,29 +414,21 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
 
         console.log("checking: " + JSON.stringify(toolResults))
         for (const toolResult of toolResults || []) {
-          if (toolResult.dynamic !== true) {
-            this.saveToolResultMessage(
-              params.message.contextId!,
-              toolResult,
-              currentTaskRef.current?.id,
+          if (
+            toolResult.dynamic !== true &&
+            toolResult.toolName === "createArtifact" && currentTaskRef.current
+          ) {
+            const { name, description, content } = toolResult.input
+
+            const artifactEvent = this.taskService.createArtifact(
+              currentTaskRef.current,
+              {
+                name,
+                description,
+                parts: [{ kind: "text", text: content }],
+              },
             )
-
-            if (
-              toolResult.toolName === "createArtifact" &&
-              currentTaskRef.current
-            ) {
-              const { name, description, content } = toolResult.input
-
-              const artifactEvent = this.taskService.createArtifact(
-                currentTaskRef.current,
-                {
-                  name,
-                  description,
-                  parts: [{ kind: "text", text: content }],
-                },
-              )
-              statusHandler(artifactEvent)
-            }
+            statusHandler(artifactEvent)
           }
         }
 
@@ -496,24 +488,64 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
         responseMessage.id = crypto.randomUUID()
       }
 
-      // Save to Vercel storage
+      // Separate tool result parts from other parts
+      // Anthropic expects tool results in USER messages, not assistant messages
+      const toolResultParts = responseMessage.parts.filter((p) =>
+        p.type.startsWith("tool-") && "state" in p &&
+        p.state === "output-available"
+      )
+      const nonToolResultParts = responseMessage.parts.filter((p) =>
+        !(p.type.startsWith("tool-") && "state" in p &&
+          p.state === "output-available")
+      )
+
+      // Save assistant message without tool results
+      const assistantMessage = {
+        ...responseMessage,
+        parts: nonToolResultParts,
+      }
+
       await this.vercelService.upsertMessage({
-        message: responseMessage,
+        message: assistantMessage,
         contextId,
       })
 
-      // Convert to A2A message and save
       const a2aMessage = this.vercelService.fromUIMessageToA2A(
-        responseMessage,
+        assistantMessage,
         contextId,
         currentTaskRef.current?.id,
       )
       this.a2aMessageRepository.createMessage(a2aMessage)
 
+      // If there are tool results, save them as a separate USER message
+      if (toolResultParts.length > 0) {
+        const toolResultMessage: Vercel.UIMessage = {
+          id: crypto.randomUUID(),
+          role: "user",
+          parts: toolResultParts,
+        }
+
+        await this.vercelService.upsertMessage({
+          message: toolResultMessage,
+          contextId,
+        })
+
+        const toolResultA2AMessage = this.vercelService.fromUIMessageToA2A(
+          toolResultMessage,
+          contextId,
+          currentTaskRef.current?.id,
+        )
+        this.a2aMessageRepository.createMessage(toolResultA2AMessage)
+
+        console.info(
+          `Saved assistant message and ${toolResultParts.length} tool results as user message`,
+        )
+      } else {
+        console.info("Saved assistant message to both Vercel and A2A storage")
+      }
+
       // Store for yielding after fullStream completes
       finalMessageHolder.message = a2aMessage
-
-      console.info("Saved assistant message to both Vercel and A2A storage")
     }
   }
 
@@ -987,38 +1019,4 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
 
     return registry.languageModel(`${provider}:${model}`)
   }
-
-  private saveToolResultMessage(
-    contextId: string,
-    toolResult: AnyToolResult,
-    taskId?: string,
-  ): void {
-    const part: Vercel.ToolUIPart<Vercel.UITools> = {
-      type: `tool-${toolResult.toolName}` as const,
-      toolCallId: toolResult.toolCallId,
-      state: "output-available",
-      input: toolResult.input ?? {},
-      output: toolResult.output,
-    }
-
-    const message: Vercel.UIMessage = {
-      id: crypto.randomUUID(),
-      role: "assistant",
-      parts: [part],
-    }
-
-    this.vercelService.upsertMessage({
-      message,
-      contextId,
-      taskId,
-    })
-
-    const a2aMessage = this.vercelService.fromUIMessageToA2A(
-      message,
-      contextId,
-      taskId,
-    )
-    this.a2aMessageRepository.createMessage(a2aMessage)
-  }
-
 }
