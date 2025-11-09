@@ -100,6 +100,50 @@ type TimelineEntry = {
 const createEntryId = () =>
   globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2)
 
+const CHAT_DRAFT_PREFIX = "chat:draft:"
+const NEW_CHAT_DRAFT_KEY = "new"
+
+const getDraftStorageKey = (ctxId: string | null) =>
+  `${CHAT_DRAFT_PREFIX}${ctxId ?? NEW_CHAT_DRAFT_KEY}`
+
+const loadDraftForContext = (ctxId: string | null): string => {
+  if (typeof window === "undefined") {
+    return ""
+  }
+  try {
+    return localStorage.getItem(getDraftStorageKey(ctxId)) ?? ""
+  } catch {
+    return ""
+  }
+}
+
+const saveDraftForContext = (ctxId: string | null, value: string) => {
+  if (typeof window === "undefined") {
+    return
+  }
+  const key = getDraftStorageKey(ctxId)
+  try {
+    if (value) {
+      localStorage.setItem(key, value)
+    } else {
+      localStorage.removeItem(key)
+    }
+  } catch {
+    // Ignore storage errors
+  }
+}
+
+const clearDraftForContext = (ctxId: string | null) => {
+  if (typeof window === "undefined") {
+    return
+  }
+  try {
+    localStorage.removeItem(getDraftStorageKey(ctxId))
+  } catch {
+    // Ignore storage errors
+  }
+}
+
 const toTimestampSeconds = (value?: string | number | null) => {
   if (typeof value === "number") {
     return value > 1e12 ? value / 1000 : value
@@ -361,6 +405,14 @@ export default function ChatInterface({
   const activeEntryIdRef = useRef<string | null>(null)
   const taskLocationsRef = useRef(taskLocations)
   const timelineEntriesRef = useRef<TimelineEntry[]>([])
+
+  useEffect(() => {
+    setInput(loadDraftForContext(contextId))
+  }, [contextId])
+
+  useEffect(() => {
+    saveDraftForContext(contextId, input)
+  }, [contextId, input])
 
   const formatTimestamp = useCallback((seconds: number) => {
     return new Intl.DateTimeFormat(undefined, {
@@ -746,6 +798,7 @@ export default function ChatInterface({
     if (!input.trim() || isLoading) return
 
     const userMessage = input.trim()
+    clearDraftForContext(contextId)
     setInput("")
     setIsLoading(true)
 
