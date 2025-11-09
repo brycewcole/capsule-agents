@@ -8,6 +8,8 @@ const navLinkClasses = ({ isActive }: { isActive: boolean }) =>
   }`
 
 export default function Header() {
+  const version = import.meta.env.VITE_APP_VERSION || "dev"
+
   return (
     <header className="border-b bg-white shadow-sm">
       <div className="container mx-auto flex h-16 items-center px-4 md:px-6 lg:px-8">
@@ -16,7 +18,7 @@ export default function Header() {
           Capsule Agents
         </h1>
         <span className="ml-2 rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
-          Alpha
+          v{version}
         </span>
         <nav className="ml-auto flex items-center gap-4">
           <NavLink to="/" end className={navLinkClasses}>
