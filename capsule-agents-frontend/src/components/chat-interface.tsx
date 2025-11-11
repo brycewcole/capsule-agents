@@ -67,7 +67,7 @@ type TimelineTask = {
   id: string
   task: A2ATask
   createdAt: number
-  artifacts?: Artifact[]
+  artifacts?: Array<Artifact & { timestamp: number }>
 }
 
 type ArtifactPreviewState = {
@@ -357,6 +357,40 @@ const buildTaskUpdates = (task: A2ATask) => {
   return updates
 }
 
+type TimelineItem =
+  | { type: "update"; id: string; role: "user" | "agent" | "status"; text: string; timestamp?: number }
+  | { type: "artifact"; artifact: Artifact & { timestamp: number } }
+
+const mergeUpdatesAndArtifacts = (
+  updates: Array<{ id: string; role: "user" | "agent" | "status"; text: string }>,
+  artifacts?: Array<Artifact & { timestamp: number }>,
+): TimelineItem[] => {
+  const items: TimelineItem[] = []
+
+  // Add updates (they don't have timestamps in the current implementation)
+  for (const update of updates) {
+    items.push({ type: "update", ...update })
+  }
+
+  // Add artifacts with their timestamps
+  if (artifacts) {
+    for (const artifact of artifacts) {
+      items.push({ type: "artifact", artifact })
+    }
+  }
+
+  // Sort by timestamp if available, otherwise maintain order
+  // Updates come first (no timestamp), then artifacts sorted by timestamp
+  return items.sort((a, b) => {
+    const aTime = a.type === "artifact" ? a.artifact.timestamp : -Infinity
+    const bTime = b.type === "artifact" ? b.artifact.timestamp : -Infinity
+    if (aTime === -Infinity && bTime === -Infinity) return 0
+    if (aTime === -Infinity) return -1
+    if (bTime === -Infinity) return 1
+    return aTime - bTime
+  })
+}
+
 interface ChatInterfaceProps {
   contextId?: string | null
   initialChatData?: ChatWithHistory | null
@@ -513,13 +547,33 @@ export default function ChatInterface({
             ? Date.parse(nextTask.status.timestamp) / 1000
             : Date.now() / 1000
 
+          // Merge artifacts, preserving timestamps from existing artifacts
+          const previousArtifacts = existingIndex >= 0
+            ? entry.tasks[existingIndex].artifacts
+            : undefined
+          const mergedArtifacts = nextTask.artifacts?.map((artifact, index) => {
+            // Check if artifact already has timestamp
+            if ((artifact as { timestamp?: number }).timestamp) {
+              return artifact as Artifact & { timestamp: number }
+            }
+            // Try to find existing artifact with same ID to preserve timestamp
+            const existingArtifact = previousArtifacts?.find(
+              (a) => a.artifactId === artifact.artifactId,
+            )
+            if (existingArtifact?.timestamp) {
+              return { ...artifact, timestamp: existingArtifact.timestamp }
+            }
+            // No existing timestamp, create new one
+            return { ...artifact, timestamp: createdAt + index }
+          })
+
           if (existingIndex >= 0) {
             const nextTasks = [...entry.tasks]
             nextTasks[existingIndex] = {
               id: taskId,
               task: nextTask,
               createdAt,
-              artifacts: nextTask.artifacts,
+              artifacts: mergedArtifacts,
             }
             const sortedTasks = sortTasksByTime(nextTasks)
             updatedIndex = sortedTasks.findIndex((item) => item.id === taskId)
@@ -530,7 +584,7 @@ export default function ChatInterface({
             id: taskId,
             task: nextTask,
             createdAt,
-            artifacts: nextTask.artifacts,
+            artifacts: mergedArtifacts,
           }]
           const sortedTasks = sortTasksByTime(appendedTasks)
           updatedIndex = sortedTasks.findIndex((item) => item.id === taskId)
@@ -703,13 +757,21 @@ export default function ChatInterface({
         ? Date.parse(task.status.timestamp) / 1000
         : Date.now() / 1000
 
+      // Add timestamps to artifacts if they don't have them
+      // Use task createdAt as base timestamp for historical artifacts
+      const timestampedArtifacts = task.artifacts?.map((artifact, index) => ({
+        ...artifact,
+        timestamp: (artifact as { timestamp?: number }).timestamp ??
+          createdAt + index, // Offset by index to maintain order
+      }))
+
       const existingIndex = entry.tasks.findIndex((item) => item.id === task.id)
       if (existingIndex >= 0) {
         entry.tasks[existingIndex] = {
           id: task.id,
           task,
           createdAt,
-          artifacts: task.artifacts,
+          artifacts: timestampedArtifacts,
         }
         nextTaskLocations[task.id] = { entryId: entry.id, index: existingIndex }
         return
@@ -719,7 +781,7 @@ export default function ChatInterface({
         id: task.id,
         task,
         createdAt,
-        artifacts: task.artifacts,
+        artifacts: timestampedArtifacts,
       })
       nextTaskLocations[task.id] = {
         entryId: entry.id,
@@ -1113,6 +1175,12 @@ export default function ChatInterface({
                     return timelineTask
                   }
 
+                  // Add timestamp to the artifact
+                  const timestampedArtifact = {
+                    ...artifactEvent.artifact,
+                    timestamp: Date.now() / 1000,
+                  }
+
                   // Add or update artifact
                   const existingArtifacts = timelineTask.artifacts || []
                   const artifactIndex = existingArtifacts.findIndex(
@@ -1121,14 +1189,17 @@ export default function ChatInterface({
 
                   let updatedArtifacts: typeof existingArtifacts
                   if (artifactIndex >= 0) {
-                    // Update existing artifact
+                    // Update existing artifact, preserving original timestamp
                     updatedArtifacts = [...existingArtifacts]
-                    updatedArtifacts[artifactIndex] = artifactEvent.artifact
+                    updatedArtifacts[artifactIndex] = {
+                      ...timestampedArtifact,
+                      timestamp: existingArtifacts[artifactIndex].timestamp,
+                    }
                   } else {
-                    // Add new artifact
+                    // Add new artifact with current timestamp
                     updatedArtifacts = [
                       ...existingArtifacts,
-                      artifactEvent.artifact,
+                      timestampedArtifact,
                     ]
                   }
 
@@ -1537,135 +1608,143 @@ export default function ChatInterface({
                                         </p>
                                       )
                                       : (
-                                        updates.map((update) => (
-                                          <div
-                                            key={update.id}
-                                            className="pl-2"
-                                          >
-                                            <div
-                                              className={`rounded-lg border px-4 py-3 shadow-sm ${
-                                                update.role === "user"
-                                                  ? "border-sky-400/60 bg-sky-200/70 dark:border-sky-900/70 dark:bg-sky-900/40"
-                                                  : update.role === "agent"
-                                                  ? "border-slate-200 bg-white text-slate-900 dark:border-slate-700 dark:bg-slate-900/60 dark:text-slate-100"
-                                                  : "border-border/60 bg-card/95 dark:border-border/70 dark:bg-slate-950/50"
-                                              }`}
-                                            >
-                                              <div
-                                                className={`mb-2 text-[11px] font-semibold uppercase tracking-wide ${
-                                                  update.role === "user"
-                                                    ? "text-slate-700/80 dark:text-sky-200/80"
-                                                    : update.role === "agent"
-                                                    ? "text-slate-700/80 dark:text-slate-200/80"
-                                                    : "text-emerald-800/80 dark:text-emerald-100/80"
-                                                }`}
-                                              >
-                                                {update.role === "user"
-                                                  ? "You"
-                                                  : update.role === "agent"
-                                                  ? "Agent"
-                                                  : "Status"}
-                                              </div>
-                                              <div className="prose prose-sm text-slate-900 dark:prose-invert max-w-none">
-                                                <Markdown
-                                                  remarkPlugins={[remarkGfm]}
+                                        <>
+                                          {mergeUpdatesAndArtifacts(
+                                            updates,
+                                            item.artifacts,
+                                          ).map((timelineItem) => {
+                                            if (timelineItem.type === "update") {
+                                              const update = timelineItem
+                                              return (
+                                                <div
+                                                  key={update.id}
+                                                  className="pl-2"
                                                 >
-                                                  {update.text}
-                                                </Markdown>
-                                              </div>
-                                            </div>
-                                          </div>
-                                        ))
-                                      )}
-                                    {capabilityCallsForTask.length > 0 && (
-                                      <ul className="ml-6 list-disc space-y-1 text-xs text-emerald-800/90 dark:text-emerald-100">
-                                        {capabilityCallsForTask.map((
-                                          call,
-                                          idx,
-                                        ) => (
-                                          <li key={`${call.name}-${idx}`}>
-                                            <span className="font-semibold text-foreground">
-                                              {call.name}
-                                            </span>
-                                          </li>
-                                        ))}
-                                      </ul>
-                                    )}
-                                    {item.artifacts &&
-                                      item.artifacts.length > 0 && (
-                                      <div className="space-y-3 pl-2">
-                                        {item.artifacts.map((artifact) => {
-                                          const artifactInfo =
-                                            getArtifactContentInfo(artifact)
-                                          const hasContent =
-                                            artifactInfo.content.length > 0
-
-                                          return (
-                                            <div
-                                              key={artifact.artifactId}
-                                              className="rounded-lg border border-indigo-400/60 bg-indigo-50/70 dark:border-indigo-900/70 dark:bg-indigo-950/40 px-4 py-3 shadow-sm"
-                                            >
-                                              <div className="flex flex-wrap items-start justify-between gap-2">
-                                                <div className="min-w-0 space-y-1">
-                                                  <div className="flex items-center gap-2 text-sm font-semibold text-indigo-900 dark:text-indigo-100">
-                                                    <span>
-                                                      📦 {artifact.name ||
-                                                        "Artifact"}
-                                                    </span>
-                                                    <Badge
-                                                      variant="secondary"
-                                                      className="uppercase tracking-wide"
+                                                  <div
+                                                    className={`rounded-lg border px-4 py-3 shadow-sm ${
+                                                      update.role === "user"
+                                                        ? "border-sky-400/60 bg-sky-200/70 dark:border-sky-900/70 dark:bg-sky-900/40"
+                                                        : update.role === "agent"
+                                                        ? "border-slate-200 bg-white text-slate-900 dark:border-slate-700 dark:bg-slate-900/60 dark:text-slate-100"
+                                                        : "border-border/60 bg-card/95 dark:border-border/70 dark:bg-slate-950/50"
+                                                    }`}
+                                                  >
+                                                    <div
+                                                      className={`mb-2 text-[11px] font-semibold uppercase tracking-wide ${
+                                                        update.role === "user"
+                                                          ? "text-slate-700/80 dark:text-sky-200/80"
+                                                          : update.role === "agent"
+                                                          ? "text-slate-700/80 dark:text-slate-200/80"
+                                                          : "text-emerald-800/80 dark:text-emerald-100/80"
+                                                      }`}
                                                     >
-                                                      Artifact
-                                                    </Badge>
+                                                      {update.role === "user"
+                                                        ? "You"
+                                                        : update.role === "agent"
+                                                        ? "Agent"
+                                                        : "Status"}
+                                                    </div>
+                                                    <div className="prose prose-sm text-slate-900 dark:prose-invert max-w-none">
+                                                      <Markdown
+                                                        remarkPlugins={[remarkGfm]}
+                                                      >
+                                                        {update.text}
+                                                      </Markdown>
+                                                    </div>
                                                   </div>
-                                                  {artifactInfo
-                                                    .displayMimeType && (
-                                                    <div className="text-[11px] uppercase tracking-wide text-indigo-700/70 dark:text-indigo-200/70">
-                                                      {artifactInfo
-                                                        .displayMimeType}
-                                                    </div>
-                                                  )}
-                                                  {artifact.description && (
-                                                    <div className="text-xs text-indigo-700/80 dark:text-indigo-300/80">
-                                                      {artifact.description}
-                                                    </div>
-                                                  )}
                                                 </div>
-                                                <div className="flex items-center gap-2">
-                                                  <Button
-                                                    variant="ghost"
-                                                    size="sm"
-                                                    className="text-indigo-700 hover:text-indigo-900 dark:text-indigo-200 dark:hover:text-indigo-100"
-                                                    onClick={() =>
-                                                      openArtifactPreview(
-                                                        artifact,
-                                                      )}
-                                                    disabled={!hasContent}
-                                                  >
-                                                    <Eye className="h-4 w-4" />
-                                                    Preview
-                                                  </Button>
-                                                  <Button
-                                                    variant="ghost"
-                                                    size="sm"
-                                                    className="text-indigo-700 hover:text-indigo-900 dark:text-indigo-200 dark:hover:text-indigo-100"
-                                                    onClick={() =>
-                                                      downloadArtifact(
-                                                        artifact,
-                                                      )}
-                                                    disabled={!hasContent}
-                                                  >
-                                                    <Download className="h-4 w-4" />
-                                                    Download
-                                                  </Button>
+                                              )
+                                            } else {
+                                              // Artifact
+                                              const artifact = timelineItem.artifact
+                                              const artifactInfo =
+                                                getArtifactContentInfo(artifact)
+                                              const hasContent =
+                                                artifactInfo.content.length > 0
+
+                                              return (
+                                                <div
+                                                  key={artifact.artifactId}
+                                                  className="pl-2"
+                                                >
+                                                  <div className="rounded-lg border border-indigo-400/60 bg-indigo-50/70 dark:border-indigo-900/70 dark:bg-indigo-950/40 px-4 py-3 shadow-sm">
+                                                    <div className="flex flex-wrap items-start justify-between gap-2">
+                                                      <div className="min-w-0 space-y-1">
+                                                        <div className="flex items-center gap-2 text-sm font-semibold text-indigo-900 dark:text-indigo-100">
+                                                          <span>
+                                                            📦 {artifact.name ||
+                                                              "Artifact"}
+                                                          </span>
+                                                          <Badge
+                                                            variant="secondary"
+                                                            className="uppercase tracking-wide"
+                                                          >
+                                                            Artifact
+                                                          </Badge>
+                                                        </div>
+                                                        {artifactInfo
+                                                          .displayMimeType && (
+                                                          <div className="text-[11px] uppercase tracking-wide text-indigo-700/70 dark:text-indigo-200/70">
+                                                            {artifactInfo
+                                                              .displayMimeType}
+                                                          </div>
+                                                        )}
+                                                        {artifact.description && (
+                                                          <div className="text-xs text-indigo-700/80 dark:text-indigo-300/80">
+                                                            {artifact.description}
+                                                          </div>
+                                                        )}
+                                                      </div>
+                                                      <div className="flex items-center gap-2">
+                                                        <Button
+                                                          variant="ghost"
+                                                          size="sm"
+                                                          className="text-indigo-700 hover:text-indigo-900 dark:text-indigo-200 dark:hover:text-indigo-100"
+                                                          onClick={() =>
+                                                            openArtifactPreview(
+                                                              artifact,
+                                                            )}
+                                                          disabled={!hasContent}
+                                                        >
+                                                          <Eye className="h-4 w-4" />
+                                                          Preview
+                                                        </Button>
+                                                        <Button
+                                                          variant="ghost"
+                                                          size="sm"
+                                                          className="text-indigo-700 hover:text-indigo-900 dark:text-indigo-200 dark:hover:text-indigo-100"
+                                                          onClick={() =>
+                                                            downloadArtifact(
+                                                              artifact,
+                                                            )}
+                                                          disabled={!hasContent}
+                                                        >
+                                                          <Download className="h-4 w-4" />
+                                                          Download
+                                                        </Button>
+                                                      </div>
+                                                    </div>
+                                                  </div>
                                                 </div>
-                                              </div>
-                                            </div>
-                                          )
-                                        })}
-                                      </div>
-                                    )}
+                                              )
+                                            }
+                                          })}
+                                          {capabilityCallsForTask.length > 0 && (
+                                            <ul className="ml-6 list-disc space-y-1 text-xs text-emerald-800/90 dark:text-emerald-100">
+                                              {capabilityCallsForTask.map((
+                                                call,
+                                                idx,
+                                              ) => (
+                                                <li key={`${call.name}-${idx}`}>
+                                                  <span className="font-semibold text-foreground">
+                                                    {call.name}
+                                                  </span>
+                                                </li>
+                                              ))}
+                                            </ul>
+                                          )}
+                                        </>
+                                      )}
                                   </div>
                                 </div>
                               )
