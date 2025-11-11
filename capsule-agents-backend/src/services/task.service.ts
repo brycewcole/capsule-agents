@@ -149,7 +149,10 @@ export class TaskService {
     task: A2A.Task,
     artifact: Omit<A2A.Artifact, "artifactId">,
   ): A2A.TaskArtifactUpdateEvent {
-    const storedArtifact = this.artifactStorage.createArtifact(task.id, artifact)
+    const storedArtifact = this.artifactStorage.createArtifact(
+      task.id,
+      artifact,
+    )
     const formattedArtifact = this.artifactStorage.toA2AArtifact(
       storedArtifact,
     )

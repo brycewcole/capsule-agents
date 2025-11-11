@@ -1,17 +1,16 @@
 "use client"
 
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
+import { type ReactNode, useCallback, useEffect, useRef, useState } from "react"
 import { Textarea } from "./ui/textarea.tsx"
 import { Button } from "@/components/ui/button.tsx"
-import { Badge } from "@/components/ui/badge.tsx"
 import Markdown from "react-markdown"
 import remarkGfm from "remark-gfm"
 import {
   ArrowRight,
   Download,
-  Eye,
-  Loader2,
   FileText,
+  Loader2,
+  Maximize2,
   MessageSquare,
   PanelRightOpen,
   X,
@@ -413,6 +412,85 @@ const buildTaskUpdates = (task: A2ATask): TaskTimelineUpdate[] => {
   })
 }
 
+type ArtifactPreviewInlineProps = {
+  artifact: Artifact
+  info: ReturnType<typeof getArtifactContentInfo>
+  onExpand: () => void
+  onDownload: () => void
+}
+
+const ArtifactPreviewInline = ({
+  artifact,
+  info,
+  onExpand,
+  onDownload,
+}: ArtifactPreviewInlineProps) => {
+  const textRef = useRef<HTMLPreElement>(null)
+  const [canExpand, setCanExpand] = useState(info.isHtml)
+
+  useEffect(() => {
+    if (info.isHtml) {
+      setCanExpand(true)
+      return
+    }
+    const el = textRef.current
+    if (!el) {
+      setCanExpand(false)
+      return
+    }
+    const update = () => {
+      const verticalOverflow = el.scrollHeight - el.clientHeight > 2
+      const horizontalOverflow = el.scrollWidth - el.clientWidth > 2
+      setCanExpand(verticalOverflow || horizontalOverflow)
+    }
+    update()
+  }, [info.content, info.isHtml])
+
+  return (
+    <div className="relative rounded-md border border-indigo-200/70 bg-white dark:border-indigo-900/40 dark:bg-indigo-950/30">
+      <div className="absolute right-3 top-3 z-10 flex gap-2">
+        {canExpand && (
+          <Button
+            variant="secondary"
+            size="sm"
+            className="h-8 rounded-full px-3 text-xs font-semibold text-indigo-900 shadow-sm hover:text-indigo-950 dark:text-indigo-100"
+            onClick={onExpand}
+          >
+            <Maximize2 className="mr-1 h-3.5 w-3.5" />
+            Expand
+          </Button>
+        )}
+        <Button
+          variant="secondary"
+          size="sm"
+          className="h-8 rounded-full px-3 text-xs font-semibold text-indigo-900 shadow-sm hover:text-indigo-950 dark:text-indigo-100"
+          onClick={onDownload}
+        >
+          <Download className="mr-1 h-3.5 w-3.5" />
+          Download
+        </Button>
+      </div>
+      {info.isHtml
+        ? (
+          <iframe
+            title={`artifact-${artifact.artifactId}-preview`}
+            srcDoc={info.content}
+            sandbox=""
+            className="h-60 w-full rounded-md bg-white dark:bg-slate-900"
+          />
+        )
+        : (
+          <pre
+            ref={textRef}
+            className="max-h-64 overflow-auto rounded-md bg-white/70 p-3 pt-10 pr-4 text-xs text-indigo-900 dark:bg-indigo-950/40 dark:text-indigo-100 whitespace-pre-wrap"
+          >
+            {info.content}
+          </pre>
+        )}
+    </div>
+  )
+}
+
 interface ChatInterfaceProps {
   contextId?: string | null
   initialChatData?: ChatWithHistory | null
@@ -470,7 +548,7 @@ export default function ChatInterface({
     saveDraftForContext(contextId, input)
   }, [contextId, input])
 
-const formatTimestamp = useCallback((seconds: number) => {
+  const formatTimestamp = useCallback((seconds: number) => {
     return new Intl.DateTimeFormat(undefined, {
       hour: "numeric",
       minute: "numeric",
@@ -546,8 +624,12 @@ const formatTimestamp = useCallback((seconds: number) => {
       body: ReactNode,
     ) => (
       <div key={update.id} className="pl-2">
-        <div className={`rounded-lg border px-4 py-3 shadow-sm ${containerClass}`}>
-          <div className={`mb-2 flex items-center justify-between text-[11px] font-semibold uppercase tracking-wide ${headerClass}`}>
+        <div
+          className={`rounded-lg border px-4 py-3 shadow-sm ${containerClass}`}
+        >
+          <div
+            className={`mb-2 flex items-center justify-between text-[11px] font-semibold uppercase tracking-wide ${headerClass}`}
+          >
             <span>{label}</span>
             <span className="text-[10px] uppercase text-muted-foreground">
               {formatTimestamp(update.timestamp)}
@@ -561,7 +643,6 @@ const formatTimestamp = useCallback((seconds: number) => {
     if (update.kind === "artifact" && update.artifact) {
       const artifact = update.artifact
       const artifactInfo = getArtifactContentInfo(artifact)
-      const hasContent = artifactInfo.content.length > 0
 
       return renderCard(
         "Artifact",
@@ -582,28 +663,14 @@ const formatTimestamp = useCallback((seconds: number) => {
               {artifactInfo.displayMimeType}
             </div>
           )}
-          <div className="flex flex-wrap items-center gap-3 text-sm font-medium text-indigo-700 dark:text-indigo-200">
-            <Button
-              variant="ghost"
-              size="sm"
-              className="text-indigo-700 hover:text-indigo-900 dark:text-indigo-200 dark:hover:text-indigo-100 px-2"
-              onClick={() => openArtifactPreview(artifact)}
-              disabled={!hasContent}
-            >
-              <Eye className="mr-1 h-4 w-4" />
-              Preview
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="text-indigo-700 hover:text-indigo-900 dark:text-indigo-200 dark:hover:text-indigo-100 px-2"
-              onClick={() => downloadArtifact(artifact)}
-              disabled={!hasContent}
-            >
-              <Download className="mr-1 h-4 w-4" />
-              Download
-            </Button>
-          </div>
+          {artifactInfo.content && (
+            <ArtifactPreviewInline
+              artifact={artifact}
+              info={artifactInfo}
+              onExpand={() => openArtifactPreview(artifact)}
+              onDownload={() => downloadArtifact(artifact)}
+            />
+          )}
         </div>,
       )
     }
