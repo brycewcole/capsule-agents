@@ -2,6 +2,10 @@ import type * as A2A from "@a2a-js/sdk"
 import { getDb } from "../infrastructure/db.ts"
 import { getChanges } from "./sqlite-utils.ts"
 
+const buildArtifactMetadata = (createdAtSeconds: number) => ({
+  timestamp: new Date(createdAtSeconds * 1000).toISOString(),
+})
+
 export interface StoredArtifact {
   id: string
   taskId: string
@@ -134,11 +138,16 @@ export class ArtifactRepository {
 
   // Convert stored artifacts to A2A Artifact format
   toA2AArtifacts(artifacts: StoredArtifact[]): A2A.Artifact[] {
-    return artifacts.map((artifact) => ({
+    return artifacts.map((artifact) => this.toA2AArtifact(artifact))
+  }
+
+  toA2AArtifact(artifact: StoredArtifact): A2A.Artifact {
+    return {
       artifactId: artifact.id,
       name: artifact.name,
       description: artifact.description,
       parts: artifact.parts,
-    }))
+      metadata: buildArtifactMetadata(artifact.createdAt),
+    }
   }
 }

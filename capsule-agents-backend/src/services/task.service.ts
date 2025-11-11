@@ -56,6 +56,7 @@ export class TaskService {
     let statusMessage: A2A.Message | undefined
 
     if (statusText) {
+      const statusTimestamp = new Date().toISOString()
       statusMessage = {
         kind: "message",
         messageId: this.createMessageId(),
@@ -64,6 +65,7 @@ export class TaskService {
         taskId: task.id,
         metadata: {
           kind: "status-message",
+          timestamp: statusTimestamp,
         },
         contextId: task.contextId,
       }
@@ -151,17 +153,15 @@ export class TaskService {
       task.id,
       artifact,
     )
+    const formattedArtifact = this.artifactStorage.toA2AArtifact(
+      storedArtifact,
+    )
 
     return {
       kind: "artifact-update",
       taskId: task.id,
       contextId: task.contextId,
-      artifact: {
-        artifactId: storedArtifact.id,
-        name: storedArtifact.name,
-        description: storedArtifact.description,
-        parts: storedArtifact.parts,
-      },
+      artifact: formattedArtifact,
     }
   }
 
