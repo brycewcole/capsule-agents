@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
 import { Textarea } from "./ui/textarea.tsx"
 import { Button } from "@/components/ui/button.tsx"
 import { Badge } from "@/components/ui/badge.tsx"
@@ -11,6 +11,7 @@ import {
   Download,
   Eye,
   Loader2,
+  FileText,
   MessageSquare,
   PanelRightOpen,
   X,
@@ -70,6 +71,15 @@ type TimelineTask = {
   artifacts?: Artifact[]
 }
 
+type TaskTimelineUpdate = {
+  id: string
+  kind: "message" | "artifact"
+  timestamp: number
+  role?: "user" | "agent" | "status"
+  text?: string
+  artifact?: Artifact
+}
+
 type ArtifactPreviewState = {
   artifactId: string
   title: string
@@ -90,9 +100,7 @@ type TimelineEntry = {
     timestamp: number
     isLoading: boolean
     capabilityCalls?: CapabilityCall[]
-    taskUpdates?: Array<
-      { id: string; role: "user" | "agent" | "status"; text: string }
-    >
+    taskUpdates?: TaskTimelineUpdate[]
   }
   tasks: TimelineTask[]
 }
@@ -153,6 +161,10 @@ const toTimestampSeconds = (value?: string | number | null) => {
     return Number.isNaN(parsed) ? null : parsed / 1000
   }
   return null
+}
+
+const normalizeTimestamp = (value?: string | number | null) => {
+  return toTimestampSeconds(value ?? null)
 }
 
 const taskStatusMeta = {
@@ -310,51 +322,95 @@ const createArtifactFileName = (
   return `${base}${extension}`
 }
 
-const buildTaskUpdates = (task: A2ATask) => {
-  const updates: Array<
-    { id: string; role: "user" | "agent" | "status"; text: string }
-  > = []
+const buildTaskUpdates = (task: A2ATask): TaskTimelineUpdate[] => {
+  const updates: TaskTimelineUpdate[] = []
   const seenIds = new Set<string>()
 
   if (Array.isArray(task.history)) {
-    for (const message of task.history) {
-      if (!message || typeof message !== "object") continue
+    task.history.forEach((message, index) => {
+      if (!message || typeof message !== "object") return
       const role = (message as { role?: string }).role
-      const metadata = (message as { metadata?: { kind?: string } }).metadata
+      const metadata = (message as {
+        metadata?: { kind?: string; timestamp?: string | number }
+      }).metadata
 
-      // Determine if this is a status message or regular agent/user message
       const isStatusMessage = metadata?.kind === "status-message"
-
       if (
         !isStatusMessage && role !== "user" && role !== "assistant" &&
         role !== "agent"
-      ) continue
+      ) {
+        return
+      }
 
       const normalizedRole = isStatusMessage
         ? "status"
         : (role === "user" ? "user" : "agent")
       const parts = (message as { parts?: Part[] }).parts ?? []
       const text = extractTextFromParts(parts)
-      if (!text) continue
+      if (!text) return
 
       const messageId = (message as { messageId?: string }).messageId ??
-        `${task.id ?? "task"}-history-${updates.length}`
-
-      // Skip duplicates based on message ID
-      if (seenIds.has(messageId)) continue
+        `${task.id ?? "task"}-history-${index}`
+      if (seenIds.has(messageId)) return
       seenIds.add(messageId)
+
+      const timestamp = normalizeTimestamp(
+        (metadata?.timestamp ?? null) as string | number | null,
+      )
+      if (timestamp == null) return
 
       updates.push({
         id: messageId,
+        kind: "message",
         role: normalizedRole,
         text,
+        timestamp,
       })
-    }
+    })
   }
 
-  // Note: We don't add task.status?.message here because it's already in history
+  if (Array.isArray(task.artifacts)) {
+    task.artifacts.forEach((artifact, index) => {
+      if (!artifact || typeof artifact !== "object") return
+      const artifactId = artifact.artifactId ||
+        `${task.id ?? "task"}-artifact-${index}`
+      if (seenIds.has(artifactId)) return
+      seenIds.add(artifactId)
 
-  return updates
+      const artifactMetadata = artifact.metadata as
+        | { timestamp?: string | number }
+        | undefined
+      const partMetadata = getTextPartMetadata(artifact)
+      const metadataTimestamp = artifactMetadata?.timestamp ??
+        (typeof partMetadata?.timestamp === "string" ||
+            typeof partMetadata?.timestamp === "number"
+          ? (partMetadata.timestamp as string | number)
+          : undefined)
+
+      const timestamp = normalizeTimestamp(
+        (metadataTimestamp ?? null) as string | number | null,
+      )
+      if (timestamp == null) return
+
+      updates.push({
+        id: artifactId,
+        kind: "artifact",
+        timestamp,
+        artifact,
+        text: getArtifactTextContent(artifact),
+      })
+    })
+  }
+
+  return updates.sort((a, b) => {
+    if (a.timestamp === b.timestamp) {
+      if (a.kind === b.kind) {
+        return a.id.localeCompare(b.id)
+      }
+      return a.kind === "message" ? -1 : 1
+    }
+    return a.timestamp - b.timestamp
+  })
 }
 
 interface ChatInterfaceProps {
@@ -414,7 +470,7 @@ export default function ChatInterface({
     saveDraftForContext(contextId, input)
   }, [contextId, input])
 
-  const formatTimestamp = useCallback((seconds: number) => {
+const formatTimestamp = useCallback((seconds: number) => {
     return new Intl.DateTimeFormat(undefined, {
       hour: "numeric",
       minute: "numeric",
@@ -481,6 +537,104 @@ export default function ChatInterface({
     document.body.removeChild(link)
     URL.revokeObjectURL(url)
   }, [])
+
+  const renderTaskUpdate = useCallback((update: TaskTimelineUpdate) => {
+    const renderCard = (
+      label: string,
+      containerClass: string,
+      headerClass: string,
+      body: ReactNode,
+    ) => (
+      <div key={update.id} className="pl-2">
+        <div className={`rounded-lg border px-4 py-3 shadow-sm ${containerClass}`}>
+          <div className={`mb-2 flex items-center justify-between text-[11px] font-semibold uppercase tracking-wide ${headerClass}`}>
+            <span>{label}</span>
+            <span className="text-[10px] uppercase text-muted-foreground">
+              {formatTimestamp(update.timestamp)}
+            </span>
+          </div>
+          {body}
+        </div>
+      </div>
+    )
+
+    if (update.kind === "artifact" && update.artifact) {
+      const artifact = update.artifact
+      const artifactInfo = getArtifactContentInfo(artifact)
+      const hasContent = artifactInfo.content.length > 0
+
+      return renderCard(
+        "Artifact",
+        "border-indigo-400/60 bg-indigo-50/70 dark:border-indigo-900/70 dark:bg-indigo-950/40",
+        "text-indigo-800/80 dark:text-indigo-200/80",
+        <div className="space-y-3 text-indigo-900 dark:text-indigo-100">
+          <div className="flex items-center gap-2 text-sm font-semibold">
+            <FileText className="h-4 w-4" />
+            <span>{artifact.name || "Untitled Artifact"}</span>
+          </div>
+          {artifact.description && (
+            <div className="text-xs">
+              {artifact.description}
+            </div>
+          )}
+          {artifactInfo.displayMimeType && (
+            <div className="text-[11px] uppercase tracking-wide text-indigo-700/70 dark:text-indigo-200/70">
+              {artifactInfo.displayMimeType}
+            </div>
+          )}
+          <div className="flex flex-wrap items-center gap-3 text-sm font-medium text-indigo-700 dark:text-indigo-200">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-indigo-700 hover:text-indigo-900 dark:text-indigo-200 dark:hover:text-indigo-100 px-2"
+              onClick={() => openArtifactPreview(artifact)}
+              disabled={!hasContent}
+            >
+              <Eye className="mr-1 h-4 w-4" />
+              Preview
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-indigo-700 hover:text-indigo-900 dark:text-indigo-200 dark:hover:text-indigo-100 px-2"
+              onClick={() => downloadArtifact(artifact)}
+              disabled={!hasContent}
+            >
+              <Download className="mr-1 h-4 w-4" />
+              Download
+            </Button>
+          </div>
+        </div>,
+      )
+    }
+
+    const roleLabel = update.role === "user"
+      ? "You"
+      : update.role === "agent"
+      ? "Agent"
+      : "Status"
+    const headerClass = update.role === "user"
+      ? "text-slate-700/80 dark:text-sky-200/80"
+      : update.role === "agent"
+      ? "text-slate-700/80 dark:text-slate-200/80"
+      : "text-emerald-800/80 dark:text-emerald-100/80"
+    const containerClass = update.role === "user"
+      ? "border-sky-400/60 bg-sky-200/70 dark:border-sky-900/70 dark:bg-sky-900/40"
+      : update.role === "agent"
+      ? "border-slate-200 bg-white text-slate-900 dark:border-slate-700 dark:bg-slate-900/60 dark:text-slate-100"
+      : "border-border/60 bg-card/95 dark:border-border/70 dark:bg-slate-950/50"
+
+    return renderCard(
+      roleLabel,
+      containerClass,
+      headerClass,
+      <div className="prose prose-sm text-slate-900 dark:prose-invert max-w-none">
+        <Markdown remarkPlugins={[remarkGfm]}>
+          {update.text ?? ""}
+        </Markdown>
+      </div>,
+    )
+  }, [downloadArtifact, formatTimestamp, openArtifactPreview])
 
   const upsertTask = useCallback(
     (
@@ -599,11 +753,6 @@ export default function ChatInterface({
 
     console.log("Loading initial chat data:", initialChatData)
 
-    const normalizeTimestamp = (value?: string | number | null) => {
-      const seconds = toTimestampSeconds(value ?? null)
-      return seconds ?? Date.now() / 1000
-    }
-
     const normalizeMessage = (msg: {
       role?: string
       content?: string
@@ -628,9 +777,8 @@ export default function ChatInterface({
         capabilityCalls: Array.isArray(msg.capabilityCalls)
           ? msg.capabilityCalls as CapabilityCall[]
           : undefined,
-        timestamp: msg.metadata?.timestamp
-          ? normalizeTimestamp(msg.metadata.timestamp)
-          : undefined,
+        timestamp: normalizeTimestamp(msg.metadata?.timestamp) ??
+          Date.now() / 1000,
       }
     }
 
@@ -1102,6 +1250,7 @@ export default function ChatInterface({
           const targetEntryId = resolveEntryIdForTask(artifactEvent.taskId)
 
           // Update the task's artifacts
+          let updatedTaskForTimeline: A2ATask | undefined
           setTimelineEntries((prev) => {
             return prev.map((entry) => {
               if (entry.id !== targetEntryId) return entry
@@ -1138,6 +1287,7 @@ export default function ChatInterface({
                     ...timelineTask.task,
                     artifacts: updatedArtifacts,
                   }
+                  updatedTaskForTimeline = updatedTask
 
                   return {
                     ...timelineTask,
@@ -1148,6 +1298,18 @@ export default function ChatInterface({
               }
             })
           })
+          if (updatedTaskForTimeline && targetEntryId) {
+            const taskUpdates = buildTaskUpdates(updatedTaskForTimeline)
+            updateEntry(targetEntryId, (entry) => ({
+              ...entry,
+              agent: entry.agent
+                ? {
+                  ...entry.agent,
+                  taskUpdates,
+                }
+                : entry.agent,
+            }))
+          }
         }
       }
     } catch (error) {
@@ -1349,6 +1511,7 @@ export default function ChatInterface({
                         entry.tasks.some((item) => {
                           const updates = buildTaskUpdates(item.task)
                           return updates.some((update) =>
+                            update.kind === "message" &&
                             update.role === "user" &&
                             update.text === entry.user.content
                           )
@@ -1537,45 +1700,7 @@ export default function ChatInterface({
                                         </p>
                                       )
                                       : (
-                                        updates.map((update) => (
-                                          <div
-                                            key={update.id}
-                                            className="pl-2"
-                                          >
-                                            <div
-                                              className={`rounded-lg border px-4 py-3 shadow-sm ${
-                                                update.role === "user"
-                                                  ? "border-sky-400/60 bg-sky-200/70 dark:border-sky-900/70 dark:bg-sky-900/40"
-                                                  : update.role === "agent"
-                                                  ? "border-slate-200 bg-white text-slate-900 dark:border-slate-700 dark:bg-slate-900/60 dark:text-slate-100"
-                                                  : "border-border/60 bg-card/95 dark:border-border/70 dark:bg-slate-950/50"
-                                              }`}
-                                            >
-                                              <div
-                                                className={`mb-2 text-[11px] font-semibold uppercase tracking-wide ${
-                                                  update.role === "user"
-                                                    ? "text-slate-700/80 dark:text-sky-200/80"
-                                                    : update.role === "agent"
-                                                    ? "text-slate-700/80 dark:text-slate-200/80"
-                                                    : "text-emerald-800/80 dark:text-emerald-100/80"
-                                                }`}
-                                              >
-                                                {update.role === "user"
-                                                  ? "You"
-                                                  : update.role === "agent"
-                                                  ? "Agent"
-                                                  : "Status"}
-                                              </div>
-                                              <div className="prose prose-sm text-slate-900 dark:prose-invert max-w-none">
-                                                <Markdown
-                                                  remarkPlugins={[remarkGfm]}
-                                                >
-                                                  {update.text}
-                                                </Markdown>
-                                              </div>
-                                            </div>
-                                          </div>
-                                        ))
+                                        updates.map(renderTaskUpdate)
                                       )}
                                     {capabilityCallsForTask.length > 0 && (
                                       <ul className="ml-6 list-disc space-y-1 text-xs text-emerald-800/90 dark:text-emerald-100">
@@ -1590,81 +1715,6 @@ export default function ChatInterface({
                                           </li>
                                         ))}
                                       </ul>
-                                    )}
-                                    {item.artifacts &&
-                                      item.artifacts.length > 0 && (
-                                      <div className="space-y-3 pl-2">
-                                        {item.artifacts.map((artifact) => {
-                                          const artifactInfo =
-                                            getArtifactContentInfo(artifact)
-                                          const hasContent =
-                                            artifactInfo.content.length > 0
-
-                                          return (
-                                            <div
-                                              key={artifact.artifactId}
-                                              className="rounded-lg border border-indigo-400/60 bg-indigo-50/70 dark:border-indigo-900/70 dark:bg-indigo-950/40 px-4 py-3 shadow-sm"
-                                            >
-                                              <div className="flex flex-wrap items-start justify-between gap-2">
-                                                <div className="min-w-0 space-y-1">
-                                                  <div className="flex items-center gap-2 text-sm font-semibold text-indigo-900 dark:text-indigo-100">
-                                                    <span>
-                                                      📦 {artifact.name ||
-                                                        "Artifact"}
-                                                    </span>
-                                                    <Badge
-                                                      variant="secondary"
-                                                      className="uppercase tracking-wide"
-                                                    >
-                                                      Artifact
-                                                    </Badge>
-                                                  </div>
-                                                  {artifactInfo
-                                                    .displayMimeType && (
-                                                    <div className="text-[11px] uppercase tracking-wide text-indigo-700/70 dark:text-indigo-200/70">
-                                                      {artifactInfo
-                                                        .displayMimeType}
-                                                    </div>
-                                                  )}
-                                                  {artifact.description && (
-                                                    <div className="text-xs text-indigo-700/80 dark:text-indigo-300/80">
-                                                      {artifact.description}
-                                                    </div>
-                                                  )}
-                                                </div>
-                                                <div className="flex items-center gap-2">
-                                                  <Button
-                                                    variant="ghost"
-                                                    size="sm"
-                                                    className="text-indigo-700 hover:text-indigo-900 dark:text-indigo-200 dark:hover:text-indigo-100"
-                                                    onClick={() =>
-                                                      openArtifactPreview(
-                                                        artifact,
-                                                      )}
-                                                    disabled={!hasContent}
-                                                  >
-                                                    <Eye className="h-4 w-4" />
-                                                    Preview
-                                                  </Button>
-                                                  <Button
-                                                    variant="ghost"
-                                                    size="sm"
-                                                    className="text-indigo-700 hover:text-indigo-900 dark:text-indigo-200 dark:hover:text-indigo-100"
-                                                    onClick={() =>
-                                                      downloadArtifact(
-                                                        artifact,
-                                                      )}
-                                                    disabled={!hasContent}
-                                                  >
-                                                    <Download className="h-4 w-4" />
-                                                    Download
-                                                  </Button>
-                                                </div>
-                                              </div>
-                                            </div>
-                                          )
-                                        })}
-                                      </div>
                                     )}
                                   </div>
                                 </div>
