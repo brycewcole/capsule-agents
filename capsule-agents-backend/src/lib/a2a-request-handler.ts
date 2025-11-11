@@ -410,6 +410,16 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
           statusHandler(currentTaskRef.current)
         }
 
+        const toolPreamble = text
+          ? text
+          : `Using ${toolCalls.map((tc) => tc.toolName).join(", ")}`
+        const statusUpdate = this.taskService.transitionState(
+          currentTaskRef.current,
+          "working",
+          toolPreamble,
+        )
+        statusHandler(statusUpdate)
+
         console.log("checking: " + JSON.stringify(toolResults))
         for (const toolResult of toolResults || []) {
           if (
@@ -429,16 +439,6 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
             statusHandler(artifactEvent)
           }
         }
-
-        const toolPreamble = text
-          ? text
-          : `Used ${toolCalls.map((tc) => tc.toolName).join(", ")}`
-        const statusUpdate = this.taskService.transitionState(
-          currentTaskRef.current,
-          "working",
-          toolPreamble,
-        )
-        statusHandler(statusUpdate)
       }
     }
   }
