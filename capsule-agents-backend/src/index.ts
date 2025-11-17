@@ -133,5 +133,25 @@ app.get(
 )
 
 const port = parseInt(Deno.env.get("PORT") || "80")
+const agentUrl = Deno.env.get("AGENT_URL")
+if (!agentUrl) {
+  throw new Error("AGENT_URL environment variable is not set")
+}
+
+// Display ASCII art banner
+console.log(`
+▞▀▖            ▜    
+▌  ▝▀▖▛▀▖▞▀▘▌ ▌▐ ▞▀▖
+▌ ▖▞▀▌▙▄▘▝▀▖▌ ▌▐ ▛▀ 
+▝▀ ▝▀▘▌  ▀▀ ▝▀▘ ▘▝▀▘
+▞▀▖         ▐       
+▙▄▌▞▀▌▞▀▖▛▀▖▜▀ ▞▀▘  
+▌ ▌▚▄▌▛▀ ▌ ▌▐ ▖▝▀▖  
+▘ ▘▗▄▘▝▀▘▘ ▘ ▀ ▀▀   
+
+
+Access your agent at: ${agentUrl}/editor
+Or via API at: ${agentUrl}
+`)
 console.info(`Server running on port ${port}`)
 Deno.serve({ port }, app.fetch)
