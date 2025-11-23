@@ -1,0 +1,5 @@
+agent:
+  name: Basic Agent
+  description: A simple agent with essential tools for basic conversations
+  model:
+    name: openai/gpt-5-mini
