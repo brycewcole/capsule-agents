@@ -280,7 +280,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
       name: agentName,
       description: agentDescription,
       url: agentUrl,
-      preferredTransport: "json-rpc",
+      preferredTransport: "JSONRPC",
       version: "1.0.0",
       protocolVersion: "1.0",
       capabilities: {
