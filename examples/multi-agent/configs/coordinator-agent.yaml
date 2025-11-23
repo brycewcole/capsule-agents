@@ -10,6 +10,6 @@ agent:
       enabled: true
   a2a:
     - name: research_agent
-      agent_url: 'http://agent-research:80'
+      agent_url: "http://agent-research:80"
     - name: writer_agent
-      agent_url: 'http://agent-writer:80'
+      agent_url: "http://agent-writer:80"
