@@ -4,7 +4,7 @@ services:
     ports:
       - "8001:80"
     volumes:
-      - ./agent.config.json:/app/agent.config.json
+      - ./agent.config.yaml:/app/agent.config.yaml
     environment:
       - AGENT_URL=http://localhost:8001
     restart: unless-stopped

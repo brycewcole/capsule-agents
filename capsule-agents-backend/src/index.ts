@@ -75,7 +75,7 @@ if (workspaceFiles.length > 0) {
       "./services/workspace.service.ts"
     )
     const configDir =
-      Deno.env.get("AGENT_CONFIG_FILE")?.replace("/agent.config.json", "") ||
+      Deno.env.get("AGENT_CONFIG_FILE")?.replace(/\/agent\.config\.(yaml|yml)$/, "") ||
       "/app/config"
     await copyConfigFilesToWorkspace(workspaceFiles, configDir)
     console.info(`Copied ${workspaceFiles.length} workspace file(s)`)

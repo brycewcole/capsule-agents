@@ -4,7 +4,7 @@ services:
     image: capsule-agents
     ports: ["8001:80"]
     volumes:
-      - ./configs/research-agent.json:/app/agent.config.json
+      - ./configs/research-agent.yaml:/app/agent.config.yaml
     env_file:
       - ../../.env
     environment:
@@ -17,7 +17,7 @@ services:
     image: capsule-agents
     ports: ["8002:80"]
     volumes:
-      - ./configs/writer-agent.json:/app/agent.config.json
+      - ./configs/writer-agent.yaml:/app/agent.config.yaml
       - ./shared-workspace:/app/agent-workspace
     env_file:
       - ../../.env
@@ -31,7 +31,7 @@ services:
     image: capsule-agents
     ports: ["8003:80"]
     volumes:
-      - ./configs/coordinator-agent.json:/app/agent.config.json
+      - ./configs/coordinator-agent.yaml:/app/agent.config.yaml
     env_file:
       - ../../.env
     environment:
