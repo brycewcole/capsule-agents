@@ -1086,7 +1086,6 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
       }
       | null = null
     const artifactStreamStates = new Map<string, ArtifactStreamState>()
-    const recentStatusTexts: string[] = []
 
     try {
       currentTaskRef.current = this.taskService.createTask(
@@ -1132,26 +1131,8 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
       const originalMessageCount = messages.length
 
       // Queue-based status handler for streaming version
-      const captureStatusText = (statusEvent: A2A.TaskStatusUpdateEvent) => {
-        const message = statusEvent.status.message
-        if (!message || !Array.isArray(message.parts)) return
-        const text = message.parts
-          .filter((part): part is A2A.TextPart => part.kind === "text")
-          .map((part) => part.text?.trim())
-          .filter(Boolean)
-          .join(" ")
-        if (!text) return
-        recentStatusTexts.push(text)
-        if (recentStatusTexts.length > 10) {
-          recentStatusTexts.shift()
-        }
-      }
-
       const queueStatusHandler: StatusUpdateHandler = (event) => {
         eventUpdateQueue.push(event)
-        if (event.kind === "status-update") {
-          captureStatusText(event)
-        }
       }
 
       const allTools = {
@@ -1174,7 +1155,6 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
         (statusEvent) => {
           queueStatusHandler(statusEvent)
         },
-        () => [...recentStatusTexts],
       )
 
       const modelMessages = Vercel.convertToModelMessages(messages, {

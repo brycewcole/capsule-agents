@@ -22,7 +22,6 @@ export class StatusUpdateService {
     getModel: () => Vercel.LanguageModel,
     getMessageHistory: () => Vercel.ModelMessage[],
     eventEmitter: (event: A2A.TaskStatusUpdateEvent) => void,
-    getRecentStatusTexts?: () => string[],
   ): void {
     if (this.intervals.has(taskId)) {
       console.warn(`Status updates already running for task ${taskId}`)
@@ -40,7 +39,6 @@ export class StatusUpdateService {
       getModel,
       getMessageHistory,
       eventEmitter,
-      getRecentStatusTexts,
       abortController.signal,
     )
 
@@ -51,7 +49,6 @@ export class StatusUpdateService {
         getModel,
         getMessageHistory,
         eventEmitter,
-        getRecentStatusTexts,
         abortController.signal,
       )
     }, STATUS_UPDATE_INTERVAL_MS)
@@ -87,7 +84,6 @@ export class StatusUpdateService {
     getModel: () => Vercel.LanguageModel,
     getMessageHistory: () => Vercel.ModelMessage[],
     eventEmitter: (event: A2A.TaskStatusUpdateEvent) => void,
-    getRecentStatusTexts: (() => string[]) | undefined,
     signal: AbortSignal,
   ): Promise<void> {
     try {
@@ -98,16 +94,19 @@ export class StatusUpdateService {
       const model = getModel()
       const messages = getMessageHistory()
 
-      const recentStatuses = getRecentStatusTexts?.() ?? []
+      const recentStatuses = a2aMessageRepository.getRecentStatusTexts(
+        taskId,
+        5,
+      )
       const dedupedStatuses = recentStatuses
         .map((s) => s.trim())
         .filter(Boolean)
-        .slice(-5)
 
-      const statusContext =
-        dedupedStatuses.length > 0
-          ? `Previous recent status updates (do not repeat): ${dedupedStatuses.join(" | ")}`
-          : null
+      const statusContext = dedupedStatuses.length > 0
+        ? `Previous recent status updates (do not repeat): ${
+          dedupedStatuses.join(" | ")
+        }`
+        : null
 
       const result = await Vercel.generateText({
         model,

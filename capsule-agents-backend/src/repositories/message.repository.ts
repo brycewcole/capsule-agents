@@ -246,6 +246,34 @@ export class A2AMessageRepository {
     const res = db.prepare(`DELETE FROM messages WHERE task_id = ?`).run(taskId)
     return getChanges(res)
   }
+
+  /**
+   * Get recent status messages for a task
+   * @param taskId Task ID
+   * @param limit Maximum number of status messages to return (default: 10)
+   * @returns Array of status message texts, most recent first
+   */
+  getRecentStatusTexts(taskId: string, limit: number = 10): string[] {
+    const db = getDb()
+    const rows = db.prepare(
+      `SELECT parts FROM messages
+       WHERE task_id = ?
+       AND json_extract(metadata, '$.kind') = 'status-message'
+       ORDER BY timestamp DESC
+       LIMIT ?`,
+    ).all(taskId, limit) as { parts: string }[]
+
+    return rows
+      .map((row) => {
+        const parts = JSON.parse(row.parts) as A2A.Part[]
+        return parts
+          .filter((part): part is A2A.TextPart => part.kind === "text")
+          .map((part) => part.text?.trim())
+          .filter(Boolean)
+          .join(" ")
+      })
+      .filter(Boolean)
+  }
 }
 
 export const a2aMessageRepository = new A2AMessageRepository()
