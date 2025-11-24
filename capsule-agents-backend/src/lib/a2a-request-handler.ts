@@ -36,8 +36,10 @@ type StreamEmitUnion =
   | A2A.TaskStatusUpdateEvent
   | A2A.TaskArtifactUpdateEvent
 
+type TaskEmitUnion = Exclude<StreamEmitUnion, A2A.Message>
+
 type StatusUpdateHandler = (
-  event: StreamEmitUnion,
+  event: TaskEmitUnion,
 ) => void
 
 type ArtifactStreamState = {
@@ -784,18 +786,6 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
           contextId,
           taskId: currentTaskRef.current?.id,
         })
-
-        // Only create A2A messages if we're NOT in a task flow
-        // During task flow, we only emit task events and artifacts
-        if (message.role === "assistant" && !currentTaskRef.current) {
-          const a2aMessage = this.vercelService.fromUIMessageToA2A(
-            message,
-            contextId,
-            undefined, // No task ID since we're not in a task flow
-          )
-          this.a2aMessageRepository.createMessage(a2aMessage)
-          finalMessageHolder.message = a2aMessage
-        }
       }
 
       console.info(
@@ -804,6 +794,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
     }
   }
 
+  // Is this needed?
   private consumeUIResponse(response: Response): void {
     ;(async () => {
       try {
@@ -1058,7 +1049,6 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
 
     await this.saveUserMessage(params.message, contextId)
 
-    // ========== STAGE 1: Initial Routing ==========
     console.info("Stage 1: Initial routing")
     const routing = await this.handleInitialRouting(params, contextId)
 
@@ -1070,11 +1060,9 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
       return
     }
 
-    // ========== STAGE 2: Task Creation and Execution ==========
     console.info("Stage 2: Task creation requested")
 
-    // Queue for status updates that need to be yielded progressively
-    const eventUpdateQueue: StreamEmitUnion[] = []
+    const eventUpdateQueue: TaskEmitUnion[] = []
     const currentTaskRef = { current: null as A2A.Task | null }
     let artifactCreated = false
     let artifactDetails:
@@ -1130,7 +1118,6 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
       const finalMessageHolder = { message: null as A2A.Message | null }
       const originalMessageCount = messages.length
 
-      // Queue-based status handler for streaming version
       const queueStatusHandler: StatusUpdateHandler = (event) => {
         eventUpdateQueue.push(event)
       }
@@ -1141,7 +1128,6 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
         createArtifact: artifactTool,
       }
 
-      // Start async status updates
       this.statusUpdateService.startStatusUpdates(
         currentTaskRef.current.id,
         contextId,
@@ -1163,9 +1149,6 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
       console.info(
         `Sending ${modelMessages.length} messages to model (streaming)`,
       )
-      console.info(
-        `Model messages: ${JSON.stringify(modelMessages, null, 2)}`,
-      )
       console.debug("Sending message to model:", {
         contextId: params.message.contextId,
         messages: modelMessages,
@@ -1173,7 +1156,6 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
         systemPrompt,
       })
 
-      // Create AbortController for this task stream
       const abortController = new AbortController()
 
       // Refs to track artifact creation
