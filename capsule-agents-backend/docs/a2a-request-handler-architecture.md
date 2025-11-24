@@ -7,11 +7,13 @@ The `CapsuleAgentA2ARequestHandler` is the core component that implements the Ag
 ## Core Entry Points
 
 ### 1. `sendMessage(params)` → `Promise<Message | Task>`
+
 - **Purpose**: Non-streaming synchronous message handling
 - **Returns**: Complete Task with artifacts or direct Message response
 - **Use Case**: When client doesn't need real-time streaming updates
 
 ### 2. `sendMessageStream(params)` → `AsyncGenerator<Task | Message | StatusUpdate | ArtifactUpdate>`
+
 - **Purpose**: Streaming message handling with real-time updates
 - **Yields**: Progressive events as they occur (task creation, status updates, artifact chunks)
 - **Use Case**: When client needs live feedback during task execution
@@ -23,21 +25,25 @@ The `CapsuleAgentA2ARequestHandler` is the core component that implements the Ag
 **Purpose**: Determine if request needs task creation or can be answered directly
 
 **Process**:
+
 1. Save user message to database
 2. Call `handleInitialRouting()` which uses LLM to decide:
    - Simple question → Direct message response (skip to return)
    - Complex request needing tools → Create task (proceed to Stage 2)
 
 **Decision Tool**:
+
 ```typescript
 tools: {
   createTask: tool({
-    description: "Create a task for complex requests requiring tools/multi-step processing"
+    description:
+      "Create a task for complex requests requiring tools/multi-step processing",
   })
 }
 ```
 
 **Outcome**:
+
 - If LLM calls `createTask`: `shouldCreateTask = true`
 - Otherwise: Return direct message response immediately
 
@@ -48,6 +54,7 @@ tools: {
 **Purpose**: Execute the task with full tool access and streaming status updates
 
 **Setup**:
+
 ```typescript
 // Core tracking structures
 const currentTaskRef = { current: Task | null }
@@ -111,6 +118,7 @@ const eventUpdateQueue = TaskEmitUnion[]
 **Two Paths**:
 
 **Path A: Natural Artifact** (LLM called `createArtifact` tool)
+
 ```typescript
 if (artifactResultRef.current) {
   // Artifact was already streamed in Stage 2
@@ -120,6 +128,7 @@ if (artifactResultRef.current) {
 ```
 
 **Path B: Forced Artifact** (No artifact created)
+
 ```typescript
 else {
   // Force LLM to generate artifact
@@ -144,9 +153,11 @@ else {
 ### Artifact Streaming Pipeline
 
 #### `processArtifactStream(task, streamResult, artifactStreamStates)`
+
 **Unified artifact streaming for both natural and forced artifacts**
 
 Process:
+
 1. Listen to `streamResult.fullStream` events
 2. On `tool-input-start`: Initialize artifact state with unique ID
 3. On `tool-call`: Update artifact metadata (name, description)
@@ -156,9 +167,11 @@ Process:
 5. Result: Progressive artifact emission chunk-by-chunk
 
 #### `forceArtifactGeneration(task, contextId)`
+
 **Force artifact when LLM doesn't create one naturally**
 
 Process:
+
 1. Create new `streamText()` call with forced tool choice:
    ```typescript
    toolChoice: { type: "tool", toolName: "createArtifact" }
@@ -169,9 +182,11 @@ Process:
 ### Status Update System
 
 #### `StatusUpdateService.startStatusUpdates(taskId, ...)`
+
 **Background status generation**
 
 Process:
+
 1. Runs every 5 seconds (configurable interval)
 2. Loads recent status texts from database: `getRecentStatusTexts(taskId, 5)`
 3. Generates new status using LLM:
@@ -189,9 +204,11 @@ Process:
 ### Event Orchestration
 
 #### `orchestrateStreamEvents(streamResult, task, artifactStates, statusQueue, shouldStreamArtifacts)`
+
 **Unified event emission replacing multiple queue drain loops**
 
 Process:
+
 ```typescript
 if (shouldStreamArtifacts) {
   for await (artifact of processArtifactStream(...)) {
@@ -210,6 +227,7 @@ while (statusQueue.length > 0) yield statusQueue.shift()
 ```
 
 Benefits:
+
 - Single point of event emission
 - No timing dependencies or `setTimeout` hacks
 - Guaranteed ordering: artifacts before their status updates
@@ -217,9 +235,11 @@ Benefits:
 ### Message Persistence
 
 #### `persistStreamMessages(messages, contextId, originalCount, taskId?)`
+
 **Shared persistence for both streaming and non-streaming**
 
 Process:
+
 1. Extract new messages: `messages.slice(originalMessageCount)`
 2. Ensure each has an ID (generate if missing)
 3. Upsert to database via `vercelService.upsertMessage()`
@@ -232,11 +252,13 @@ Process:
 ### Single Source of Truth: `artifactResultRef`
 
 **Before Refactor** (3 separate tracking mechanisms):
+
 - `artifactStreamStates` Map
 - `artifactCreatedRef` boolean
 - `artifactDetailsRef` object
 
 **After Refactor** (1 unified ref):
+
 ```typescript
 const artifactResultRef: {
   current: {
@@ -249,6 +271,7 @@ const artifactResultRef: {
 ```
 
 **Population**:
+
 - Set by `onStepFinish` handler when artifact detected
 - Uses `extractArtifactFromStepResult()` to parse tool results
 - Matched with streaming state via toolCallId
@@ -258,18 +281,22 @@ const artifactResultRef: {
 ## Critical Design Decisions
 
 ### 1. No Double Emission
+
 **Problem**: Previously artifacts were emitted during `tool-input-delta` AND re-emitted in Stage 3
 **Solution**: Artifacts only emitted during Stage 2 stream processing. Stage 3 ONLY persists.
 
 ### 2. Unified Streaming Path
+
 **Problem**: Natural artifacts and forced artifacts used completely different streaming code
 **Solution**: Both use `processArtifactStream()` - forced generation returns `streamResult` that feeds into same pipeline
 
 ### 3. Database-Backed Status History
+
 **Problem**: Status texts tracked in memory, lost on restart
 **Solution**: Load recent statuses from database via `getRecentStatusTexts(taskId)`. Single source of truth.
 
 ### 4. No Timing Hacks
+
 **Problem**: Used `setTimeout(100ms)` to wait for async callbacks
 **Solution**: Proper stream consumption with `for await` loops. Events processed in order.
 
@@ -313,6 +340,7 @@ User Message
 ## Database Schema
 
 ### Messages Table
+
 ```sql
 CREATE TABLE messages (
   id TEXT PRIMARY KEY,
@@ -326,10 +354,12 @@ CREATE TABLE messages (
 ```
 
 **Special Metadata**:
+
 - `{ kind: "status-message" }` - Generated status updates
 - Used for filtering: `WHERE json_extract(metadata, '$.kind') = 'status-message'`
 
 ### Artifacts Table
+
 ```sql
 CREATE TABLE artifacts (
   id TEXT PRIMARY KEY,
@@ -342,6 +372,7 @@ CREATE TABLE artifacts (
 ```
 
 ### Tasks Table
+
 ```sql
 CREATE TABLE tasks (
   id TEXT PRIMARY KEY,
@@ -358,11 +389,13 @@ CREATE TABLE tasks (
 ## Error Handling
 
 ### Abort Controllers
+
 - Created per task: `taskAbortControllers.set(taskId, controller)`
 - Allows task cancellation via `cancelTask()`
 - Cleanup on completion or error
 
 ### Error Flow
+
 ```typescript
 catch (error) {
   if (currentTaskRef.current) {

@@ -300,8 +300,8 @@ const ensureArtifactTimestamp = (artifact: Artifact): Artifact => {
     | undefined
   const partMetadata = getTextPartMetadata(artifact)
   const partTimestamp = partMetadata && typeof (partMetadata as {
-    timestamp?: unknown
-  }).timestamp !== "undefined"
+        timestamp?: unknown
+      }).timestamp !== "undefined"
     ? (partMetadata as { timestamp?: unknown }).timestamp
     : null
   const timestampSeconds = normalizeTimestamp(
@@ -1291,9 +1291,8 @@ export default function ChatInterface({
           ) {
             const taskUpdates = computeTaskUpdates(
               nextTask ?? undefined,
-              timelineEntriesRef.current.find((e) =>
-                e.id === targetEntryId
-              ) ?? timelineEntriesRef.current.at(-1)!,
+              timelineEntriesRef.current.find((e) => e.id === targetEntryId) ??
+                timelineEntriesRef.current.at(-1)!,
             )
             updateEntry(targetEntryId, (entry) => {
               return {
@@ -1362,10 +1361,9 @@ export default function ChatInterface({
 
           // Fall back to the active entry or the most recent entry if we
           // somehow don't have a mapped entry for this task yet.
-          const targetEntryId =
-            resolveEntryIdForTask(artifactEvent.taskId) ??
-              activeEntryIdRef.current ??
-              timelineEntriesRef.current.at(-1)?.id
+          const targetEntryId = resolveEntryIdForTask(artifactEvent.taskId) ??
+            activeEntryIdRef.current ??
+            timelineEntriesRef.current.at(-1)?.id
 
           if (!targetEntryId) {
             console.warn(
