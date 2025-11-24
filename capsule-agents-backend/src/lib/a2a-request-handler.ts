@@ -311,6 +311,40 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
     })
   }
 
+  /**
+   * Persist messages from stream completion to database
+   * Shared between sendMessage and sendMessageStream
+   */
+  private async persistStreamMessages(
+    messages: Vercel.UIMessage[],
+    contextId: string,
+    originalMessageCount: number,
+    taskId?: string,
+  ): Promise<void> {
+    const newMessages = messages.slice(originalMessageCount)
+
+    if (newMessages.length === 0) {
+      console.warn("No new messages to persist from stream")
+      return
+    }
+
+    for (const message of newMessages) {
+      if (!message.id) {
+        message.id = crypto.randomUUID()
+      }
+
+      await this.vercelService.upsertMessage({
+        message,
+        contextId,
+        taskId,
+      })
+    }
+
+    console.info(
+      `Persisted ${newMessages.length} new message(s) from stream response`,
+    )
+  }
+
   private async prepareStreamContext(contextId: string): Promise<{
     tools: Record<string, Vercel.Tool>
     mcpTools: MCPToolsDisposable
@@ -449,32 +483,87 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
   }
 
   /**
-   * Stream artifact content chunk by chunk as TaskArtifactUpdateEvents
+   * Unified handler for artifact streaming - works for both natural and forced artifacts
+   * Listens to tool-input-delta events and emits incremental updates
    */
-  private async *streamArtifactTokens(
+  private async *processArtifactStream(
     task: A2A.Task,
-    artifactName: string,
-    artifactDescription: string | undefined,
-    contentStream: AsyncIterable<string>,
-    artifactId?: string,
+    // deno-lint-ignore no-explicit-any
+    streamResult: Vercel.StreamTextResult<any, unknown>,
+    artifactStreamStates: Map<string, ArtifactStreamState>,
   ): AsyncGenerator<A2A.TaskArtifactUpdateEvent> {
-    let accumulatedContent = ""
-    const finalArtifactId = artifactId ?? crypto.randomUUID()
-
-    for await (const chunk of contentStream) {
-      accumulatedContent += chunk
-
-      yield {
-        kind: "artifact-update",
-        taskId: task.id,
-        contextId: task.contextId,
-        artifact: {
-          artifactId: finalArtifactId,
-          name: artifactName,
-          description: artifactDescription,
-          parts: [{ kind: "text", text: accumulatedContent }],
-        },
+    for await (const event of streamResult.fullStream) {
+      if (
+        event.type === "tool-input-start" && this.isArtifactTool(event.toolName)
+      ) {
+        const callId = event.id
+        if (callId && !artifactStreamStates.has(callId)) {
+          artifactStreamStates.set(callId, {
+            artifactId: crypto.randomUUID(),
+            name: "Artifact",
+            content: "",
+          })
+        }
+      } else if (
+        event.type === "tool-call" && this.isArtifactTool(event.toolName)
+      ) {
+        const state = artifactStreamStates.get(event.toolCallId)
+        if (state) {
+          this.updateArtifactStateFromInput(
+            state,
+            event.input as Partial<ArtifactInput>,
+          )
+        }
+      } else if (event.type === "tool-input-delta") {
+        const state = artifactStreamStates.get(event.id)
+        if (state) {
+          state.content += event.delta
+          const artifactEvent = this.toArtifactUpdateEvent(task, state)
+          if (artifactEvent) {
+            yield artifactEvent
+          }
+        }
       }
+    }
+  }
+
+  /**
+   * Orchestrates stream events, status updates, and artifact emissions
+   */
+  private async *orchestrateStreamEvents(
+    // deno-lint-ignore no-explicit-any
+    streamResult: Vercel.StreamTextResult<any, unknown>,
+    task: A2A.Task,
+    artifactStreamStates: Map<string, ArtifactStreamState>,
+    statusUpdateQueue: TaskEmitUnion[],
+    shouldStreamArtifacts: boolean,
+  ): AsyncGenerator<TaskEmitUnion> {
+    const artifactGenerator = shouldStreamArtifacts
+      ? this.processArtifactStream(task, streamResult, artifactStreamStates)
+      : null
+
+    // If streaming artifacts, interleave artifact updates with status updates
+    if (artifactGenerator) {
+      for await (const artifactEvent of artifactGenerator) {
+        yield artifactEvent
+
+        // Drain queued status updates after each artifact event
+        while (statusUpdateQueue.length > 0) {
+          yield statusUpdateQueue.shift()!
+        }
+      }
+    } else {
+      // If not streaming artifacts, just consume the stream and emit status updates
+      for await (const _event of streamResult.fullStream) {
+        while (statusUpdateQueue.length > 0) {
+          yield statusUpdateQueue.shift()!
+        }
+      }
+    }
+
+    // Final drain
+    while (statusUpdateQueue.length > 0) {
+      yield statusUpdateQueue.shift()!
     }
   }
 
@@ -516,14 +605,14 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
   /**
    * Force artifact generation when the LLM loop completes without calling createArtifact
    */
-  private async forceArtifactGeneration(
+  private forceArtifactGeneration(
     task: A2A.Task,
     contextId: string,
-  ): Promise<{
-    name: string
-    description?: string
-    contentStream: AsyncIterable<string>
-  }> {
+  ): {
+    // deno-lint-ignore no-explicit-any
+    streamResult: Vercel.StreamTextResult<any, unknown>
+    artifactStreamStates: Map<string, ArtifactStreamState>
+  } {
     const model = this.getConfiguredModel()
     const vercelMessages = this.vercelService.fromContext(contextId)
     const sanitizedMessages = this.removeReasoningParts(vercelMessages)
@@ -538,7 +627,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
 
     console.info("Forcing artifact generation for task", task.id)
 
-    const result = await Vercel.streamText({
+    const streamResult = Vercel.streamText({
       model,
       messages: [
         ...modelMessages,
@@ -552,118 +641,65 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
       toolChoice: { type: "tool", toolName: "createArtifact" },
     })
 
-    let artifactName = "Result"
-    let artifactDescription: string | undefined
-    const artifactState: ArtifactStreamState = {
-      artifactId: crypto.randomUUID(),
-      name: artifactName,
-      description: artifactDescription,
-      content: "",
-    }
-    let targetToolCallId: string | null = null
-    const contentQueue: string[] = []
-    let resolvePending: ((value?: void | PromiseLike<void>) => void) | null =
-      null
-    let streamClosed = false
-
-    const pushDelta = (delta: string) => {
-      contentQueue.push(delta)
-      if (resolvePending) {
-        resolvePending()
-        resolvePending = null
-      }
-    }
-
-    const contentStream = (async function* () {
-      while (true) {
-        if (contentQueue.length === 0) {
-          if (streamClosed) break
-          await new Promise<void>((resolve) => {
-            resolvePending = resolve
-          })
-          continue
-        }
-
-        yield contentQueue.shift()!
-      }
-    })()
-
-    for await (const chunk of result.fullStream) {
-      if (chunk.type === "tool-call" && this.isArtifactTool(chunk.toolName)) {
-        targetToolCallId = chunk.toolCallId
-        this.updateArtifactStateFromInput(
-          artifactState,
-          chunk.input as Partial<ArtifactInput>,
-        )
-        artifactName = artifactState.name
-        artifactDescription = artifactState.description
-      } else if (
-        chunk.type === "tool-input-start" &&
-        this.isArtifactTool(chunk.toolName)
-      ) {
-        targetToolCallId = chunk.id
-      } else if (
-        chunk.type === "tool-input-delta" &&
-        targetToolCallId &&
-        chunk.id === targetToolCallId
-      ) {
-        artifactState.content += chunk.delta
-        pushDelta(chunk.delta)
-      }
-    }
-
-    const toolResults = await result.toolResults
-    if (toolResults && toolResults.length > 0) {
-      const toolResult = toolResults.find(
-        (tr) => tr.toolName === "createArtifact",
-      )
-      if (toolResult && "input" in toolResult) {
-        const input = toolResult.input as ArtifactInput
-        artifactName = input.name
-        artifactDescription = input.description
-        this.updateArtifactStateFromInput(artifactState, input)
-
-        if (!artifactState.content) {
-          artifactState.content = input.content
-          pushDelta(input.content)
-        }
-      }
-    }
-
-    if (!artifactState.content) {
-      const text = await result.text
-      artifactState.content = text
-      if (text) {
-        pushDelta(text)
-      }
-    }
-
-    streamClosed = true
-    const pendingResolver = resolvePending as
-      | ((value?: void | PromiseLike<void>) => void)
-      | null
-    if (typeof pendingResolver === "function") {
-      pendingResolver()
-    }
+    const artifactStreamStates = new Map<string, ArtifactStreamState>()
 
     return {
-      name: artifactName,
-      description: artifactDescription,
-      contentStream,
+      streamResult,
+      artifactStreamStates,
     }
   }
 
+  /**
+   * Check if step result contains artifact creation and extract details
+   */
+  private extractArtifactFromStepResult<TOOLS extends Vercel.ToolSet>(
+    stepResult: Vercel.StepResult<TOOLS>,
+    artifactStreamStates: Map<string, ArtifactStreamState>,
+  ): {
+    artifactId: string
+    name: string
+    description?: string
+    content: string
+  } | null {
+    const { toolResults } = stepResult
+
+    for (const toolResult of toolResults || []) {
+      if (
+        toolResult.dynamic !== true &&
+        toolResult.toolName === "createArtifact" &&
+        "input" in toolResult
+      ) {
+        const input = toolResult.input as ArtifactInput
+
+        // Try to find matching stream state for artifactId
+        const toolCallId = (toolResult as { toolCallId?: string }).toolCallId
+        const state = toolCallId
+          ? artifactStreamStates.get(toolCallId)
+          : artifactStreamStates.size === 1
+          ? artifactStreamStates.values().next().value
+          : undefined
+
+        return {
+          artifactId: state?.artifactId ?? crypto.randomUUID(),
+          name: input.name,
+          description: input.description,
+          content: state?.content ?? input.content,
+        }
+      }
+    }
+
+    return null
+  }
+
   private createOnStepFinishHandler<TOOLS extends Vercel.ToolSet>(
-    _params: A2A.MessageSendParams,
     currentTaskRef: { current: A2A.Task | null },
     _statusHandler: StatusUpdateHandler,
-    artifactCreatedRef: { current: boolean },
-    artifactDetailsRef: {
+    artifactResultRef: {
       current: {
+        artifactId: string
         name: string
         description?: string
         content: string
-        artifactId?: string
       } | null
     },
     abortController?: AbortController,
@@ -690,131 +726,22 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
         }
 
         // Check for artifact creation
-        console.log("checking for artifacts: " + JSON.stringify(toolResults))
-        for (const toolResult of toolResults || []) {
-          if (
-            toolResult.dynamic !== true &&
-            toolResult.toolName === "createArtifact" && currentTaskRef.current
-          ) {
-            // Artifact detected! Stop status updates and capture details
+        if (artifactStreamStates) {
+          const artifactDetails = this.extractArtifactFromStepResult(
+            stepResult,
+            artifactStreamStates,
+          )
+
+          if (artifactDetails) {
             console.info("Artifact creation detected, stopping status updates")
             this.statusUpdateService.stopStatusUpdates(
               currentTaskRef.current.id,
             )
-            artifactCreatedRef.current = true
-
-            // Extract artifact details
-            if ("input" in toolResult) {
-              const input = toolResult.input as {
-                name: string
-                description?: string
-                content: string
-              }
-              let artifactId: string | undefined
-              const existingArtifactId = artifactDetailsRef.current?.artifactId
-              if (artifactStreamStates) {
-                const toolCallId =
-                  (toolResult as { toolCallId?: string }).toolCallId
-                const state =
-                  (toolCallId && artifactStreamStates.get(toolCallId)) ??
-                    (artifactStreamStates.size === 1
-                      ? artifactStreamStates.values().next().value
-                      : undefined)
-
-                if (state) {
-                  this.updateArtifactStateFromInput(state, input)
-                  state.content = input.content
-                  artifactId = state.artifactId
-                }
-              }
-              artifactDetailsRef.current = {
-                name: input.name,
-                description: input.description,
-                content: input.content,
-                artifactId: artifactId ?? existingArtifactId,
-              }
-            }
+            artifactResultRef.current = artifactDetails
           }
         }
       }
     }
-  }
-
-  private createOnFinishHandler(
-    contextId: string,
-    currentTaskRef: { current: A2A.Task | null },
-    finalMessageHolder: { message: A2A.Message | null },
-    statusHandler: StatusUpdateHandler,
-    originalMessageCount: number,
-  ): Vercel.UIMessageStreamOnFinishCallback<Vercel.UIMessage> {
-    return async ({ messages, responseMessage }) => {
-      console.info(
-        `Stream finished - responseMessage: ${
-          this.truncateForLog(responseMessage)
-        }`,
-      )
-      console.info(
-        `Total messages available for persistence: ${messages.length}`,
-      )
-
-      if (currentTaskRef.current) {
-        // Clean up the AbortController
-        this.taskAbortControllers.delete(currentTaskRef.current.id)
-
-        // Check if task was cancelled - don't override cancelled state
-        const currentTask = this.taskStorage.getTask(currentTaskRef.current.id)
-        if (currentTask && currentTask.status.state !== "canceled") {
-          const statusUpdate = this.taskService.transitionState(
-            currentTaskRef.current,
-            "completed",
-          )
-          statusHandler(statusUpdate)
-        }
-      }
-
-      const newMessages = messages.slice(originalMessageCount)
-
-      if (newMessages.length === 0) {
-        console.warn("No new messages returned from stream finish callback")
-        return
-      }
-
-      for (const message of newMessages) {
-        if (!message.id) {
-          message.id = crypto.randomUUID()
-        }
-
-        await this.vercelService.upsertMessage({
-          message,
-          contextId,
-          taskId: currentTaskRef.current?.id,
-        })
-      }
-
-      console.info(
-        `Persisted ${newMessages.length} new message(s) via UI stream response`,
-      )
-    }
-  }
-
-  // Is this needed?
-  private consumeUIResponse(response: Response): void {
-    ;(async () => {
-      try {
-        if (!response.body) {
-          console.warn("UI response stream has no body to consume")
-          return
-        }
-        const reader = response.body.getReader()
-        while (true) {
-          const { done } = await reader.read()
-          if (done) break
-        }
-        console.info("UI response stream consumed successfully")
-      } catch (error) {
-        console.error("🚨 UI Response Stream ERROR, Swallowing", error)
-      }
-    })()
   }
 
   private handleStreamError(error: unknown): never {
@@ -892,34 +819,32 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
       await using _mcpTools = mcpTools
 
       const currentTaskRef = { current: null as A2A.Task | null }
-      const finalMessageHolder = { message: null as A2A.Message | null }
-      const artifactCreatedRef = { current: false }
-      const artifactDetailsRef = {
-        current: null as
-          | { name: string; description?: string; content: string }
-          | null,
-      }
+      const artifactStreamStates = new Map<string, ArtifactStreamState>()
+
+      // Single ref to track artifact result
+      const artifactResultRef: {
+        current: {
+          artifactId: string
+          name: string
+          description?: string
+          content: string
+        } | null
+      } = { current: null }
 
       const allTools = {
         ...tools,
         ...mcpTools.tools,
         createArtifact: createArtifactTool,
-        exec: execTool,
       }
 
       console.info(
-        `Prepared ${Object.keys(allTools)} tools for message sending`,
+        `Prepared ${Object.keys(allTools).length} tools for message sending`,
       )
 
       const modelMessages = Vercel.convertToModelMessages(messages, {
         tools: allTools,
       })
-      console.info(
-        `Sending ${modelMessages.length} messages to model`,
-      )
-      console.info(
-        `Model messages: ${JSON.stringify(modelMessages, null, 2)}`,
-      )
+
       console.debug("Sending message to model:", {
         contextId: params.message.contextId,
         messages: modelMessages,
@@ -942,41 +867,102 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
         providerOptions,
         stopWhen: Vercel.stepCountIs(100),
         onStepFinish: this.createOnStepFinishHandler(
-          params,
           currentTaskRef,
-          () => {},
-          artifactCreatedRef,
-          artifactDetailsRef,
-          undefined, // no abort controller for non-streaming sendMessage
-          undefined,
+          () => {}, // No status handler for non-streaming
+          artifactResultRef,
+          undefined, // No abort controller for non-streaming
+          artifactStreamStates,
         ),
       })
 
       const originalMessageCount = messages.length
+
       const uiResponse = result.toUIMessageStreamResponse({
         originalMessages: messages,
         generateMessageId: () => crypto.randomUUID(),
-        onFinish: this.createOnFinishHandler(
-          contextId,
-          currentTaskRef,
-          finalMessageHolder,
-          () => {},
-          originalMessageCount,
-        ),
+        onFinish: async ({ messages: finalMessages }) => {
+          await this.persistStreamMessages(
+            finalMessages,
+            contextId,
+            originalMessageCount,
+            currentTaskRef.current?.id,
+          )
+        },
       })
 
-      this.consumeUIResponse(uiResponse)
+      // Consume stream to trigger onFinish and collect artifact state
+      for await (const _chunk of uiResponse.body!) {
+        // Just consume to trigger callbacks
+      }
 
-      // Wait a moment for onFinish to complete
-      await new Promise((resolve) => setTimeout(resolve, 100))
+      console.info("Stream consumed, collecting results")
 
+      // Check if we need to force artifact generation
+      if (currentTaskRef.current && !artifactResultRef.current) {
+        console.info("No artifact in non-streaming mode, forcing generation")
+
+        const { streamResult, artifactStreamStates: forcedStates } = this
+          .forceArtifactGeneration(currentTaskRef.current, contextId)
+
+        // Consume forced artifact stream
+        for await (const _event of streamResult.fullStream) {
+          // Just consume to collect state
+        }
+
+        const artifactState = forcedStates.values().next().value
+        if (artifactState) {
+          artifactResultRef.current = {
+            artifactId: artifactState.artifactId,
+            name: artifactState.name,
+            description: artifactState.description,
+            content: artifactState.content,
+          }
+        }
+      }
+
+      // Persist all collected artifacts
+      if (currentTaskRef.current && artifactResultRef.current) {
+        const artifact = artifactResultRef.current
+        this.taskService.createArtifact(currentTaskRef.current, {
+          name: artifact.name,
+          description: artifact.description,
+          parts: [{ kind: "text", text: artifact.content }],
+        })
+
+        // Return task with artifacts attached
+        const taskWithArtifacts = this.taskStorage.getTask(
+          currentTaskRef.current.id,
+        )
+        if (taskWithArtifacts) {
+          return taskWithArtifacts
+        }
+        return currentTaskRef.current
+      }
+
+      // No task created - this was a direct message response
       if (currentTaskRef.current) {
         return currentTaskRef.current
-      } else if (finalMessageHolder.message) {
-        return finalMessageHolder.message
-      } else {
-        throw new Error("No task or message generated from sendMessage")
       }
+
+      // Return direct message
+      const lastMessage = messages[messages.length - 1]
+      if (lastMessage && lastMessage.role === "assistant") {
+        return {
+          kind: "message",
+          messageId: lastMessage.id,
+          role: "agent",
+          parts: lastMessage.parts.map((part) => {
+            if (part.type === "text") {
+              return { kind: "text", text: part.text }
+            }
+            // Handle other part types if needed
+            return { kind: "text", text: "" }
+          }),
+          contextId,
+        }
+      }
+
+      throw new Error("No task or message generated from sendMessage")
     } catch (error) {
       this.handleStreamError(error)
     }
@@ -1067,15 +1053,6 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
 
     const eventUpdateQueue: TaskEmitUnion[] = []
     const currentTaskRef = { current: null as A2A.Task | null }
-    let artifactCreated = false
-    let artifactDetails:
-      | {
-        name: string
-        description?: string
-        content: string
-        artifactId?: string
-      }
-      | null = null
     const artifactStreamStates = new Map<string, ArtifactStreamState>()
 
     try {
@@ -1112,7 +1089,6 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
 
       await using _mcpTools = mcpTools
 
-      const finalMessageHolder = { message: null as A2A.Message | null }
       const originalMessageCount = messages.length
 
       const queueStatusHandler: StatusUpdateHandler = (event) => {
@@ -1155,18 +1131,15 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
 
       const abortController = new AbortController()
 
-      // Refs to track artifact creation
-      const artifactCreatedRef = { current: artifactCreated }
-      const artifactDetailsRef: {
-        current:
-          | {
-            name: string
-            description?: string
-            content: string
-            artifactId?: string
-          }
-          | null
-      } = { current: artifactDetails }
+      // Single ref to track artifact result
+      const artifactResultRef: {
+        current: {
+          artifactId: string
+          name: string
+          description?: string
+          content: string
+        } | null
+      } = { current: null }
 
       const workingStatus = this.taskService.transitionState(
         currentTaskRef.current,
@@ -1190,11 +1163,9 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
           this.handleStreamError(error)
         },
         onStepFinish: this.createOnStepFinishHandler(
-          params,
           currentTaskRef,
           queueStatusHandler,
-          artifactCreatedRef,
-          artifactDetailsRef,
+          artifactResultRef,
           abortController,
           artifactStreamStates,
         ),
@@ -1203,201 +1174,108 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
       const uiResponse = result.toUIMessageStreamResponse({
         originalMessages: messages,
         generateMessageId: () => crypto.randomUUID(),
-        onFinish: this.createOnFinishHandler(
-          contextId,
-          currentTaskRef,
-          finalMessageHolder,
-          queueStatusHandler,
-          originalMessageCount,
-        ),
-      })
+        onFinish: async ({ messages: finalMessages }) => {
+          await this.persistStreamMessages(
+            finalMessages,
+            contextId,
+            originalMessageCount,
+            currentTaskRef.current?.id,
+          )
 
-      this.consumeUIResponse(uiResponse)
-
-      console.info("StreamText initialized, consuming stream...")
-      for await (const e of result.fullStream) {
-        switch (e.type) {
-          case "tool-input-start": {
-            const callId = e.id
-            console.info(`Tool input starting: ${e.toolName}`)
-            if (this.isArtifactTool(e.toolName)) {
-              const existing = artifactStreamStates.get(callId)
-              if (!existing && callId) {
-                artifactStreamStates.set(callId, {
-                  artifactId: crypto.randomUUID(),
-                  name: "Artifact",
-                  content: "",
-                })
-              }
-            }
-            break
-          }
-          case "tool-input-end":
-            console.info(`Tool input ready: ${e.id}`)
-            break
-          case "tool-call": {
-            const callId = e.toolCallId
-            console.info(`Tool called: ${e.toolName}`)
-            if (this.isArtifactTool(e.toolName)) {
-              const state = artifactStreamStates.get(callId) ?? {
-                artifactId: crypto.randomUUID(),
-                name: "Artifact",
-                content: "",
-              }
-              this.updateArtifactStateFromInput(
-                state,
-                e.input as Partial<ArtifactInput>,
-              )
-              if (callId) {
-                artifactStreamStates.set(callId, state)
-              }
-            }
-            break
-          }
-          case "tool-result":
-            console.info(`Tool completed: ${e.toolName}`)
-            if (this.isArtifactTool(e.toolName)) {
-              const state = artifactStreamStates.get(e.toolCallId)
-              if (state) {
-                artifactCreatedRef.current = true
-                artifactDetailsRef.current = {
-                  name: state.name,
-                  description: state.description,
-                  content: state.content,
-                  artifactId: state.artifactId,
-                }
-              }
-            }
-            break
-          case "finish-step":
-            console.info("Step finished")
-            break
-          case "finish":
-            console.info(`Finish event in stream: ${this.truncateForLog(e)}`)
-            break
-          case "tool-input-delta": {
-            const state = artifactStreamStates.get(e.id)
-            if (state) {
-              state.content += e.delta
-              const artifactEvent = this.toArtifactUpdateEvent(
+          if (currentTaskRef.current) {
+            // Check if task was cancelled - don't override cancelled state
+            const currentTask = this.taskStorage.getTask(
+              currentTaskRef.current.id,
+            )
+            if (currentTask && currentTask.status.state !== "canceled") {
+              const statusUpdate = this.taskService.transitionState(
                 currentTaskRef.current,
-                state,
+                "completed",
               )
-              artifactCreatedRef.current = true
-              artifactDetailsRef.current = {
-                name: state.name,
-                description: state.description,
-                content: state.content,
-                artifactId: state.artifactId,
-              }
-              if (artifactEvent) {
-                yield artifactEvent
-              }
+              queueStatusHandler(statusUpdate)
             }
-            break
+
+            // Clean up the AbortController
+            this.taskAbortControllers.delete(currentTaskRef.current.id)
           }
-          default:
-            break
+        },
+      }) // Start consuming UI response in background to trigger onFinish
+      ;(async () => {
+        try {
+          if (uiResponse.body) {
+            const reader = uiResponse.body.getReader()
+            while (true) {
+              const { done } = await reader.read()
+              if (done) break
+            }
+          }
+        } catch (error) {
+          console.error("Error consuming UI response:", error)
         }
+      })()
 
-        // Drain and yield queued status updates as they arrive
-        while (eventUpdateQueue.length > 0) {
-          const statusUpdate = eventUpdateQueue.shift()!
-          yield statusUpdate
-        }
-      }
+      console.info("StreamText initialized, processing stream events...")
 
-      // TODO simplify this by integrating with onFinish better
-      // Final drain in case onFinish enqueued after the final event
-      while (eventUpdateQueue.length > 0) {
-        const statusUpdate = eventUpdateQueue.shift()!
-        yield statusUpdate
-      }
-
-      // Wait a moment for onFinish to complete
-      await new Promise((resolve) => setTimeout(resolve, 100))
-
-      // Drain any status updates added by onFinish
-      while (eventUpdateQueue.length > 0) {
-        const statusUpdate = eventUpdateQueue.shift()!
-        yield statusUpdate
+      // Orchestrate all events through single method
+      for await (
+        const event of this.orchestrateStreamEvents(
+          result,
+          currentTaskRef.current,
+          artifactStreamStates,
+          eventUpdateQueue,
+          true, // Stream artifacts in real-time
+        )
+      ) {
+        yield event
       }
 
       if (currentTaskRef.current) {
         this.statusUpdateService.stopStatusUpdates(currentTaskRef.current.id)
       }
 
-      // ========== STAGE 3: Artifact Generation and Emission ==========
-      console.info("Stage 3: Artifact generation")
+      // ========== STAGE 3: Artifact Persistence ==========
+      console.info("Stage 3: Artifact persistence")
 
-      if (currentTaskRef.current) {
-        // Update refs from the handlers
-        artifactCreated = artifactCreatedRef.current
-        artifactDetails = artifactDetailsRef.current
+      if (currentTaskRef.current && artifactResultRef.current) {
+        // Artifact was streamed, just persist it
+        const details = artifactResultRef.current
+        this.taskService.createArtifact(currentTaskRef.current, {
+          name: details.name,
+          description: details.description,
+          parts: [{ kind: "text", text: details.content }],
+        })
+        console.info("Persisted streamed artifact to database")
+      } else if (currentTaskRef.current) {
+        // No artifact created - force generation
+        console.info("No artifact created, forcing generation")
+        const { streamResult, artifactStreamStates: forcedStates } = this
+          .forceArtifactGeneration(currentTaskRef.current, contextId)
 
-        if (artifactCreated && artifactDetails) {
-          // Emit the artifact that was created during execution
-          console.info("Emitting artifact created during execution")
-          const details: {
-            name: string
-            description?: string
-            content: string
-            artifactId?: string
-          } = artifactDetails
-          const artifactId = details.artifactId ?? crypto.randomUUID()
-          yield {
-            kind: "artifact-update",
-            taskId: currentTaskRef.current.id,
-            contextId: currentTaskRef.current.contextId,
-            artifact: {
-              artifactId,
-              name: details.name,
-              description: details.description,
-              parts: [{ kind: "text", text: details.content }],
-            },
-          }
-        } else {
-          // Force artifact generation
-          console.info("No artifact created, forcing generation")
-          const forced = await this.forceArtifactGeneration(
+        // Stream the forced artifact
+        for await (
+          const artifactEvent of this.processArtifactStream(
             currentTaskRef.current,
-            contextId,
+            streamResult,
+            forcedStates,
           )
-          artifactDetails = {
-            name: forced.name,
-            description: forced.description,
-            content: "",
-            artifactId: crypto.randomUUID(),
-          }
-
-          // Stream the forced artifact
-          for await (
-            const artifactEvent of this.streamArtifactTokens(
-              currentTaskRef.current,
-              forced.name,
-              forced.description,
-              forced.contentStream,
-              artifactDetails.artifactId,
-            )
-          ) {
-            yield artifactEvent
-            // Also persist the final artifact
-            if (artifactEvent.artifact.parts[0].kind === "text") {
-              artifactDetails.content = artifactEvent.artifact.parts[0].text
-            }
-          }
+        ) {
+          yield artifactEvent
         }
 
-        // Persist the artifact
-        if (artifactDetails) {
+        // Persist forced artifact
+        const artifactState = forcedStates.values().next().value
+        if (artifactState) {
           this.taskService.createArtifact(currentTaskRef.current, {
-            name: artifactDetails.name,
-            description: artifactDetails.description,
-            parts: [{ kind: "text", text: artifactDetails.content }],
+            name: artifactState.name,
+            description: artifactState.description,
+            parts: [{ kind: "text", text: artifactState.content }],
           })
+          console.info("Persisted forced artifact to database")
         }
+      }
 
-        // Mark task as completed
+      // Mark task as completed
+      if (currentTaskRef.current) {
         const completedStatus = this.taskService.transitionState(
           currentTaskRef.current,
           "completed",
