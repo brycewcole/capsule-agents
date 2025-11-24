@@ -17,7 +17,10 @@ import { ProviderService } from "../services/provider-service.ts"
 import { StatusUpdateService } from "../services/status-update.service.ts"
 import { TaskService } from "../services/task.service.ts"
 import { VercelService } from "../services/vercel.service.ts"
-import { type ArtifactInput, artifactTool } from "./artifact-tool.ts"
+import {
+  type ArtifactInput,
+  artifactTool as createArtifactTool,
+} from "./artifact-tool.ts"
 import { isMCPCapability } from "./capability-types.ts"
 import {
   buildSystemPrompt,
@@ -526,7 +529,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
     const sanitizedMessages = this.removeReasoningParts(vercelMessages)
 
     const artifactToolSet = {
-      createArtifact: artifactTool,
+      createArtifact: createArtifactTool,
     }
 
     const modelMessages = Vercel.convertToModelMessages(sanitizedMessages, {
@@ -900,7 +903,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
       const allTools = {
         ...tools,
         ...mcpTools.tools,
-        createArtifact: artifactTool,
+        createArtifact: createArtifactTool,
         exec: execTool,
       }
 
@@ -1097,12 +1100,6 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
       // Emit initial task (state: submitted)
       yield currentTaskRef.current
 
-      const workingStatus = this.taskService.transitionState(
-        currentTaskRef.current,
-        "working",
-      )
-      yield workingStatus
-
       const {
         tools,
         mcpTools,
@@ -1125,7 +1122,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
       const allTools = {
         ...tools,
         ...mcpTools.tools,
-        createArtifact: artifactTool,
+        createArtifact: createArtifactTool,
       }
 
       this.statusUpdateService.startStatusUpdates(
@@ -1171,6 +1168,12 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
           | null
       } = { current: artifactDetails }
 
+      const workingStatus = this.taskService.transitionState(
+        currentTaskRef.current,
+        "working",
+      )
+      yield workingStatus
+
       const result = Vercel.streamText({
         experimental_telemetry: {
           isEnabled: true,
@@ -1213,16 +1216,12 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
 
       console.info("StreamText initialized, consuming stream...")
       for await (const e of result.fullStream) {
-        const callId = "toolCallId" in e
-          ? (e as { toolCallId?: string }).toolCallId
-          : (e as { id?: string }).id
         switch (e.type) {
-          case "tool-input-start":
+          case "tool-input-start": {
+            const callId = e.id
             console.info(`Tool input starting: ${e.toolName}`)
             if (this.isArtifactTool(e.toolName)) {
-              const existing = callId
-                ? artifactStreamStates.get(callId)
-                : undefined
+              const existing = artifactStreamStates.get(callId)
               if (!existing && callId) {
                 artifactStreamStates.set(callId, {
                   artifactId: crypto.randomUUID(),
@@ -1232,18 +1231,19 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
               }
             }
             break
+          }
           case "tool-input-end":
             console.info(`Tool input ready: ${e.id}`)
             break
-          case "tool-call":
+          case "tool-call": {
+            const callId = e.toolCallId
             console.info(`Tool called: ${e.toolName}`)
             if (this.isArtifactTool(e.toolName)) {
-              const state =
-                (callId ? artifactStreamStates.get(callId) : undefined) ?? {
-                  artifactId: crypto.randomUUID(),
-                  name: "Artifact",
-                  content: "",
-                }
+              const state = artifactStreamStates.get(callId) ?? {
+                artifactId: crypto.randomUUID(),
+                name: "Artifact",
+                content: "",
+              }
               this.updateArtifactStateFromInput(
                 state,
                 e.input as Partial<ArtifactInput>,
@@ -1253,12 +1253,11 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
               }
             }
             break
+          }
           case "tool-result":
             console.info(`Tool completed: ${e.toolName}`)
             if (this.isArtifactTool(e.toolName)) {
-              const state = callId
-                ? artifactStreamStates.get(callId)
-                : undefined
+              const state = artifactStreamStates.get(e.toolCallId)
               if (state) {
                 artifactCreatedRef.current = true
                 artifactDetailsRef.current = {
@@ -1277,7 +1276,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
             console.info(`Finish event in stream: ${this.truncateForLog(e)}`)
             break
           case "tool-input-delta": {
-            const state = callId ? artifactStreamStates.get(callId) : undefined
+            const state = artifactStreamStates.get(e.id)
             if (state) {
               state.content += e.delta
               const artifactEvent = this.toArtifactUpdateEvent(
@@ -1308,6 +1307,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
         }
       }
 
+      // TODO simplify this by integrating with onFinish better
       // Final drain in case onFinish enqueued after the final event
       while (eventUpdateQueue.length > 0) {
         const statusUpdate = eventUpdateQueue.shift()!
@@ -1323,7 +1323,6 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
         yield statusUpdate
       }
 
-      // Stop status updates (in case they're still running)
       if (currentTaskRef.current) {
         this.statusUpdateService.stopStatusUpdates(currentTaskRef.current.id)
       }
