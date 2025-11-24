@@ -14,9 +14,11 @@ import { TaskRepository } from "../repositories/task.repository.ts"
 import { VercelMessageRepository } from "../repositories/vercel-message.repository.ts"
 import { AgentConfigService } from "../services/agent-config.ts"
 import { ProviderService } from "../services/provider-service.ts"
+import { StatusUpdateService } from "../services/status-update.service.ts"
 import { TaskService } from "../services/task.service.ts"
 import { VercelService } from "../services/vercel.service.ts"
 import { artifactTool } from "./artifact-tool.ts"
+import { createTaskTool } from "../tools/create-task-tool.ts"
 import { isMCPCapability } from "./capability-types.ts"
 import {
   buildSystemPrompt,
@@ -28,6 +30,14 @@ interface MCPToolsDisposable {
   tools: Record<string, Vercel.Tool>
   [Symbol.asyncDispose](): Promise<void>
 }
+
+// Type-safe tool set for initial routing
+type InitialToolSet = {
+  createTask: typeof createTaskTool
+}
+
+type InitialToolCall = Vercel.TypedToolCall<InitialToolSet>
+type InitialToolResult = Vercel.TypedToolResult<InitialToolSet>
 
 // Type-safe tool set for artifact support
 type ArtifactToolSet = {
@@ -59,6 +69,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
     this.vercelMessageRepository,
   )
   private agentConfigService: AgentConfigService
+  private statusUpdateService = new StatusUpdateService()
   private taskAbortControllers = new Map<string, AbortController>()
 
   constructor(agentConfigService?: AgentConfigService) {
@@ -368,10 +379,225 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
     }
   }
 
+  /**
+   * Stage 1: Initial routing - decide between direct message response or task creation
+   */
+  private async handleInitialRouting(
+    _params: A2A.MessageSendParams,
+    contextId: string,
+  ): Promise<{
+    shouldCreateTask: boolean
+    initialResponse?: A2A.Message
+  }> {
+    const model = this.getConfiguredModel()
+    const vercelMessages = this.vercelService.fromContext(contextId)
+    const sanitizedMessages = this.removeReasoningParts(vercelMessages)
+
+    const agentInfo = this.agentConfigService.getAgentInfo()
+    const { prompt: systemPrompt } = buildSystemPrompt({
+      userPrompt: agentInfo.description,
+      modelId: agentInfo.model_name,
+      enabled: agentInfo.built_in_prompts_enabled !== false,
+    })
+
+    const initialToolSet: InitialToolSet = {
+      createTask: createTaskTool,
+    }
+
+    const modelMessages = Vercel.convertToModelMessages(sanitizedMessages, {
+      tools: initialToolSet,
+    })
+
+    console.info("Initial routing: checking if task creation is needed")
+
+    let shouldCreateTask = false
+    let responseText = ""
+
+    const result = await Vercel.streamText({
+      model,
+      system: systemPrompt || undefined,
+      messages: modelMessages,
+      tools: initialToolSet,
+      onStepFinish: (stepResult) => {
+        const { toolCalls, finishReason } = stepResult
+        console.info(`Initial routing step finished: ${finishReason}`)
+
+        if (finishReason === "tool-calls" && toolCalls.length > 0) {
+          for (const toolCall of toolCalls) {
+            if (!toolCall.dynamic && toolCall.toolName === "createTask") {
+              shouldCreateTask = true
+              console.info("Task creation requested by model")
+            }
+          }
+        }
+      },
+    })
+
+    // Collect the response text
+    for await (const chunk of result.textStream) {
+      responseText += chunk
+    }
+
+    // Wait for result to complete
+    await result.text
+
+    if (shouldCreateTask) {
+      return { shouldCreateTask: true }
+    }
+
+    // Create direct A2A message response
+    const message: A2A.Message = {
+      kind: "message",
+      messageId: crypto.randomUUID(),
+      role: "agent",
+      parts: [{ kind: "text", text: responseText.trim() }],
+      contextId,
+    }
+
+    // Save the assistant's message
+    this.a2aMessageRepository.createMessage(message)
+
+    // Also save to Vercel messages for continuity
+    this.vercelService.createMessage({
+      message: {
+        id: message.messageId,
+        role: "assistant",
+        parts: [{ type: "text", text: responseText.trim() }],
+      },
+      contextId,
+    })
+
+    return {
+      shouldCreateTask: false,
+      initialResponse: message,
+    }
+  }
+
+  /**
+   * Stream artifact content token by token as TaskArtifactUpdateEvents
+   */
+  private async *streamArtifactTokens(
+    task: A2A.Task,
+    artifactName: string,
+    artifactDescription: string | undefined,
+    contentStream: AsyncIterable<string>,
+  ): AsyncGenerator<A2A.TaskArtifactUpdateEvent> {
+    let accumulatedContent = ""
+    const artifactId = crypto.randomUUID()
+
+    for await (const token of contentStream) {
+      accumulatedContent += token
+
+      yield {
+        kind: "artifact-update",
+        taskId: task.id,
+        contextId: task.contextId,
+        artifact: {
+          artifactId,
+          name: artifactName,
+          description: artifactDescription,
+          parts: [{ kind: "text", text: accumulatedContent }],
+        },
+      }
+    }
+  }
+
+  /**
+   * Force artifact generation when the LLM loop completes without calling createArtifact
+   */
+  private async forceArtifactGeneration(
+    task: A2A.Task,
+    contextId: string,
+  ): Promise<{
+    name: string
+    description?: string
+    contentStream: AsyncIterable<string>
+  }> {
+    const model = this.getConfiguredModel()
+    const vercelMessages = this.vercelService.fromContext(contextId)
+    const sanitizedMessages = this.removeReasoningParts(vercelMessages)
+
+    const artifactToolSet = {
+      createArtifact: artifactTool,
+    }
+
+    const modelMessages = Vercel.convertToModelMessages(sanitizedMessages, {
+      tools: artifactToolSet,
+    })
+
+    console.info("Forcing artifact generation for task", task.id)
+
+    const result = await Vercel.streamText({
+      model,
+      messages: [
+        ...modelMessages,
+        {
+          role: "user",
+          content:
+            "Generate a final artifact summarizing the results of this task.",
+        },
+      ],
+      tools: artifactToolSet,
+      toolChoice: { type: "tool", toolName: "createArtifact" },
+    })
+
+    // Extract artifact details from tool call
+    let artifactName = "Result"
+    let artifactDescription: string | undefined
+
+    for await (const chunk of result.fullStream) {
+      if (chunk.type === "tool-call" && chunk.toolName === "createArtifact") {
+        // Artifact tool call detected, extract the input
+        const toolResults = await result.toolResults
+        if (toolResults && toolResults.length > 0) {
+          // The input is in the tool result from the tool call
+          const toolResult = toolResults.find(
+            (tr) => tr.toolName === "createArtifact",
+          )
+          if (toolResult && "input" in toolResult) {
+            const input = toolResult.input as {
+              name: string
+              description?: string
+              content: string
+            }
+            artifactName = input.name
+            artifactDescription = input.description
+
+            // Return a stream of the content, character by character
+            return {
+              name: artifactName,
+              description: artifactDescription,
+              contentStream: (async function* () {
+                for (const char of input.content) {
+                  yield char
+                }
+              })(),
+            }
+          }
+        }
+      }
+    }
+
+    // Fallback: if we couldn't extract, use the full text
+    const text = await result.text
+    return {
+      name: artifactName,
+      contentStream: (async function* () {
+        for (const char of text) {
+          yield char
+        }
+      })(),
+    }
+  }
+
   private createOnStepFinishHandler<TOOLS extends Vercel.ToolSet>(
-    params: A2A.MessageSendParams,
+    _params: A2A.MessageSendParams,
     currentTaskRef: { current: A2A.Task | null },
-    statusHandler: StatusUpdateHandler,
+    _statusHandler: StatusUpdateHandler,
+    artifactCreatedRef: { current: boolean },
+    artifactDetailsRef: {
+      current: { name: string; description?: string; content: string } | null
+    },
     abortController?: AbortController,
   ): (stepResult: Vercel.StepResult<TOOLS>) => void {
     return (stepResult) => {
@@ -382,61 +608,45 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
         }, toolResults: ${this.truncateForLog(toolResults)}`,
       )
 
-      if (finishReason === "tool-calls") {
-        if (!currentTaskRef.current) {
-          currentTaskRef.current = this.taskService.createTask(
-            params.message.contextId!,
-            params.metadata,
-          )
-          // Register AbortController for this task
-          if (abortController) {
-            this.taskAbortControllers.set(
-              currentTaskRef.current.id,
-              abortController,
-            )
-          }
-          // Move user message into task context
-          this.taskService.addExistingMessageToHistory(
-            currentTaskRef.current,
-            params.message,
-          )
-          // Reload task from repository to get populated history
-          const taskWithHistory = this.taskStorage.getTask(
+      if (finishReason === "tool-calls" && currentTaskRef.current) {
+        // Register AbortController for this task if not already registered
+        if (
+          abortController &&
+          !this.taskAbortControllers.has(currentTaskRef.current.id)
+        ) {
+          this.taskAbortControllers.set(
             currentTaskRef.current.id,
+            abortController,
           )
-          if (taskWithHistory) {
-            currentTaskRef.current = taskWithHistory
-          }
-          statusHandler(currentTaskRef.current)
         }
 
-        const toolPreamble = text
-          ? text
-          : `Using ${toolCalls.map((tc) => tc.toolName).join(", ")}`
-        const statusUpdate = this.taskService.transitionState(
-          currentTaskRef.current,
-          "working",
-          toolPreamble,
-        )
-        statusHandler(statusUpdate)
-
-        console.log("checking: " + JSON.stringify(toolResults))
+        // Check for artifact creation
+        console.log("checking for artifacts: " + JSON.stringify(toolResults))
         for (const toolResult of toolResults || []) {
           if (
             toolResult.dynamic !== true &&
             toolResult.toolName === "createArtifact" && currentTaskRef.current
           ) {
-            const { name, description, content } = toolResult.input
-
-            const artifactEvent = this.taskService.createArtifact(
-              currentTaskRef.current,
-              {
-                name,
-                description,
-                parts: [{ kind: "text", text: content }],
-              },
+            // Artifact detected! Stop status updates and capture details
+            console.info("Artifact creation detected, stopping status updates")
+            this.statusUpdateService.stopStatusUpdates(
+              currentTaskRef.current.id,
             )
-            statusHandler(artifactEvent)
+            artifactCreatedRef.current = true
+
+            // Extract artifact details
+            if ("input" in toolResult) {
+              const input = toolResult.input as {
+                name: string
+                description?: string
+                content: string
+              }
+              artifactDetailsRef.current = {
+                name: input.name,
+                description: input.description,
+                content: input.content,
+              }
+            }
           }
         }
       }
@@ -493,11 +703,13 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
           taskId: currentTaskRef.current?.id,
         })
 
-        if (message.role === "assistant") {
+        // Only create A2A messages if we're NOT in a task flow
+        // During task flow, we only emit task events and artifacts
+        if (message.role === "assistant" && !currentTaskRef.current) {
           const a2aMessage = this.vercelService.fromUIMessageToA2A(
             message,
             contextId,
-            currentTaskRef.current?.id,
+            undefined, // No task ID since we're not in a task flow
           )
           this.a2aMessageRepository.createMessage(a2aMessage)
           finalMessageHolder.message = a2aMessage
@@ -660,6 +872,12 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
 
       const currentTaskRef = { current: null as A2A.Task | null }
       const finalMessageHolder = { message: null as A2A.Message | null }
+      const artifactCreatedRef = { current: false }
+      const artifactDetailsRef = {
+        current: null as
+          | { name: string; description?: string; content: string }
+          | null,
+      }
 
       const allTools = {
         ...tools,
@@ -706,6 +924,8 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
           params,
           currentTaskRef,
           () => {},
+          artifactCreatedRef,
+          artifactDetailsRef,
           undefined, // no abort controller for non-streaming sendMessage
         ),
       })
@@ -816,11 +1036,66 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
 
     await this.saveUserMessage(params.message, contextId)
 
+    // ========== STAGE 1: Initial Routing ==========
+    console.info("Stage 1: Initial routing")
+    const routing = await this.handleInitialRouting(params, contextId)
+
+    if (!routing.shouldCreateTask) {
+      // Direct message response - no task needed
+      console.info("No task needed, returning direct message")
+      if (routing.initialResponse) {
+        yield routing.initialResponse
+      }
+      return
+    }
+
+    // ========== STAGE 2: Task Creation and Execution ==========
+    console.info("Stage 2: Task creation requested")
+
     // Queue for status updates that need to be yielded progressively
     const eventUpdateQueue: StreamEmitUnion[] = []
     const currentTaskRef = { current: null as A2A.Task | null }
+    let artifactCreated = false
+    let artifactDetails:
+      | {
+        name: string
+        description?: string
+        content: string
+      }
+      | null = null
 
     try {
+      // Create task immediately
+      currentTaskRef.current = this.taskService.createTask(
+        contextId,
+        params.metadata,
+      )
+      console.info(`Task created: ${currentTaskRef.current.id}`)
+
+      // Add user message to task history
+      this.taskService.addExistingMessageToHistory(
+        currentTaskRef.current,
+        params.message,
+      )
+
+      // Reload task from repository to get populated history
+      const taskWithHistory = this.taskStorage.getTask(
+        currentTaskRef.current.id,
+      )
+      if (taskWithHistory) {
+        currentTaskRef.current = taskWithHistory
+      }
+
+      // Emit initial task (state: submitted)
+      yield currentTaskRef.current
+
+      // Transition to working state
+      const workingStatus = this.taskService.transitionState(
+        currentTaskRef.current,
+        "working",
+      )
+      yield workingStatus
+
       const {
         tools,
         mcpTools,
@@ -850,6 +1125,22 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
         exec: execTool,
       }
 
+      // Start async status updates
+      this.statusUpdateService.startStatusUpdates(
+        currentTaskRef.current.id,
+        contextId,
+        () => model,
+        () => {
+          const currentMessages = this.vercelService.fromContext(contextId)
+          return Vercel.convertToModelMessages(currentMessages, {
+            tools: allTools,
+          })
+        },
+        (statusEvent) => {
+          queueStatusHandler(statusEvent)
+        },
+      )
+
       const modelMessages = Vercel.convertToModelMessages(messages, {
         tools: allTools,
       })
@@ -868,6 +1159,10 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
 
       // Create AbortController for this task stream
       const abortController = new AbortController()
+
+      // Refs to track artifact creation
+      const artifactCreatedRef = { current: artifactCreated }
+      const artifactDetailsRef = { current: artifactDetails }
 
       const result = Vercel.streamText({
         experimental_telemetry: {
@@ -888,6 +1183,8 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
           params,
           currentTaskRef,
           queueStatusHandler,
+          artifactCreatedRef,
+          artifactDetailsRef,
           abortController,
         ),
       })
@@ -911,36 +1208,15 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
         switch (e.type) {
           case "tool-input-start":
             console.info(`Tool input starting: ${e.toolName}`)
-            if (currentTaskRef.current) {
-              const statusUpdate = this.taskService.transitionState(
-                currentTaskRef.current,
-                "working",
-              )
-              queueStatusHandler(statusUpdate)
-            }
             break
           case "tool-input-end":
             console.info(`Tool input ready: ${e.id}`)
             break
           case "tool-call":
             console.info(`Tool called: ${e.toolName}`)
-            if (currentTaskRef.current) {
-              const statusUpdate = this.taskService.transitionState(
-                currentTaskRef.current,
-                "working",
-              )
-              queueStatusHandler(statusUpdate)
-            }
             break
           case "tool-result":
             console.info(`Tool completed: ${e.toolName}`)
-            if (currentTaskRef.current) {
-              const statusUpdate = this.taskService.transitionState(
-                currentTaskRef.current,
-                "working",
-              )
-              queueStatusHandler(statusUpdate)
-            }
             break
           case "finish-step":
             console.info("Step finished")
@@ -968,21 +1244,109 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
       // Wait a moment for onFinish to complete
       await new Promise((resolve) => setTimeout(resolve, 100))
 
-      // Drain any status updates added by onFinish (e.g., "completed" status)
+      // Drain any status updates added by onFinish
       while (eventUpdateQueue.length > 0) {
         const statusUpdate = eventUpdateQueue.shift()!
         yield statusUpdate
       }
 
-      // Yield the final A2A message
-      if (finalMessageHolder.message) {
-        console.info("Yielding final A2A message")
-        yield finalMessageHolder.message
+      // Stop status updates (in case they're still running)
+      if (currentTaskRef.current) {
+        this.statusUpdateService.stopStatusUpdates(currentTaskRef.current.id)
+      }
+
+      // ========== STAGE 3: Artifact Generation and Streaming ==========
+      console.info("Stage 3: Artifact generation")
+
+      if (currentTaskRef.current) {
+        // Update refs from the handlers
+        artifactCreated = artifactCreatedRef.current
+        artifactDetails = artifactDetailsRef.current
+
+        if (artifactCreated && artifactDetails) {
+          // Stream the artifact that was created during execution
+          console.info("Streaming artifact created during execution")
+          const details: {
+            name: string
+            description?: string
+            content: string
+          } = artifactDetails
+
+          // Split content into characters for streaming
+          const contentStream = (async function* () {
+            for (const char of details.content) {
+              yield char
+            }
+          })()
+
+          for await (
+            const artifactEvent of this.streamArtifactTokens(
+              currentTaskRef.current,
+              details.name,
+              details.description,
+              contentStream,
+            )
+          ) {
+            yield artifactEvent
+          }
+        } else {
+          // Force artifact generation
+          console.info("No artifact created, forcing generation")
+          const forced = await this.forceArtifactGeneration(
+            currentTaskRef.current,
+            contextId,
+          )
+          artifactDetails = {
+            name: forced.name,
+            description: forced.description,
+            content: "",
+          }
+
+          // Stream the forced artifact tokens
+          for await (
+            const artifactEvent of this.streamArtifactTokens(
+              currentTaskRef.current,
+              forced.name,
+              forced.description,
+              forced.contentStream,
+            )
+          ) {
+            yield artifactEvent
+            // Also persist the final artifact
+            if (artifactEvent.artifact.parts[0].kind === "text") {
+              artifactDetails.content = artifactEvent.artifact.parts[0].text
+            }
+          }
+        }
+
+        // Persist the artifact
+        if (artifactDetails) {
+          this.taskService.createArtifact(currentTaskRef.current, {
+            name: artifactDetails.name,
+            description: artifactDetails.description,
+            parts: [{ kind: "text", text: artifactDetails.content }],
+          })
+        }
+
+        // Mark task as completed
+        const completedStatus = this.taskService.transitionState(
+          currentTaskRef.current,
+          "completed",
+        )
+        yield completedStatus
       }
     } catch (error) {
-      // Clean up abort controller on error
+      // Clean up abort controller and status updates on error
       if (currentTaskRef.current) {
         this.taskAbortControllers.delete(currentTaskRef.current.id)
+        this.statusUpdateService.stopStatusUpdates(currentTaskRef.current.id)
+
+        // Mark task as failed
+        const failedStatus = this.taskService.transitionState(
+          currentTaskRef.current,
+          "failed",
+        )
+        yield failedStatus
       }
       this.handleStreamError(error)
     }
