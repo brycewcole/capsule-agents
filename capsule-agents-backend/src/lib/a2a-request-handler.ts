@@ -823,61 +823,6 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
     })()
   }
 
-  private async processStreamEvents(
-    fullStream: AsyncIterable<
-      Vercel.TextStreamPart<Record<string, Vercel.Tool>>
-    >,
-    currentTaskRef: { current: A2A.Task | null },
-    statusHandler: StatusUpdateHandler,
-  ): Promise<void> {
-    console.info("StreamText initialized, consuming stream...")
-    for await (const e of fullStream) {
-      switch (e.type) {
-        case "tool-input-start":
-          console.info(`Tool input starting: ${e.toolName}`)
-          if (currentTaskRef.current) {
-            const statusUpdate = this.taskService.transitionState(
-              currentTaskRef.current,
-              "working",
-            )
-            statusHandler(statusUpdate)
-          }
-          break
-        case "tool-input-end":
-          console.info(`Tool input ready: ${e.id}`)
-          break
-        case "tool-call":
-          console.info(`Tool called: ${e.toolName}`)
-          if (currentTaskRef.current) {
-            const statusUpdate = this.taskService.transitionState(
-              currentTaskRef.current,
-              "working",
-            )
-            statusHandler(statusUpdate)
-          }
-          break
-        case "tool-result":
-          console.info(`Tool completed: ${e.toolName}`)
-          if (currentTaskRef.current) {
-            const statusUpdate = this.taskService.transitionState(
-              currentTaskRef.current,
-              "working",
-            )
-            statusHandler(statusUpdate)
-          }
-          break
-        case "finish-step":
-          console.info("Step finished")
-          break
-        case "finish":
-          console.info(`Finish event in stream: ${this.truncateForLog(e)}`)
-          break
-        default:
-          break
-      }
-    }
-  }
-
   private handleStreamError(error: unknown): never {
     throw error
   }
@@ -1028,12 +973,6 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
 
       this.consumeUIResponse(uiResponse)
 
-      await this.processStreamEvents(
-        result.fullStream,
-        currentTaskRef,
-        () => {},
-      )
-
       // Wait a moment for onFinish to complete
       await new Promise((resolve) => setTimeout(resolve, 100))
 
@@ -1124,7 +1063,6 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
     const routing = await this.handleInitialRouting(params, contextId)
 
     if (!routing.shouldCreateTask) {
-      // Direct message response - no task needed
       console.info("No task needed, returning direct message")
       if (routing.initialResponse) {
         yield routing.initialResponse
@@ -1151,31 +1089,27 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
     const recentStatusTexts: string[] = []
 
     try {
-      // Create task immediately
       currentTaskRef.current = this.taskService.createTask(
         contextId,
         params.metadata,
       )
       console.info(`Task created: ${currentTaskRef.current.id}`)
 
-      // Add user message to task history
       this.taskService.addExistingMessageToHistory(
         currentTaskRef.current,
         params.message,
       )
 
-      // Reload task from repository to get populated history
-      const taskWithHistory = this.taskStorage.getTask(
+      currentTaskRef.current = this.taskStorage.getTask(
         currentTaskRef.current.id,
-      )
-      if (taskWithHistory) {
-        currentTaskRef.current = taskWithHistory
+      ) ?? null
+      if (!currentTaskRef.current) {
+        throw new Error("Failed to retrieve newly created task from storage")
       }
 
       // Emit initial task (state: submitted)
       yield currentTaskRef.current
 
-      // Transition to working state
       const workingStatus = this.taskService.transitionState(
         currentTaskRef.current,
         "working",
@@ -1220,13 +1154,10 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
         }
       }
 
-      console.info(messages)
-
       const allTools = {
         ...tools,
         ...mcpTools.tools,
         createArtifact: artifactTool,
-        exec: execTool,
       }
 
       // Start async status updates
