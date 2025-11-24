@@ -1,17 +1,14 @@
+import type * as A2A from "@a2a-js/sdk"
 import type {
   Message as A2AMessage,
   Task as A2ATask,
   TaskArtifactUpdateEvent,
   TaskStatusUpdateEvent,
 } from "@a2a-js/sdk"
-import type * as A2A from "@a2a-js/sdk"
 import { A2AClient } from "@a2a-js/sdk/client"
 import { v4 as uuidv4 } from "uuid"
 
-// Allow overriding the backend origin for dev setups where the frontend
-// runs on a different port (e.g., Vite dev server).
-const API_BASE_URL =
-  import.meta.env?.VITE_API_BASE_URL ?? globalThis.location.origin
+const API_BASE_URL = globalThis.location.origin
 const a2aClient = new A2AClient(API_BASE_URL, {
   fetchImpl: (...a) => globalThis.fetch(...a),
 })
