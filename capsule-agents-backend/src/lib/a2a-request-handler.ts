@@ -17,7 +17,7 @@ import { ProviderService } from "../services/provider-service.ts"
 import { StatusUpdateService } from "../services/status-update.service.ts"
 import { TaskService } from "../services/task.service.ts"
 import { VercelService } from "../services/vercel.service.ts"
-import { artifactTool } from "./artifact-tool.ts"
+import { artifactTool, type ArtifactInput } from "./artifact-tool.ts"
 import { createTaskTool } from "../tools/create-task-tool.ts"
 import { isMCPCapability } from "./capability-types.ts"
 import {
@@ -56,6 +56,13 @@ type StreamEmitUnion =
 type StatusUpdateHandler = (
   event: StreamEmitUnion,
 ) => void
+
+type ArtifactStreamState = {
+  artifactId: string
+  name: string
+  description?: string
+  content: string
+}
 
 export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
   private taskStorage = new TaskRepository()
@@ -474,19 +481,6 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
   }
 
   /**
-   * Split content into chunks for streaming (by words and newlines)
-   */
-  private async *chunkContent(content: string): AsyncGenerator<string> {
-    const CHUNK_SIZE = 10 // Number of words per chunk
-    const words = content.split(/(\s+)/) // Split by whitespace but keep delimiters
-
-    for (let i = 0; i < words.length; i += CHUNK_SIZE) {
-      const chunk = words.slice(i, i + CHUNK_SIZE).join("")
-      yield chunk
-    }
-  }
-
-  /**
    * Stream artifact content chunk by chunk as TaskArtifactUpdateEvents
    */
   private async *streamArtifactTokens(
@@ -494,9 +488,10 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
     artifactName: string,
     artifactDescription: string | undefined,
     contentStream: AsyncIterable<string>,
+    artifactId?: string,
   ): AsyncGenerator<A2A.TaskArtifactUpdateEvent> {
     let accumulatedContent = ""
-    const artifactId = crypto.randomUUID()
+    const finalArtifactId = artifactId ?? crypto.randomUUID()
 
     for await (const chunk of contentStream) {
       accumulatedContent += chunk
@@ -506,12 +501,47 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
         taskId: task.id,
         contextId: task.contextId,
         artifact: {
-          artifactId,
+          artifactId: finalArtifactId,
           name: artifactName,
           description: artifactDescription,
           parts: [{ kind: "text", text: accumulatedContent }],
         },
       }
+    }
+  }
+
+  private isArtifactTool(toolName: string): boolean {
+    return toolName === "createArtifact" || toolName === "generateArtifact"
+  }
+
+  private updateArtifactStateFromInput(
+    state: ArtifactStreamState,
+    input?: Partial<ArtifactInput>,
+  ): void {
+    if (!input) return
+    if (input.name) {
+      state.name = input.name
+    }
+    if (input.description) {
+      state.description = input.description
+    }
+  }
+
+  private toArtifactUpdateEvent(
+    task: A2A.Task | null,
+    state: ArtifactStreamState,
+  ): A2A.TaskArtifactUpdateEvent | null {
+    if (!task) return null
+    return {
+      kind: "artifact-update",
+      taskId: task.id,
+      contextId: task.contextId,
+      artifact: {
+        artifactId: state.artifactId,
+        name: state.name || "Artifact",
+        description: state.description,
+        parts: [{ kind: "text", text: state.content }],
+      },
     }
   }
 
@@ -554,44 +584,104 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
       toolChoice: { type: "tool", toolName: "createArtifact" },
     })
 
-    // Extract artifact details from tool call
     let artifactName = "Result"
     let artifactDescription: string | undefined
+    const artifactState: ArtifactStreamState = {
+      artifactId: crypto.randomUUID(),
+      name: artifactName,
+      description: artifactDescription,
+      content: "",
+    }
+    let targetToolCallId: string | null = null
+    const contentQueue: string[] = []
+    let resolvePending: ((value?: void | PromiseLike<void>) => void) | null =
+      null
+    let streamClosed = false
+
+    const pushDelta = (delta: string) => {
+      contentQueue.push(delta)
+      if (resolvePending) {
+        resolvePending()
+        resolvePending = null
+      }
+    }
+
+    const contentStream = (async function* () {
+      while (true) {
+        if (contentQueue.length === 0) {
+          if (streamClosed) break
+          await new Promise<void>((resolve) => {
+            resolvePending = resolve
+          })
+          continue
+        }
+
+        yield contentQueue.shift()!
+      }
+    })()
 
     for await (const chunk of result.fullStream) {
-      if (chunk.type === "tool-call" && chunk.toolName === "createArtifact") {
-        // Artifact tool call detected, extract the input
-        const toolResults = await result.toolResults
-        if (toolResults && toolResults.length > 0) {
-          // The input is in the tool result from the tool call
-          const toolResult = toolResults.find(
-            (tr) => tr.toolName === "createArtifact",
-          )
-          if (toolResult && "input" in toolResult) {
-            const input = toolResult.input as {
-              name: string
-              description?: string
-              content: string
-            }
-            artifactName = input.name
-            artifactDescription = input.description
+      if (chunk.type === "tool-call" && this.isArtifactTool(chunk.toolName)) {
+        targetToolCallId = chunk.toolCallId
+        this.updateArtifactStateFromInput(
+          artifactState,
+          chunk.input as Partial<ArtifactInput>,
+        )
+        artifactName = artifactState.name
+        artifactDescription = artifactState.description
+      } else if (
+        chunk.type === "tool-input-start" &&
+        this.isArtifactTool(chunk.toolName)
+      ) {
+        targetToolCallId = chunk.id
+      } else if (
+        chunk.type === "tool-input-delta" &&
+        targetToolCallId &&
+        chunk.id === targetToolCallId
+      ) {
+        artifactState.content += chunk.delta
+        pushDelta(chunk.delta)
+      }
+    }
 
-            // Return a chunked stream of the content
-            return {
-              name: artifactName,
-              description: artifactDescription,
-              contentStream: this.chunkContent(input.content),
-            }
-          }
+    const toolResults = await result.toolResults
+    if (toolResults && toolResults.length > 0) {
+      const toolResult = toolResults.find(
+        (tr) => tr.toolName === "createArtifact",
+      )
+      if (toolResult && "input" in toolResult) {
+        const input = toolResult.input as ArtifactInput
+        artifactName = input.name
+        artifactDescription = input.description
+        this.updateArtifactStateFromInput(artifactState, input)
+
+        if (!artifactState.content) {
+          artifactState.content = input.content
+          pushDelta(input.content)
         }
       }
     }
 
-    // Fallback: if we couldn't extract, use the full text
-    const text = await result.text
+    if (!artifactState.content) {
+      const text = await result.text
+      artifactState.content = text
+      if (text) {
+        pushDelta(text)
+      }
+    }
+
+    streamClosed = true
+    const pendingResolver = resolvePending as
+      | ((value?: void | PromiseLike<void>) => void)
+      | null
+    if (typeof pendingResolver === "function") {
+      pendingResolver()
+    }
+
     return {
       name: artifactName,
-      contentStream: this.chunkContent(text),
+      description: artifactDescription,
+      contentStream,
     }
   }
 
@@ -601,9 +691,15 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
     _statusHandler: StatusUpdateHandler,
     artifactCreatedRef: { current: boolean },
     artifactDetailsRef: {
-      current: { name: string; description?: string; content: string } | null
+      current: {
+        name: string
+        description?: string
+        content: string
+        artifactId?: string
+      } | null
     },
     abortController?: AbortController,
+    artifactStreamStates?: Map<string, ArtifactStreamState>,
   ): (stepResult: Vercel.StepResult<TOOLS>) => void {
     return (stepResult) => {
       const { text, toolCalls, toolResults, finishReason } = stepResult
@@ -646,10 +742,28 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
                 description?: string
                 content: string
               }
+              let artifactId: string | undefined
+              const existingArtifactId = artifactDetailsRef.current?.artifactId
+              if (artifactStreamStates) {
+                const toolCallId =
+                  (toolResult as { toolCallId?: string }).toolCallId
+                const state =
+                  (toolCallId && artifactStreamStates.get(toolCallId)) ??
+                  (artifactStreamStates.size === 1
+                    ? artifactStreamStates.values().next().value
+                    : undefined)
+
+                if (state) {
+                  this.updateArtifactStateFromInput(state, input)
+                  state.content = input.content
+                  artifactId = state.artifactId
+                }
+              }
               artifactDetailsRef.current = {
                 name: input.name,
                 description: input.description,
                 content: input.content,
+                artifactId: artifactId ?? existingArtifactId,
               }
             }
           }
@@ -932,6 +1046,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
           artifactCreatedRef,
           artifactDetailsRef,
           undefined, // no abort controller for non-streaming sendMessage
+          undefined,
         ),
       })
 
@@ -1066,8 +1181,11 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
         name: string
         description?: string
         content: string
+        artifactId?: string
       }
       | null = null
+    const artifactStreamStates = new Map<string, ArtifactStreamState>()
+    const recentStatusTexts: string[] = []
 
     try {
       // Create task immediately
@@ -1117,8 +1235,26 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
       const originalMessageCount = messages.length
 
       // Queue-based status handler for streaming version
+      const captureStatusText = (statusEvent: A2A.TaskStatusUpdateEvent) => {
+        const message = statusEvent.status.message
+        if (!message || !Array.isArray(message.parts)) return
+        const text = message.parts
+          .filter((part): part is A2A.TextPart => part.kind === "text")
+          .map((part) => part.text?.trim())
+          .filter(Boolean)
+          .join(" ")
+        if (!text) return
+        recentStatusTexts.push(text)
+        if (recentStatusTexts.length > 10) {
+          recentStatusTexts.shift()
+        }
+      }
+
       const queueStatusHandler: StatusUpdateHandler = (event) => {
         eventUpdateQueue.push(event)
+        if (event.kind === "status-update") {
+          captureStatusText(event)
+        }
       }
 
       console.info(messages)
@@ -1144,6 +1280,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
         (statusEvent) => {
           queueStatusHandler(statusEvent)
         },
+        () => [...recentStatusTexts],
       )
 
       const modelMessages = Vercel.convertToModelMessages(messages, {
@@ -1167,7 +1304,16 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
 
       // Refs to track artifact creation
       const artifactCreatedRef = { current: artifactCreated }
-      const artifactDetailsRef = { current: artifactDetails }
+      const artifactDetailsRef: {
+        current:
+          | {
+            name: string
+            description?: string
+            content: string
+            artifactId?: string
+          }
+          | null
+      } = { current: artifactDetails }
 
       const result = Vercel.streamText({
         experimental_telemetry: {
@@ -1191,6 +1337,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
           artifactCreatedRef,
           artifactDetailsRef,
           abortController,
+          artifactStreamStates,
         ),
       })
 
@@ -1210,18 +1357,56 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
 
       console.info("StreamText initialized, consuming stream...")
       for await (const e of result.fullStream) {
+        const callId = "toolCallId" in e ? (e as { toolCallId?: string }).toolCallId : (e as { id?: string }).id
         switch (e.type) {
           case "tool-input-start":
             console.info(`Tool input starting: ${e.toolName}`)
+            if (this.isArtifactTool(e.toolName)) {
+              const existing = callId ? artifactStreamStates.get(callId) : undefined
+              if (!existing && callId) {
+                artifactStreamStates.set(callId, {
+                  artifactId: crypto.randomUUID(),
+                  name: "Artifact",
+                  content: "",
+                })
+              }
+            }
             break
           case "tool-input-end":
             console.info(`Tool input ready: ${e.id}`)
             break
           case "tool-call":
             console.info(`Tool called: ${e.toolName}`)
+            if (this.isArtifactTool(e.toolName)) {
+              const state =
+                (callId ? artifactStreamStates.get(callId) : undefined) ?? {
+                  artifactId: crypto.randomUUID(),
+                  name: "Artifact",
+                  content: "",
+                }
+              this.updateArtifactStateFromInput(
+                state,
+                e.input as Partial<ArtifactInput>,
+              )
+              if (callId) {
+                artifactStreamStates.set(callId, state)
+              }
+            }
             break
           case "tool-result":
             console.info(`Tool completed: ${e.toolName}`)
+            if (this.isArtifactTool(e.toolName)) {
+              const state = callId ? artifactStreamStates.get(callId) : undefined
+              if (state) {
+                artifactCreatedRef.current = true
+                artifactDetailsRef.current = {
+                  name: state.name,
+                  description: state.description,
+                  content: state.content,
+                  artifactId: state.artifactId,
+                }
+              }
+            }
             break
           case "finish-step":
             console.info("Step finished")
@@ -1229,6 +1414,27 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
           case "finish":
             console.info(`Finish event in stream: ${this.truncateForLog(e)}`)
             break
+          case "tool-input-delta": {
+            const state = callId ? artifactStreamStates.get(callId) : undefined
+            if (state) {
+              state.content += e.delta
+              const artifactEvent = this.toArtifactUpdateEvent(
+                currentTaskRef.current,
+                state,
+              )
+              artifactCreatedRef.current = true
+              artifactDetailsRef.current = {
+                name: state.name,
+                description: state.description,
+                content: state.content,
+                artifactId: state.artifactId,
+              }
+              if (artifactEvent) {
+                yield artifactEvent
+              }
+            }
+            break
+          }
           default:
             break
         }
@@ -1260,7 +1466,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
         this.statusUpdateService.stopStatusUpdates(currentTaskRef.current.id)
       }
 
-      // ========== STAGE 3: Artifact Generation and Streaming ==========
+      // ========== STAGE 3: Artifact Generation and Emission ==========
       console.info("Stage 3: Artifact generation")
 
       if (currentTaskRef.current) {
@@ -1269,26 +1475,25 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
         artifactDetails = artifactDetailsRef.current
 
         if (artifactCreated && artifactDetails) {
-          // Stream the artifact that was created during execution
-          console.info("Streaming artifact created during execution")
+          // Emit the artifact that was created during execution
+          console.info("Emitting artifact created during execution")
           const details: {
             name: string
             description?: string
             content: string
+            artifactId?: string
           } = artifactDetails
-
-          // Split content into chunks for streaming
-          const contentStream = this.chunkContent(details.content)
-
-          for await (
-            const artifactEvent of this.streamArtifactTokens(
-              currentTaskRef.current,
-              details.name,
-              details.description,
-              contentStream,
-            )
-          ) {
-            yield artifactEvent
+          const artifactId = details.artifactId ?? crypto.randomUUID()
+          yield {
+            kind: "artifact-update",
+            taskId: currentTaskRef.current.id,
+            contextId: currentTaskRef.current.contextId,
+            artifact: {
+              artifactId,
+              name: details.name,
+              description: details.description,
+              parts: [{ kind: "text", text: details.content }],
+            },
           }
         } else {
           // Force artifact generation
@@ -1301,15 +1506,17 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
             name: forced.name,
             description: forced.description,
             content: "",
+            artifactId: crypto.randomUUID(),
           }
 
-          // Stream the forced artifact tokens
+          // Stream the forced artifact
           for await (
             const artifactEvent of this.streamArtifactTokens(
               currentTaskRef.current,
               forced.name,
               forced.description,
               forced.contentStream,
+              artifactDetails.artifactId,
             )
           ) {
             yield artifactEvent

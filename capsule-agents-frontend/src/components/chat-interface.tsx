@@ -294,6 +294,33 @@ const getArtifactContentInfo = (artifact: Artifact) => {
   }
 }
 
+const ensureArtifactTimestamp = (artifact: Artifact): Artifact => {
+  const artifactMetadata = artifact.metadata as
+    | { timestamp?: string | number }
+    | undefined
+  const partMetadata = getTextPartMetadata(artifact)
+  const partTimestamp = partMetadata && typeof (partMetadata as {
+    timestamp?: unknown
+  }).timestamp !== "undefined"
+    ? (partMetadata as { timestamp?: unknown }).timestamp
+    : null
+  const timestampSeconds = normalizeTimestamp(
+    artifactMetadata?.timestamp ??
+      (typeof partTimestamp === "string" || typeof partTimestamp === "number"
+        ? partTimestamp
+        : null),
+  ) ?? Date.now() / 1000
+
+  const timestampIso = new Date(timestampSeconds * 1000).toISOString()
+  return {
+    ...artifact,
+    metadata: {
+      ...(artifact.metadata as Record<string, unknown> | undefined),
+      timestamp: timestampIso,
+    },
+  }
+}
+
 const extensionFromMimeType = (mimeType: string, isHtml: boolean): string => {
   if (isHtml) return ".html"
   if (mimeType.includes("markdown")) return ".md"
@@ -388,8 +415,7 @@ const buildTaskUpdates = (task: A2ATask): TaskTimelineUpdate[] => {
 
       const timestamp = normalizeTimestamp(
         (metadataTimestamp ?? null) as string | number | null,
-      )
-      if (timestamp == null) return
+      ) ?? Date.now() / 1000
 
       updates.push({
         id: artifactId,
@@ -1313,6 +1339,9 @@ export default function ChatInterface({
             artifact: Artifact
           }
           console.log("Received artifact-update:", artifactEvent)
+          const artifactWithTimestamp = ensureArtifactTimestamp(
+            artifactEvent.artifact,
+          )
 
           const targetEntryId = resolveEntryIdForTask(artifactEvent.taskId)
 
@@ -1332,19 +1361,19 @@ export default function ChatInterface({
                   // Add or update artifact
                   const existingArtifacts = timelineTask.artifacts || []
                   const artifactIndex = existingArtifacts.findIndex(
-                    (a) => a.artifactId === artifactEvent.artifact.artifactId,
+                    (a) => a.artifactId === artifactWithTimestamp.artifactId,
                   )
 
                   let updatedArtifacts: typeof existingArtifacts
                   if (artifactIndex >= 0) {
                     // Update existing artifact
                     updatedArtifacts = [...existingArtifacts]
-                    updatedArtifacts[artifactIndex] = artifactEvent.artifact
+                    updatedArtifacts[artifactIndex] = artifactWithTimestamp
                   } else {
                     // Add new artifact
                     updatedArtifacts = [
                       ...existingArtifacts,
-                      artifactEvent.artifact,
+                      artifactWithTimestamp,
                     ]
                   }
 
