@@ -102,11 +102,11 @@ export class StatusUpdateService {
         .map((s) => s.trim())
         .filter(Boolean)
 
-      const statusContext = dedupedStatuses.length > 0
-        ? `Previous recent status updates (do not repeat): ${
+      const statusPrompt = dedupedStatuses.length > 0
+        ? `Generate a SHORT one-line status update (maximum 50 characters) describing what you are currently doing. Be concise and specific. Examples: 'Searching for information...', 'Processing data...', 'Calling API...'\n\nPrevious recent status updates (do not repeat): ${
           dedupedStatuses.join(" | ")
         }`
-        : null
+        : "Generate a SHORT one-line status update (maximum 50 characters) describing what you are currently doing. Be concise and specific. Examples: 'Searching for information...', 'Processing data...', 'Calling API...'"
 
       const result = await Vercel.generateText({
         model,
@@ -114,12 +114,8 @@ export class StatusUpdateService {
           ...messages,
           {
             role: "user",
-            content:
-              "Generate a SHORT one-line status update (maximum 50 characters) describing what you are currently doing. Be concise and specific. Examples: 'Searching for information...', 'Processing data...', 'Calling API...'",
+            content: statusPrompt,
           },
-          ...(statusContext
-            ? [{ role: "user", content: statusContext }] as const
-            : []),
         ],
         abortSignal: signal,
       })
