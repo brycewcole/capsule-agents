@@ -27,6 +27,10 @@ import {
   type BuiltInPromptUsage,
 } from "./default-prompts.ts"
 import { getProviderOptions } from "./provider-options.ts"
+import {
+  extractStringFieldsFromBuffer,
+  parsePartialObjectFromStream,
+} from "./streaming-json.ts"
 
 interface MCPToolsDisposable {
   tools: Record<string, Vercel.Tool>
@@ -50,6 +54,7 @@ type ArtifactStreamState = {
   name: string
   description?: string
   content: string
+  inputBuffer: string
 }
 
 export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
@@ -502,6 +507,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
             artifactId: crypto.randomUUID(),
             name: "Artifact",
             content: "",
+            inputBuffer: "",
           })
         }
       } else if (
@@ -511,16 +517,43 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
         if (state) {
           this.updateArtifactStateFromInput(
             state,
-            event.input as Partial<ArtifactInput>,
+            typeof event.input === "string"
+              ? parsePartialObjectFromStream<ArtifactInput>(
+                event.input,
+                ["name", "description", "content", "contentType"],
+              )
+              : event.input as Partial<ArtifactInput>,
           )
         }
       } else if (event.type === "tool-input-delta") {
         const state = artifactStreamStates.get(event.id)
         if (state) {
-          state.content += event.delta
-          const artifactEvent = this.toArtifactUpdateEvent(task, state)
-          if (artifactEvent) {
-            yield artifactEvent
+          state.inputBuffer += event.delta
+          let hasUpdate = false
+
+          const parsedInput = parsePartialObjectFromStream<ArtifactInput>(
+            state.inputBuffer,
+            ["name", "description", "content", "contentType"],
+          )
+          if (parsedInput) {
+            this.updateArtifactStateFromInput(state, parsedInput)
+            hasUpdate = true
+          }
+
+          const streamingFields = extractStringFieldsFromBuffer<ArtifactInput>(
+            state.inputBuffer,
+            ["content", "name", "description"],
+          )
+          if (streamingFields) {
+            this.updateArtifactStateFromInput(state, streamingFields)
+            hasUpdate = true
+          }
+
+          if (hasUpdate) {
+            const artifactEvent = this.toArtifactUpdateEvent(task, state)
+            if (artifactEvent) {
+              yield artifactEvent
+            }
           }
         }
       }
@@ -581,6 +614,9 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
     }
     if (input.description) {
       state.description = input.description
+    }
+    if (input.content) {
+      state.content = input.content
     }
   }
 
