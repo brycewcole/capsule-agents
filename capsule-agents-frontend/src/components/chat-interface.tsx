@@ -1257,6 +1257,8 @@ export default function ChatInterface({
                 return {
                   ...prevTask,
                   status: event.status,
+                  // Preserve existing artifacts; status updates don't include them
+                  artifacts: prevTask.artifacts,
                   history: newHistory,
                 }
               }
@@ -1265,10 +1267,21 @@ export default function ChatInterface({
                 kind: "task",
                 contextId: event.contextId,
                 status: event.status,
+                artifacts: [],
                 history: newHistory,
               }
             },
           )
+
+          const computeTaskUpdates = (
+            task: A2ATask | null | undefined,
+            entry: TimelineEntry,
+          ) => {
+            const updates = task ? buildTaskUpdates(task) : []
+            return updates.length > 0
+              ? updates
+              : (entry.agent?.taskUpdates ?? updates)
+          }
 
           // Update task updates in the UI whenever history changes
           if (
@@ -1276,7 +1289,12 @@ export default function ChatInterface({
             (nextTask as A2ATask).history &&
             (nextTask as A2ATask).history!.length > 0
           ) {
-            const taskUpdates = buildTaskUpdates(nextTask)
+            const taskUpdates = computeTaskUpdates(
+              nextTask ?? undefined,
+              timelineEntriesRef.current.find((e) =>
+                e.id === targetEntryId
+              ) ?? timelineEntriesRef.current.at(-1)!,
+            )
             updateEntry(targetEntryId, (entry) => {
               return {
                 ...entry,
@@ -1292,7 +1310,7 @@ export default function ChatInterface({
 
           if (event.final && event.status.state === "completed") {
             updateEntry(targetEntryId, (entry) => {
-              const updates = nextTask ? buildTaskUpdates(nextTask) : []
+              const updates = computeTaskUpdates(nextTask ?? undefined, entry)
               const newCapabilities = nextTask
                 ? extractCapabilityCalls(nextTask)
                 : finalCapabilityCalls
@@ -1313,7 +1331,7 @@ export default function ChatInterface({
             activeEntryIdRef.current = null
           } else if (event.final && event.status.state === "canceled") {
             updateEntry(targetEntryId, (entry) => {
-              const updates = nextTask ? buildTaskUpdates(nextTask) : []
+              const updates = computeTaskUpdates(nextTask ?? undefined, entry)
               return {
                 ...entry,
                 agent: entry.agent
@@ -1337,13 +1355,25 @@ export default function ChatInterface({
             taskId: string
             contextId: string
             artifact: Artifact
+            append?: boolean
           }
           console.log("Received artifact-update:", artifactEvent)
-          const artifactWithTimestamp = ensureArtifactTimestamp(
-            artifactEvent.artifact,
-          )
+          const append = Boolean(artifactEvent.append)
 
-          const targetEntryId = resolveEntryIdForTask(artifactEvent.taskId)
+          // Fall back to the active entry or the most recent entry if we
+          // somehow don't have a mapped entry for this task yet.
+          const targetEntryId =
+            resolveEntryIdForTask(artifactEvent.taskId) ??
+              activeEntryIdRef.current ??
+              timelineEntriesRef.current.at(-1)?.id
+
+          if (!targetEntryId) {
+            console.warn(
+              "Received artifact-update but could not resolve target entry",
+              artifactEvent,
+            )
+            continue
+          }
 
           // Update the task's artifacts
           let updatedTaskForTimeline: A2ATask | undefined
@@ -1351,61 +1381,116 @@ export default function ChatInterface({
             return prev.map((entry) => {
               if (entry.id !== targetEntryId) return entry
 
-              return {
-                ...entry,
-                tasks: entry.tasks.map((timelineTask) => {
-                  if (timelineTask.id !== artifactEvent.taskId) {
-                    return timelineTask
+              let updatedTaskLocal: A2ATask | undefined
+
+              const updatedTasks = entry.tasks.map((timelineTask) => {
+                if (timelineTask.id !== artifactEvent.taskId) {
+                  return timelineTask
+                }
+
+                console.log(
+                  "Updating artifact for task in entry",
+                  targetEntryId,
+                  "taskId",
+                  timelineTask.id,
+                  "append",
+                  append,
+                )
+
+                // Add or update artifact
+                const existingArtifacts = timelineTask.artifacts || []
+                const artifactIndex = existingArtifacts.findIndex(
+                  (a) => a.artifactId === artifactEvent.artifact.artifactId,
+                )
+
+                let updatedArtifacts: typeof existingArtifacts
+                if (artifactIndex >= 0) {
+                  const existing = existingArtifacts[artifactIndex]
+                  let mergedArtifact: Artifact
+
+                  if (append) {
+                    // Append new parts to the existing artifact content
+                    mergedArtifact = {
+                      ...existing,
+                      ...artifactEvent.artifact,
+                      parts: [
+                        ...(existing.parts ?? []),
+                        ...(artifactEvent.artifact.parts ?? []),
+                      ],
+                      // Preserve existing metadata first to keep timestamps stable
+                      metadata: {
+                        ...(artifactEvent.artifact.metadata ??
+                          {}),
+                        ...(existing.metadata ?? {}),
+                      },
+                    }
+                  } else {
+                    // Replace artifact
+                    mergedArtifact = {
+                      ...existing,
+                      ...artifactEvent.artifact,
+                    }
                   }
 
-                  // Add or update artifact
-                  const existingArtifacts = timelineTask.artifacts || []
-                  const artifactIndex = existingArtifacts.findIndex(
-                    (a) => a.artifactId === artifactWithTimestamp.artifactId,
+                  const artifactWithTimestamp = ensureArtifactTimestamp(
+                    mergedArtifact,
                   )
 
-                  let updatedArtifacts: typeof existingArtifacts
-                  if (artifactIndex >= 0) {
-                    // Update existing artifact
-                    updatedArtifacts = [...existingArtifacts]
-                    updatedArtifacts[artifactIndex] = artifactWithTimestamp
-                  } else {
-                    // Add new artifact
-                    updatedArtifacts = [
-                      ...existingArtifacts,
-                      artifactWithTimestamp,
-                    ]
-                  }
+                  // Update existing artifact
+                  updatedArtifacts = [...existingArtifacts]
+                  updatedArtifacts[artifactIndex] = artifactWithTimestamp
+                } else {
+                  const artifactWithTimestamp = ensureArtifactTimestamp(
+                    artifactEvent.artifact,
+                  )
+                  // Add new artifact
+                  updatedArtifacts = [
+                    ...existingArtifacts,
+                    artifactWithTimestamp,
+                  ]
+                }
 
-                  // IMPORTANT: Update both the TimelineTask.artifacts AND the task.artifacts
-                  // so that subsequent upsertTask calls don't overwrite our changes
-                  const updatedTask = {
-                    ...timelineTask.task,
-                    artifacts: updatedArtifacts,
-                  }
-                  updatedTaskForTimeline = updatedTask
+                // IMPORTANT: Update both the TimelineTask.artifacts AND the task.artifacts
+                // so that subsequent upsertTask calls don't overwrite our changes
+                const updatedTask = {
+                  ...timelineTask.task,
+                  artifacts: updatedArtifacts,
+                }
+                updatedTaskLocal = updatedTask
 
-                  return {
-                    ...timelineTask,
-                    task: updatedTask,
-                    artifacts: updatedArtifacts,
-                  }
-                }),
+                return {
+                  ...timelineTask,
+                  task: updatedTask,
+                  artifacts: updatedArtifacts,
+                }
+              })
+
+              if (updatedTaskLocal) {
+                const taskUpdates = buildTaskUpdates(updatedTaskLocal)
+                console.log(
+                  "Applying artifact updates to entry",
+                  targetEntryId,
+                  "taskUpdates:",
+                  taskUpdates.length,
+                )
+                return {
+                  ...entry,
+                  tasks: updatedTasks,
+                  agent: entry.agent
+                    ? {
+                      ...entry.agent,
+                      taskUpdates,
+                    }
+                    : entry.agent,
+                }
+              }
+
+              return {
+                ...entry,
+                tasks: updatedTasks,
               }
             })
           })
-          if (updatedTaskForTimeline && targetEntryId) {
-            const taskUpdates = buildTaskUpdates(updatedTaskForTimeline)
-            updateEntry(targetEntryId, (entry) => ({
-              ...entry,
-              agent: entry.agent
-                ? {
-                  ...entry.agent,
-                  taskUpdates,
-                }
-                : entry.agent,
-            }))
-          }
         }
       }
     } catch (error) {

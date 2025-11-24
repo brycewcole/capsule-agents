@@ -1218,19 +1218,11 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
             currentTaskRef.current?.id,
           )
 
-          if (currentTaskRef.current) {
-            // Check if task was cancelled - don't override cancelled state
-            const currentTask = this.taskStorage.getTask(
-              currentTaskRef.current.id,
-            )
-            if (currentTask && currentTask.status.state !== "canceled") {
-              const statusUpdate = this.taskService.transitionState(
-                currentTaskRef.current,
-                "completed",
-              )
-              queueStatusHandler(statusUpdate)
-            }
+          // Note: Do NOT mark task as completed here - it will be marked completed
+          // at the end of sendMessageStream after all events have been yielded
+          // to ensure the frontend receives all status updates in order
 
+          if (currentTaskRef.current) {
             // Clean up the AbortController
             this.taskAbortControllers.delete(currentTaskRef.current.id)
           }
