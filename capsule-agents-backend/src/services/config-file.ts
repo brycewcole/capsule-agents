@@ -1,3 +1,4 @@
+import { parse as parseYaml } from "jsr:@std/yaml@1.0.10"
 import type { AgentInfo } from "./agent-config.ts"
 import {
   ConfigFileSchema,
@@ -12,10 +13,10 @@ export interface ConfigFileResult {
 }
 
 export class ConfigFileService {
-  private static readonly DEFAULT_CONFIG_PATH = "/app/agent.config.json"
+  private static readonly DEFAULT_CONFIG_PATH = "/app/agent.config.yaml"
 
   /**
-   * Load and parse a configuration file from the specified path
+   * Load and parse a YAML configuration file from the specified path
    */
   static async loadConfigFile(
     configPath?: string,
@@ -41,18 +42,18 @@ export class ConfigFileService {
 
       const fileContent = await Deno.readTextFile(filePath)
 
-      let parsedJson: unknown
+      let parsedConfig: unknown
       try {
-        parsedJson = JSON.parse(fileContent)
+        parsedConfig = parseYaml(fileContent)
       } catch (parseError) {
-        console.error(`Failed to parse JSON from config file: ${parseError}`)
+        console.error(`Failed to parse YAML from config file: ${parseError}`)
         throw new Error(
-          `Invalid JSON in config file ${filePath}: ${parseError}`,
+          `Invalid YAML in config file ${filePath}: ${parseError}`,
         )
       }
 
       // Validate against schema
-      const validationResult = ConfigFileSchema.safeParse(parsedJson)
+      const validationResult = ConfigFileSchema.safeParse(parsedConfig)
       if (!validationResult.success) {
         console.error(
           "Config file validation failed:",

@@ -1,0 +1,10 @@
+agent:
+  name: Writer Agent
+  description: Specialized agent for content creation and file management
+  model:
+    name: openai/gpt-4o
+  tools:
+    memory:
+      enabled: true
+    file_access:
+      enabled: true

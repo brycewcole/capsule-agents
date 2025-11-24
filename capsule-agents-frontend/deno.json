@@ -12,7 +12,7 @@
     "@types/react": "npm:@types/react@^19.1.11",
     "@types/react-dom": "npm:@types/react-dom@^19.1.7",
     "@types/uuid": "npm:@types/uuid@^10.0.0",
-    "@a2a-js/sdk": "npm:@a2a-js/sdk@^0.3.2",
+    "@a2a-js/sdk": "npm:@a2a-js/sdk@^0.3.5",
     "@ai-sdk/react": "npm:@ai-sdk/react@^2.0.22",
     "@radix-ui/react-collapsible": "npm:@radix-ui/react-collapsible@^1.1.7",
     "@radix-ui/react-dialog": "npm:@radix-ui/react-dialog@^1.1.15",

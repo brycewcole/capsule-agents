@@ -4,7 +4,7 @@ This example demonstrates how to configure Capsule Agents with MCP (Model Contex
 
 ## Configuration
 
-The `agent.config.json` file uses the standard `mcpServers` format with support for:
+The `agent.config.yaml` file uses the standard `mcpServers` format with support for:
 
 - **HTTP and SSE server types**
 - **Environment variable expansion** using `${VAR}` syntax

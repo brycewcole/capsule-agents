@@ -1,0 +1,19 @@
+agent:
+  name: Example Agent
+  description: An example agent with workspace files
+  model:
+    name: claude-3-5-sonnet-20241022
+    parameters:
+      temperature: 0.7
+  tools:
+    exec:
+      enabled: true
+    memory:
+      enabled: false
+  defaultPrompts:
+    enabled: true
+workspaceFiles:
+  - solver.ts
+  - utils/helper.ts
+  - data/
+schedules: []
