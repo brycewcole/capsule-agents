@@ -2,7 +2,7 @@ import type * as A2A from "@a2a-js/sdk"
 import type { A2ARequestHandler } from "@a2a-js/sdk/server"
 import { experimental_createMCPClient } from "@ai-sdk/mcp"
 import * as Vercel from "ai"
-import { createProviderRegistry } from "ai"
+import { createProviderRegistry, tool } from "ai"
 import { StreamableHTTPClientTransport } from "mcp/client/streamableHttp.js"
 import { z } from "zod"
 import { executeA2ACall } from "../capabilities/a2a.ts"
@@ -17,8 +17,7 @@ import { ProviderService } from "../services/provider-service.ts"
 import { StatusUpdateService } from "../services/status-update.service.ts"
 import { TaskService } from "../services/task.service.ts"
 import { VercelService } from "../services/vercel.service.ts"
-import { artifactTool, type ArtifactInput } from "./artifact-tool.ts"
-import { createTaskTool } from "../tools/create-task-tool.ts"
+import { type ArtifactInput, artifactTool } from "./artifact-tool.ts"
 import { isMCPCapability } from "./capability-types.ts"
 import {
   buildSystemPrompt,
@@ -30,22 +29,6 @@ interface MCPToolsDisposable {
   tools: Record<string, Vercel.Tool>
   [Symbol.asyncDispose](): Promise<void>
 }
-
-// Type-safe tool set for initial routing
-type InitialToolSet = {
-  createTask: typeof createTaskTool
-}
-
-type InitialToolCall = Vercel.TypedToolCall<InitialToolSet>
-type InitialToolResult = Vercel.TypedToolResult<InitialToolSet>
-
-// Type-safe tool set for artifact support
-type ArtifactToolSet = {
-  createArtifact: typeof artifactTool
-}
-
-type ArtifactToolCall = Vercel.TypedToolCall<ArtifactToolSet>
-type ArtifactToolResult = Vercel.TypedToolResult<ArtifactToolSet>
 
 type StreamEmitUnion =
   | A2A.Task
@@ -342,18 +325,18 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
     const vercelMessages = this.vercelService.fromContext(contextId)
     const sanitizedMessages = this.removeReasoningParts(vercelMessages)
 
-    console.info(
-      `[DEBUG] Loaded ${sanitizedMessages.length} messages from DB for context ${contextId}`,
+    console.debug(
+      `Loaded ${sanitizedMessages.length} messages from DB for context ${contextId}`,
     )
     sanitizedMessages.forEach((msg, i) => {
-      console.info(
-        `[DEBUG] Message ${i}: id=${msg.id}, role=${msg.role}, parts=${msg.parts.length}`,
+      console.debug(
+        `Message ${i}: id=${msg.id}, role=${msg.role}, parts=${msg.parts.length}`,
         {
           partTypes: msg.parts.map((p) => p.type),
         },
       )
     })
-    console.info("[DEBUG] Using stored messages without additional filtering")
+    console.debug("Using stored messages without additional filtering")
 
     const { prompt: systemPrompt, prompts: defaultPromptUsage } =
       buildSystemPrompt({
@@ -407,69 +390,49 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
       enabled: agentInfo.built_in_prompts_enabled !== false,
     })
 
-    const initialToolSet: InitialToolSet = {
-      createTask: createTaskTool,
-    }
-
-    const modelMessages = Vercel.convertToModelMessages(sanitizedMessages, {
-      tools: initialToolSet,
-    })
-
     console.info("Initial routing: checking if task creation is needed")
 
-    let shouldCreateTask = false
-    let responseText = ""
+    let tools = await this.getAvailableTools()
+    const mcpTools = await this.getMCPServers()
+    tools = Object.assign(tools, mcpTools.tools)
 
-    const result = await Vercel.streamText({
+    const result = await Vercel.generateText({
       model,
       system: systemPrompt || undefined,
-      messages: modelMessages,
-      tools: initialToolSet,
-      onStepFinish: (stepResult) => {
-        const { toolCalls, finishReason } = stepResult
-        console.info(`Initial routing step finished: ${finishReason}`)
-
-        if (finishReason === "tool-calls" && toolCalls.length > 0) {
-          for (const toolCall of toolCalls) {
-            if (!toolCall.dynamic && toolCall.toolName === "createTask") {
-              shouldCreateTask = true
-              console.info("Task creation requested by model")
-            }
-          }
-        }
+      messages: Vercel.convertToModelMessages(sanitizedMessages),
+      tools: {
+        createTask: tool({
+          description:
+            `Create a task for complex requests that require tool execution, research, or multi-step processing. Use this when the request cannot be answered with a simple, direct response.
+            You will have access to the following tools if you create a task : ${
+              Object.keys(tools).join(", ")
+            }`,
+          inputSchema: z.object({}),
+        }),
       },
     })
 
-    // Collect the response text
-    for await (const chunk of result.textStream) {
-      responseText += chunk
+    for (const toolCall of result.toolCalls) {
+      if (toolCall.toolName === "createTask") {
+        console.info("Initial routing decided to create a task")
+        return { shouldCreateTask: true }
+      }
     }
 
-    // Wait for result to complete
-    await result.text
-
-    if (shouldCreateTask) {
-      return { shouldCreateTask: true }
-    }
-
-    // Create direct A2A message response
+    // Model did not call createTask - respond directly
     const message: A2A.Message = {
       kind: "message",
       messageId: crypto.randomUUID(),
       role: "agent",
-      parts: [{ kind: "text", text: responseText.trim() }],
+      parts: [{ kind: "text", text: result.text.trim() }],
       contextId,
     }
-
-    // Save the assistant's message
     this.a2aMessageRepository.createMessage(message)
-
-    // Also save to Vercel messages for continuity
     this.vercelService.createMessage({
       message: {
         id: message.messageId,
         role: "assistant",
-        parts: [{ type: "text", text: responseText.trim() }],
+        parts: [{ type: "text", text: result.text.trim() }],
       },
       contextId,
     })
@@ -749,9 +712,9 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
                   (toolResult as { toolCallId?: string }).toolCallId
                 const state =
                   (toolCallId && artifactStreamStates.get(toolCallId)) ??
-                  (artifactStreamStates.size === 1
-                    ? artifactStreamStates.values().next().value
-                    : undefined)
+                    (artifactStreamStates.size === 1
+                      ? artifactStreamStates.values().next().value
+                      : undefined)
 
                 if (state) {
                   this.updateArtifactStateFromInput(state, input)
@@ -1357,12 +1320,16 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
 
       console.info("StreamText initialized, consuming stream...")
       for await (const e of result.fullStream) {
-        const callId = "toolCallId" in e ? (e as { toolCallId?: string }).toolCallId : (e as { id?: string }).id
+        const callId = "toolCallId" in e
+          ? (e as { toolCallId?: string }).toolCallId
+          : (e as { id?: string }).id
         switch (e.type) {
           case "tool-input-start":
             console.info(`Tool input starting: ${e.toolName}`)
             if (this.isArtifactTool(e.toolName)) {
-              const existing = callId ? artifactStreamStates.get(callId) : undefined
+              const existing = callId
+                ? artifactStreamStates.get(callId)
+                : undefined
               if (!existing && callId) {
                 artifactStreamStates.set(callId, {
                   artifactId: crypto.randomUUID(),
@@ -1396,7 +1363,9 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
           case "tool-result":
             console.info(`Tool completed: ${e.toolName}`)
             if (this.isArtifactTool(e.toolName)) {
-              const state = callId ? artifactStreamStates.get(callId) : undefined
+              const state = callId
+                ? artifactStreamStates.get(callId)
+                : undefined
               if (state) {
                 artifactCreatedRef.current = true
                 artifactDetailsRef.current = {
