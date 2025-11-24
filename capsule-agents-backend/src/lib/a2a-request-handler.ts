@@ -474,7 +474,20 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
   }
 
   /**
-   * Stream artifact content token by token as TaskArtifactUpdateEvents
+   * Split content into chunks for streaming (by words and newlines)
+   */
+  private async *chunkContent(content: string): AsyncGenerator<string> {
+    const CHUNK_SIZE = 10 // Number of words per chunk
+    const words = content.split(/(\s+)/) // Split by whitespace but keep delimiters
+
+    for (let i = 0; i < words.length; i += CHUNK_SIZE) {
+      const chunk = words.slice(i, i + CHUNK_SIZE).join("")
+      yield chunk
+    }
+  }
+
+  /**
+   * Stream artifact content chunk by chunk as TaskArtifactUpdateEvents
    */
   private async *streamArtifactTokens(
     task: A2A.Task,
@@ -485,8 +498,8 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
     let accumulatedContent = ""
     const artifactId = crypto.randomUUID()
 
-    for await (const token of contentStream) {
-      accumulatedContent += token
+    for await (const chunk of contentStream) {
+      accumulatedContent += chunk
 
       yield {
         kind: "artifact-update",
@@ -563,15 +576,11 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
             artifactName = input.name
             artifactDescription = input.description
 
-            // Return a stream of the content, character by character
+            // Return a chunked stream of the content
             return {
               name: artifactName,
               description: artifactDescription,
-              contentStream: (async function* () {
-                for (const char of input.content) {
-                  yield char
-                }
-              })(),
+              contentStream: this.chunkContent(input.content),
             }
           }
         }
@@ -582,11 +591,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
     const text = await result.text
     return {
       name: artifactName,
-      contentStream: (async function* () {
-        for (const char of text) {
-          yield char
-        }
-      })(),
+      contentStream: this.chunkContent(text),
     }
   }
 
@@ -1272,12 +1277,8 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
             content: string
           } = artifactDetails
 
-          // Split content into characters for streaming
-          const contentStream = (async function* () {
-            for (const char of details.content) {
-              yield char
-            }
-          })()
+          // Split content into chunks for streaming
+          const contentStream = this.chunkContent(details.content)
 
           for await (
             const artifactEvent of this.streamArtifactTokens(
