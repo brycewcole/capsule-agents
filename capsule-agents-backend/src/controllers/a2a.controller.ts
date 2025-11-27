@@ -99,8 +99,6 @@ export function createA2AController(deps: {
                 data: JSON.stringify(event),
                 id: String(eventId++),
               })
-              // Small delay to ensure events are sent individually and frontend can process them
-              await new Promise((resolve) => setTimeout(resolve, 10))
             }
           } catch (iterationError) {
             // Extract the actual error if it's wrapped in an error property
