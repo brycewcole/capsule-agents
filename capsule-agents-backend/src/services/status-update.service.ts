@@ -33,15 +33,6 @@ export class StatusUpdateService {
     const abortController = new AbortController()
     this.abortControllers.set(taskId, abortController)
 
-    this.generateAndEmitStatus(
-      taskId,
-      contextId,
-      getModel,
-      getMessageHistory,
-      eventEmitter,
-      abortController.signal,
-    )
-
     const intervalId = setInterval(() => {
       this.generateAndEmitStatus(
         taskId,
@@ -92,7 +83,7 @@ export class StatusUpdateService {
       }
 
       const model = getModel()
-      const messages = getMessageHistory()
+      const messages = this.removeReasoningParts(getMessageHistory())
 
       const recentStatuses = a2aMessageRepository.getRecentStatusTexts(
         taskId,
@@ -102,21 +93,36 @@ export class StatusUpdateService {
         .map((s) => s.trim())
         .filter(Boolean)
 
-      const statusPrompt = dedupedStatuses.length > 0
-        ? `Generate a SHORT one-line status update (maximum 50 characters) describing what you are currently doing. Be concise and specific. Examples: 'Searching for information...', 'Processing data...', 'Calling API...'\n\nPrevious recent status updates (do not repeat): ${
-          dedupedStatuses.join(" | ")
-        }`
-        : "Generate a SHORT one-line status update (maximum 50 characters) describing what you are currently doing. Be concise and specific. Examples: 'Searching for information...', 'Processing data...', 'Calling API...'"
+      const systemPrompt =
+        `You are a concise status update generator for an AI agent. Your task is to provide brief, one-line updates about what the agent is currently doing. Keep the updates specific and avoid vague statements. Good examples include 'Searching for information...', 'Processing data...', or 'Calling API...'. Do not repeat recent statuses.`
+
+      const prompt = `Generate a short status update.
+      Conversation history:
+      ${
+        messages.map((m) =>
+          `- ${m.role}: ${
+            typeof m.content === "string" ? m.content : m.content
+              .map((part) =>
+                typeof part === "string"
+                  ? part
+                  : (part as { text?: string }).text || ""
+              )
+              .join(" ")
+          }`
+        ).join("\n")
+      }
+      Recent statuses:
+      ${
+        dedupedStatuses.length > 0
+          ? dedupedStatuses.map((s) => `- ${s}`).join("\n")
+          : "- None"
+      }
+      Provide a new status update that is not in the recent statuses list.`
 
       const result = await Vercel.generateText({
         model,
-        messages: [
-          ...messages,
-          {
-            role: "user",
-            content: statusPrompt,
-          },
-        ],
+        system: systemPrompt,
+        prompt,
         abortSignal: signal,
       })
 
@@ -128,34 +134,7 @@ export class StatusUpdateService {
 
       console.info(`Generated status update for task ${taskId}: ${statusText}`)
 
-      // Create a status message with the generated text
-      const statusMessage: A2A.Message = {
-        kind: "message",
-        messageId: `status_${crypto.randomUUID()}`,
-        role: "agent",
-        parts: [{ kind: "text", text: statusText }],
-        taskId,
-        contextId,
-        metadata: {
-          kind: "status-message",
-          timestamp: new Date().toISOString(),
-        },
-      }
-
-      // Persist the status message to the database
-      a2aMessageRepository.createMessage(statusMessage)
-
-      eventEmitter({
-        kind: "status-update",
-        taskId,
-        contextId,
-        status: {
-          state: "working",
-          timestamp: new Date().toISOString(),
-          message: statusMessage,
-        },
-        final: false,
-      })
+      this.emitStatusMessage(taskId, contextId, statusText, eventEmitter)
     } catch (error) {
       if (!signal.aborted) {
         console.error(
@@ -173,5 +152,61 @@ export class StatusUpdateService {
     for (const taskId of this.intervals.keys()) {
       this.stopStatusUpdates(taskId)
     }
+  }
+
+  private emitStatusMessage(
+    taskId: string,
+    contextId: string,
+    statusText: string,
+    eventEmitter: (event: A2A.TaskStatusUpdateEvent) => void,
+  ): void {
+    const statusMessage: A2A.Message = {
+      kind: "message",
+      messageId: `status_${crypto.randomUUID()}`,
+      role: "agent",
+      parts: [{ kind: "text", text: statusText }],
+      taskId,
+      contextId,
+      metadata: {
+        kind: "status-message",
+        timestamp: new Date().toISOString(),
+      },
+    }
+
+    a2aMessageRepository.createMessage(statusMessage)
+
+    eventEmitter({
+      kind: "status-update",
+      taskId,
+      contextId,
+      status: {
+        state: "working",
+        timestamp: new Date().toISOString(),
+        message: statusMessage,
+      },
+      final: false,
+    })
+  }
+
+  /**
+   * Strip reasoning parts to avoid provider errors when reusing history
+   */
+  private removeReasoningParts(
+    messages: Vercel.ModelMessage[],
+  ): Vercel.ModelMessage[] {
+    return messages.map((message) => {
+      if (
+        typeof message.content === "string" ||
+        !Array.isArray(message.content)
+      ) {
+        return message as Vercel.ModelMessage
+      }
+
+      const filteredContent = message.content.filter((part) =>
+        (part as { type?: string }).type !== "reasoning"
+      ) as typeof message.content
+
+      return { ...message, content: filteredContent } as Vercel.ModelMessage
+    })
   }
 }

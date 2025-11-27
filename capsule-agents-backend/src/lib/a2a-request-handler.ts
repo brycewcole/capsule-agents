@@ -561,7 +561,8 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
   }
 
   /**
-   * Orchestrates stream events, status updates, and artifact emissions
+   * Orchestrates stream events, status updates, and artifact emissions.
+   * Uses polling to ensure status updates are emitted even when the stream is idle.
    */
   private async *orchestrateStreamEvents(
     // deno-lint-ignore no-explicit-any
@@ -571,25 +572,105 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
     statusUpdateQueue: TaskEmitUnion[],
     shouldStreamArtifacts: boolean,
   ): AsyncGenerator<TaskEmitUnion> {
-    const artifactGenerator = shouldStreamArtifacts
-      ? this.processArtifactStream(task, streamResult, artifactStreamStates)
-      : null
+    const QUEUE_CHECK_INTERVAL_MS = 100
 
-    // If streaming artifacts, interleave artifact updates with status updates
-    if (artifactGenerator) {
-      for await (const artifactEvent of artifactGenerator) {
-        yield artifactEvent
+    const iterator = streamResult.fullStream[Symbol.asyncIterator]()
+    let pendingNext: ReturnType<typeof iterator.next> | null = null
+    let streamDone = false
 
-        // Drain queued status updates after each artifact event
-        while (statusUpdateQueue.length > 0) {
-          yield statusUpdateQueue.shift()!
-        }
+    while (!streamDone) {
+      // Always drain queue first - this ensures status updates emit immediately
+      while (statusUpdateQueue.length > 0) {
+        yield statusUpdateQueue.shift()!
       }
-    } else {
-      // If not streaming artifacts, just consume the stream and emit status updates
-      for await (const _event of streamResult.fullStream) {
-        while (statusUpdateQueue.length > 0) {
-          yield statusUpdateQueue.shift()!
+
+      // Start waiting for next stream event if not already waiting
+      if (!pendingNext) {
+        pendingNext = iterator.next()
+      }
+
+      // Race between: next stream event OR a short timeout to check queue again
+      const timeoutPromise = new Promise<"timeout">((resolve) =>
+        setTimeout(() => resolve("timeout"), QUEUE_CHECK_INTERVAL_MS)
+      )
+
+      const raceResult = await Promise.race([pendingNext, timeoutPromise])
+
+      if (raceResult === "timeout") {
+        // Timeout - loop again to drain queue and keep waiting for stream
+        continue
+      }
+
+      // Got a stream event
+      const { value: event, done } = raceResult
+      pendingNext = null
+      streamDone = done ?? false
+
+      if (!event) continue
+
+      // Process artifact events if streaming artifacts
+      if (shouldStreamArtifacts) {
+        if (
+          event.type === "tool-input-start" &&
+          this.isArtifactTool(event.toolName)
+        ) {
+          const callId = event.id
+          if (callId && !artifactStreamStates.has(callId)) {
+            artifactStreamStates.set(callId, {
+              artifactId: crypto.randomUUID(),
+              name: "Artifact",
+              content: "",
+              inputBuffer: "",
+            })
+          }
+        } else if (
+          event.type === "tool-call" &&
+          this.isArtifactTool(event.toolName)
+        ) {
+          const state = artifactStreamStates.get(event.toolCallId)
+          if (state) {
+            this.updateArtifactStateFromInput(
+              state,
+              typeof event.input === "string"
+                ? parsePartialObjectFromStream<ArtifactInput>(
+                  event.input,
+                  ["name", "description", "content", "contentType"],
+                )
+                : event.input as Partial<ArtifactInput>,
+            )
+          }
+        } else if (event.type === "tool-input-delta") {
+          const state = artifactStreamStates.get(event.id)
+          if (state) {
+            state.inputBuffer += event.delta
+            let hasUpdate = false
+
+            const parsedInput = parsePartialObjectFromStream<ArtifactInput>(
+              state.inputBuffer,
+              ["name", "description", "content", "contentType"],
+            )
+            if (parsedInput) {
+              this.updateArtifactStateFromInput(state, parsedInput)
+              hasUpdate = true
+            }
+
+            const streamingFields =
+              extractStringFieldsFromBuffer<ArtifactInput>(
+                state.inputBuffer,
+                ["content", "name", "description"],
+              )
+            if (streamingFields) {
+              this.updateArtifactStateFromInput(state, streamingFields)
+              hasUpdate = true
+            }
+
+            if (hasUpdate) {
+              const artifactEvent = this.toArtifactUpdateEvent(task, state)
+              if (artifactEvent) {
+                yield artifactEvent
+              }
+            }
+          }
         }
       }
     }
@@ -1183,6 +1264,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
       )
       yield workingStatus
 
+      console.log("providerOptions:", providerOptions)
       const result = Vercel.streamText({
         experimental_telemetry: {
           isEnabled: true,

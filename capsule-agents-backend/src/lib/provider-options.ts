@@ -33,7 +33,7 @@ const registry = new ProviderOptionsRegistry()
 registry.register(
   "openai",
   {
-    reasoningEffort: "low",
+    reasoningEffort: "minimal",
   } satisfies OpenAIResponsesProviderOptions,
 )
 
