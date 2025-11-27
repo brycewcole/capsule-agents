@@ -654,11 +654,12 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
               hasUpdate = true
             }
 
-            const streamingFields =
-              extractStringFieldsFromBuffer<ArtifactInput>(
-                state.inputBuffer,
-                ["content", "name", "description"],
-              )
+            const streamingFields = extractStringFieldsFromBuffer<
+              ArtifactInput
+            >(
+              state.inputBuffer,
+              ["content", "name", "description"],
+            )
             if (streamingFields) {
               this.updateArtifactStateFromInput(state, streamingFields)
               hasUpdate = true
@@ -1276,7 +1277,10 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
         messages: modelMessages,
         tools: allTools,
         providerOptions,
-        stopWhen: Vercel.stepCountIs(100),
+        stopWhen: [
+          Vercel.stepCountIs(100),
+          Vercel.hasToolCall("createArtifact"),
+        ],
         onError: (error) => {
           this.handleStreamError(error)
         },
