@@ -1,10 +1,10 @@
+import type * as A2A from "@a2a-js/sdk"
 import type {
   Message as A2AMessage,
   Task as A2ATask,
   TaskArtifactUpdateEvent,
   TaskStatusUpdateEvent,
 } from "@a2a-js/sdk"
-import type * as A2A from "@a2a-js/sdk"
 import { A2AClient } from "@a2a-js/sdk/client"
 import { v4 as uuidv4 } from "uuid"
 
