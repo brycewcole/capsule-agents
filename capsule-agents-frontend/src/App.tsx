@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useState } from "react"
 import { Navigate, Route, Routes } from "react-router-dom"
 import Header from "./components/header.tsx"
 import ChatInterface from "./components/chat-interface.tsx"
@@ -36,47 +36,6 @@ function App() {
   >(null)
   const [isLoadingChat, setIsLoadingChat] = useState(false)
   const [chatsRefreshKey, setChatsRefreshKey] = useState(0)
-  const [isConversationsOpen, setIsConversationsOpen] = useState<boolean>(true)
-  const convPrefLockedRef = useRef(false)
-
-  // Initialize conversations panel preference: use saved if present, otherwise responsive default
-  useEffect(() => {
-    try {
-      const saved = localStorage.getItem("chat:conversationsOpen")
-      if (saved !== null) {
-        setIsConversationsOpen(saved === "true")
-        convPrefLockedRef.current = true
-      } else {
-        const isWide = globalThis.innerWidth >= 1024 // lg breakpoint
-        setIsConversationsOpen(isWide)
-      }
-    } catch {
-      // Ignore localStorage errors
-    }
-  }, [])
-
-  // Persist conversations panel state across reloads
-  useEffect(() => {
-    try {
-      localStorage.setItem(
-        "chat:conversationsOpen",
-        String(isConversationsOpen),
-      )
-    } catch {
-      // Ignore localStorage errors
-    }
-  }, [isConversationsOpen])
-
-  // Auto-toggle on resize only if user hasn't set a preference
-  useEffect(() => {
-    const onResize = () => {
-      if (convPrefLockedRef.current) return
-      const isWide = globalThis.innerWidth >= 1024
-      setIsConversationsOpen(isWide)
-    }
-    globalThis.addEventListener("resize", onResize)
-    return () => globalThis.removeEventListener("resize", onResize)
-  }, [])
 
   useEffect(() => {
     // Temporarily skip authentication for new backend
@@ -158,21 +117,6 @@ function App() {
     }
   }, [currentChatId])
 
-  // Keyboard shortcut: Cmd/Ctrl+K to toggle conversations panel
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      const isToggle = (e.key === "k" || e.key === "K") &&
-        (e.metaKey || e.ctrlKey)
-      if (isToggle) {
-        e.preventDefault()
-        convPrefLockedRef.current = true
-        setIsConversationsOpen((v) => !v)
-      }
-    }
-    globalThis.addEventListener("keydown", handler)
-    return () => globalThis.removeEventListener("keydown", handler)
-  }, [])
-
   const handleLogin = async (password: string) => {
     try {
       setLoginError(undefined)
@@ -232,11 +176,6 @@ function App() {
                       contextId={currentChatId}
                       initialChatData={currentChatData}
                       isLoadingChat={isLoadingChat}
-                      isConversationsOpen={isConversationsOpen}
-                      onToggleConversations={() => {
-                        convPrefLockedRef.current = true
-                        setIsConversationsOpen((v) => !v)
-                      }}
                       onChatCreated={(newChatId) => {
                         setCurrentChatId(newChatId)
                         setChatsRefreshKey((k) => k + 1)
