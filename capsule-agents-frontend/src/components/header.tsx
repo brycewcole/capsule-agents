@@ -31,12 +31,6 @@ export default function Header() {
             <MessageSquare className="h-4 w-4" />
             Chat
           </NavLink>
-          <span className="text-sm font-medium text-muted-foreground opacity-50 cursor-not-allowed">
-            Docs
-          </span>
-          <span className="text-sm font-medium text-muted-foreground opacity-50 cursor-not-allowed">
-            Examples
-          </span>
           <a
             href="https://github.com/brycewcole/capsule-agents"
             className="text-sm font-medium text-muted-foreground hover:text-foreground"
