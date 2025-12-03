@@ -2,7 +2,7 @@ services:
   # --- Agents ----------------------------------------------------
   agent-research:
     image: capsule-agents
-    ports: ["8001:80"]
+    ports: ["8001:9000"]
     volumes:
       - ./configs/research-agent.yaml:/app/agent.config.yaml
     env_file:
@@ -15,7 +15,7 @@ services:
 
   agent-writer:
     image: capsule-agents
-    ports: ["8002:80"]
+    ports: ["8002:9000"]
     volumes:
       - ./configs/writer-agent.yaml:/app/agent.config.yaml
       - ./shared-workspace:/app/agent-workspace
@@ -29,7 +29,7 @@ services:
 
   agent-coordinator:
     image: capsule-agents
-    ports: ["8003:80"]
+    ports: ["8003:9000"]
     volumes:
       - ./configs/coordinator-agent.yaml:/app/agent.config.yaml
     env_file:

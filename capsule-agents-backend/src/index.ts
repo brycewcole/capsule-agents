@@ -134,7 +134,7 @@ app.get(
   serveStatic({ root: "./static", rewriteRequestPath: () => "/index.html" }),
 )
 
-const port = parseInt(Deno.env.get("PORT") || "80")
+const port = parseInt(Deno.env.get("PORT") || "9000")
 const agentUrl = Deno.env.get("AGENT_URL")
 if (!agentUrl) {
   throw new Error("AGENT_URL environment variable is not set")

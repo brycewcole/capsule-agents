@@ -667,7 +667,7 @@ export default function ChatInterface({
       const artifact = update.artifact
       const artifactInfo = getArtifactContentInfo(artifact)
       // lastChunk is stored in update metadata, not artifact metadata
-      const updateMetadata = (update as { lastChunk?: boolean })
+      const updateMetadata = update as { lastChunk?: boolean }
       const isComplete = updateMetadata.lastChunk ?? true
 
       return renderCard(
@@ -1422,10 +1422,9 @@ export default function ChatInterface({
                 let updatedArtifacts: typeof existingArtifacts
                 if (artifactIndex >= 0) {
                   const existing = existingArtifacts[artifactIndex]
-                  let mergedArtifact: Artifact
 
                   // Replace artifact with latest content
-                  mergedArtifact = {
+                  const mergedArtifact: Artifact = {
                     ...existing,
                     ...artifactEvent.artifact,
                     metadata: {
@@ -1472,7 +1471,10 @@ export default function ChatInterface({
 
                 // Update or add the artifact update with lastChunk from event
                 const artifactUpdateIndex = taskUpdates.findIndex(
-                  (u) => u.kind === "artifact" && u.artifact?.artifactId === artifactEvent.artifact.artifactId
+                  (u) =>
+                    u.kind === "artifact" &&
+                    u.artifact?.artifactId ===
+                      artifactEvent.artifact.artifactId,
                 )
 
                 if (artifactUpdateIndex >= 0) {
@@ -1799,9 +1801,10 @@ export default function ChatInterface({
                                   buildTaskUpdates(task)
                                 const hasUpdates = updates.length > 0
                                 const shortId = item.id.slice(-8)
-                                const statusTimestampSeconds = toTimestampSeconds(
-                                  task.status?.timestamp ?? null,
-                                )
+                                const statusTimestampSeconds =
+                                  toTimestampSeconds(
+                                    task.status?.timestamp ?? null,
+                                  )
                                 const statusTimestamp =
                                   statusTimestampSeconds != null
                                     ? formatTimestamp(statusTimestampSeconds)
