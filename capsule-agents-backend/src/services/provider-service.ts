@@ -31,7 +31,7 @@ export class ProviderService {
     description: string,
   ): boolean {
     try {
-      console.info(
+      console.debug(
         `Checking availability of ${envVar} for ${description} with result ${
           process.env[envVar] ? "FOUND" : "NOT FOUND"
         }`,
@@ -70,7 +70,7 @@ export class ProviderService {
     }
 
     const availableCount = providers.filter((p) => p.available).length
-    console.info(
+    console.debug(
       `Found ${availableCount}/${providers.length} available providers: ${
         providers.filter((p) => p.available).map((p) => p.name).join(", ")
       }`,

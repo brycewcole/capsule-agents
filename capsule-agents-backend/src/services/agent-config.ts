@@ -34,6 +34,7 @@ export type AgentInfo = {
 
 export class AgentConfigService {
   private db = getDb()
+  private modelValidated = false
 
   constructor(configFileData?: AgentInfo | null) {
     if (configFileData) {
@@ -51,6 +52,7 @@ export class AgentConfigService {
 
     // Ensure a valid model is selected after initialization
     this.ensureValidModel()
+    this.modelValidated = true
   }
 
   private ensureValidModel(): void {
@@ -116,10 +118,8 @@ export class AgentConfigService {
 
   getAgentInfo(): AgentInfo {
     try {
-      this.ensureValidModel()
-
       const stmt = this.db.prepare(`
-        SELECT name, description, model_name, model_parameters, tools as capabilities, built_in_prompts_enabled 
+        SELECT name, description, model_name, model_parameters, tools as capabilities, built_in_prompts_enabled
         FROM agent_info WHERE key = 1
       `)
 
@@ -201,6 +201,11 @@ export class AgentConfigService {
       )
 
       console.info("Database update completed successfully")
+
+      // Re-validate model after configuration update
+      this.ensureValidModel()
+      this.modelValidated = true
+
       return {
         ...info,
         built_in_prompts_enabled: builtInPromptsEnabled,
@@ -228,6 +233,15 @@ export class AgentConfigService {
       providers: providerService.getAvailableProviders(),
       status: providerService.getProviderStatus(),
     }
+  }
+
+  /**
+   * Force revalidation of the current model configuration.
+   * Useful when environment variables or provider availability changes.
+   */
+  revalidateModel(): void {
+    this.ensureValidModel()
+    this.modelValidated = true
   }
 
   private validateCapabilities(capabilities: Capability[]): void {
