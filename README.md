@@ -51,7 +51,7 @@ ADMIN_PASSWORD=your_password
 
 3. **Run!**
    ```bash
-   docker run --env-file .env -e AGENT_URL=http://localhost:8080 -p 8080:80 -it brycewcole/capsule-agents:latest
+   docker run --env-file .env -e AGENT_URL=http://localhost:8080 -p 8080:9000 -it brycewcole/capsule-agents:latest
    ```
 
 4. **Access the agent**

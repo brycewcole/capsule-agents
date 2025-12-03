@@ -166,7 +166,9 @@ export function ChatSidebar({
           <div className="flex flex-col items-center justify-center p-8 text-center">
             <Bot className="h-12 w-12 text-muted-foreground mb-4" />
             <p className="text-muted-foreground">
-              {searchQuery ? "No agent contexts found" : "No agent contexts yet"}
+              {searchQuery
+                ? "No agent contexts found"
+                : "No agent contexts yet"}
             </p>
             {!searchQuery && (
               <p className="text-sm text-muted-foreground mt-2">

@@ -7,7 +7,7 @@ services:
     depends_on:
       - otel-collector
     ports:
-      - "8080:80"
+      - "8080:9000"
     env_file:
       - ../../.env
     environment:

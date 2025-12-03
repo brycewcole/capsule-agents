@@ -59,7 +59,8 @@ export class TaskRoutingService {
       }`
     }).join("\n")
 
-    const systemPrompt = `You are a routing assistant that decides whether a user request needs task creation or can be answered directly.
+    const systemPrompt =
+      `You are a routing assistant that decides whether a user request needs task creation or can be answered directly.
 
 Agent description: ${agentInfo.description || "A helpful assistant"}
 ${agentSystemPrompt ? `\nAgent system prompt: ${agentSystemPrompt}` : ""}
@@ -76,7 +77,8 @@ Respond directly (without calling createTask) if the request is:
 - A clarification request
 - Something that doesn't need tools`
 
-    const prompt = `Review this conversation and decide how to handle the latest user message:
+    const prompt =
+      `Review this conversation and decide how to handle the latest user message:
 
 Conversation:
 ${conversationSummary}

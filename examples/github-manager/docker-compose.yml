@@ -2,7 +2,7 @@ services:
   mcp-agent:
     image: capsule-agents
     ports:
-      - "8001:80"
+      - "8001:9000"
     volumes:
       - ./agent.config.yaml:/app/agent.config.yaml
     environment:

@@ -45,7 +45,7 @@ The project uses a multi-stage Docker build:
 docker build -t capsule-agents .
 
 # Run with environment file
-docker run --env-file .env -p 8080:80 capsule-agents
+docker run --env-file .env -p 8080:9000 capsule-agents
 ```
 
 ### Development Setup
