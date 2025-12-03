@@ -1,9 +1,9 @@
 "use client"
 
-import { useState } from "react"
 import { Button } from "./ui/button.tsx"
 import { Badge } from "./ui/badge.tsx"
-import { Loader2, MessageSquare, Trash2 } from "lucide-react"
+import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover.tsx"
+import { Loader2, MessageSquare, MoreVertical, Trash2 } from "lucide-react"
 import { cn } from "../lib/utils.ts"
 import type { ChatSummary } from "../lib/api.ts"
 
@@ -24,8 +24,6 @@ export function ChatListItem({
   isDeleting,
   formatTimestamp,
 }: ChatListItemProps) {
-  const [isHovered, setIsHovered] = useState(false)
-
   return (
     <div
       className={cn(
@@ -35,11 +33,9 @@ export function ChatListItem({
           : "bg-background border-transparent hover:bg-muted/50 hover:border-border/50",
       )}
       onClick={onClick}
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
     >
       <div className="flex items-start justify-between gap-2">
-        <div className="flex-1 min-w-0">
+        <div className="flex-1 min-w-0 pr-8">
           <div className="flex items-center gap-2 mb-1">
             <MessageSquare
               className={cn(
@@ -73,24 +69,40 @@ export function ChatListItem({
           </div>
         </div>
 
-        {/* Delete button - only show on hover */}
-        {(isHovered || isDeleting) && (
-          <Button
-            variant="ghost"
-            size="sm"
-            className={cn(
-              "h-8 w-8 p-0 opacity-0 group-hover:opacity-100 transition-opacity duration-200",
-              "hover:bg-destructive/10 hover:text-destructive",
-              isDeleting && "opacity-100",
-            )}
-            onClick={onDelete}
-            disabled={isDeleting}
+        <Popover>
+          <PopoverTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon"
+              className={cn(
+                "h-8 w-8 p-0 text-muted-foreground hover:text-foreground",
+                isDeleting && "text-destructive",
+              )}
+              onClick={(event) => event.stopPropagation()}
+            >
+              <MoreVertical className="h-4 w-4" />
+              <span className="sr-only">Open context actions</span>
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent
+            align="end"
+            className="w-44 p-1"
+            onClick={(event) => event.stopPropagation()}
           >
-            {isDeleting
-              ? <Loader2 className="h-4 w-4 animate-spin" />
-              : <Trash2 className="h-4 w-4" />}
-          </Button>
-        )}
+            <Button
+              variant="ghost"
+              size="sm"
+              className="w-full justify-start gap-2 text-destructive hover:text-destructive"
+              onClick={onDelete}
+              disabled={isDeleting}
+            >
+              {isDeleting
+                ? <Loader2 className="h-4 w-4 animate-spin" />
+                : <Trash2 className="h-4 w-4" />}
+              Delete context
+            </Button>
+          </PopoverContent>
+        </Popover>
       </div>
     </div>
   )

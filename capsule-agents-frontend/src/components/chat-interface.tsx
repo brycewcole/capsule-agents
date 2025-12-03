@@ -12,7 +12,6 @@ import {
   Loader2,
   Maximize2,
   MessageSquare,
-  PanelRightOpen,
   X,
 } from "lucide-react"
 import {
@@ -524,8 +523,6 @@ interface ChatInterfaceProps {
   initialChatData?: ChatWithHistory | null
   isLoadingChat?: boolean
   onChatCreated?: (chatId: string) => void
-  isConversationsOpen?: boolean
-  onToggleConversations?: () => void
   onNewChat?: () => void
   currentChatId?: string | null
   onChatSelect?: (chatId: string) => void
@@ -537,8 +534,6 @@ export default function ChatInterface({
   initialChatData,
   isLoadingChat = false,
   onChatCreated,
-  isConversationsOpen,
-  onToggleConversations,
   onNewChat,
   currentChatId,
   onChatSelect,
@@ -1616,395 +1611,360 @@ export default function ChatInterface({
 
   return (
     <div ref={containerRef} className="relative h-full">
-      <Card className="flex flex-col h-full overflow-hidden shadow-md">
-        <CardHeader className="pb-4 flex flex-row justify-between items-center">
-          <div>
-            <CardTitle className="flex items-center gap-2 text-xl">
-              <MessageSquare className="h-5 w-5 text-primary" />
-              Chat with agent
-            </CardTitle>
-            <CardDescription>
-              {!isBackendConnected
-                ? "⚠️ Backend not connected. Check your API connection."
-                : isLoadingChat
-                ? "Loading conversation..."
-                : contextId
-                ? `Active chat: ${contextId.slice(-8)}`
-                : "Start a new conversation"}
-            </CardDescription>
-          </div>
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              title={isConversationsOpen
-                ? "Hide conversations"
-                : "Show conversations"}
-              onClick={onToggleConversations}
-              className="gap-2"
-            >
-              <MessageSquare className="h-4 w-4" />
-              {isConversationsOpen ? "Hide" : "Show"}
-            </Button>
-            {onNewChat && (
-              <Button
-                variant="outline"
-                size="sm"
-                title="New chat"
-                onClick={startNewChat}
-              >
-                New
-              </Button>
-            )}
-          </div>
-        </CardHeader>
-
-        <CardContent className="flex-1 min-h-0 p-0">
-          <div className="h-full w-full flex">
-            {/* Messages area */}
-            <div className="flex-1 min-w-0 p-4 overflow-y-auto">
-              {connectionError && !isBackendConnected && (
-                <div className="mb-4">
-                  <ErrorDisplay
-                    error={connectionError}
-                    title="Connection Error"
-                    onRetry={() => {
-                      const checkBackendHealth = async () => {
-                        try {
-                          const health = await checkHealth()
-                          setIsBackendConnected(health.status === "ok")
-                          setConnectionError(null)
-                        } catch (error) {
-                          console.error("Backend health check failed:", error)
-                          setIsBackendConnected(false)
-                          setConnectionError(
-                            error as JSONRPCError | Error | string,
-                          )
-                        }
-                      }
-                      checkBackendHealth()
-                    }}
-                    onDismiss={() => setConnectionError(null)}
-                  />
-                </div>
+      <div className="grid h-full grid-cols-1 gap-4 lg:grid-cols-[3fr_1fr]">
+        <Card className="flex min-h-0 flex-col overflow-hidden shadow-md">
+          <CardHeader className="pb-4 border-b flex flex-row justify-between items-center">
+            <div>
+              <CardTitle className="flex items-center gap-2 text-xl">
+                <MessageSquare className="h-5 w-5 text-primary" />
+                Chat with agent
+              </CardTitle>
+              <CardDescription>
+                {!isBackendConnected
+                  ? "⚠️ Backend not connected. Check your API connection."
+                  : isLoadingChat
+                  ? "Loading agent context..."
+                  : contextId
+                  ? `Active context: ${contextId.slice(-8)}`
+                  : "Start a new agent context"}
+              </CardDescription>
+            </div>
+            <div className="flex items-center gap-2">
+              {onNewChat && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  title="New context"
+                  onClick={startNewChat}
+                >
+                  New context
+                </Button>
               )}
-              {/* Render unified timeline */}
-              <div className="flex flex-col space-y-6">
-                {isLoadingChat
-                  ? (
-                    <div className="flex items-center justify-center h-full text-muted-foreground">
-                      <Loader2 className="h-6 w-6 animate-spin mr-2" />
-                      Loading conversation...
-                    </div>
-                  )
-                  : !hasEntries
-                  ? (
-                    <div className="flex items-center justify-center h-full text-muted-foreground">
-                      Send a message to start the conversation
-                    </div>
-                  )
-                  : (
-                    timelineEntries.map((entry) => {
-                      const hasTasks = entry.tasks.length > 0
-                      const capabilityCalls = entry.agent?.capabilityCalls ?? []
-                      // Only show agent card if there are NO tasks
-                      const showAgentCard = entry.agent && !hasTasks
+            </div>
+          </CardHeader>
 
-                      // Check if user message exists in any task history
-                      const userMessageInTaskHistory = hasTasks &&
-                        entry.tasks.some((item) => {
-                          const updates = buildTaskUpdates(item.task)
-                          return updates.some((update) =>
-                            update.kind === "message" &&
-                            update.role === "user" &&
-                            update.text === entry.user.content
-                          )
-                        })
+          <CardContent className="flex-1 min-h-0 p-0">
+            <div className="flex h-full w-full flex-col">
+              {/* Messages area */}
+              <div className="flex-1 min-h-0 p-4 overflow-y-auto">
+                {connectionError && !isBackendConnected && (
+                  <div className="mb-4">
+                    <ErrorDisplay
+                      error={connectionError}
+                      title="Connection Error"
+                      onRetry={() => {
+                        const checkBackendHealth = async () => {
+                          try {
+                            const health = await checkHealth()
+                            setIsBackendConnected(health.status === "ok")
+                            setConnectionError(null)
+                          } catch (error) {
+                            console.error("Backend health check failed:", error)
+                            setIsBackendConnected(false)
+                            setConnectionError(
+                              error as JSONRPCError | Error | string,
+                            )
+                          }
+                        }
+                        checkBackendHealth()
+                      }}
+                      onDismiss={() => setConnectionError(null)}
+                    />
+                  </div>
+                )}
+                {/* Render unified timeline */}
+                <div className="flex flex-col space-y-6">
+                  {isLoadingChat
+                    ? (
+                      <div className="flex items-center justify-center h-full text-muted-foreground">
+                        <Loader2 className="h-6 w-6 animate-spin mr-2" />
+                        Loading agent context...
+                      </div>
+                    )
+                    : !hasEntries
+                    ? (
+                      <div className="flex items-center justify-center h-full text-muted-foreground">
+                        Send a message to start this agent context
+                      </div>
+                    )
+                    : (
+                      timelineEntries.map((entry) => {
+                        const hasTasks = entry.tasks.length > 0
+                        const capabilityCalls = entry.agent?.capabilityCalls ??
+                          []
+                        // Only show agent card if there are NO tasks
+                        const showAgentCard = entry.agent && !hasTasks
 
-                      return (
-                        <div
-                          key={entry.id}
-                          className="space-y-3"
-                        >
-                          <div className="space-y-3">
-                            {!userMessageInTaskHistory && (
-                              <div className="rounded-2xl border border-sky-400/60 bg-sky-200/70 px-4 py-3 text-slate-900 shadow-sm dark:border-sky-900/70 dark:bg-sky-900/40 dark:text-sky-50">
-                                <div className="mb-2 flex items-center justify-between text-xs font-semibold uppercase tracking-wide text-slate-700/80 dark:text-sky-200/80">
-                                  <span>You</span>
-                                  <span>
-                                    {formatTimestamp(entry.user.timestamp)}
-                                  </span>
-                                </div>
-                                {entry.user.content
-                                  ? (
-                                    <div className="prose prose-sm text-slate-900 dark:prose-invert max-w-none">
-                                      <Markdown remarkPlugins={[remarkGfm]}>
-                                        {entry.user.content}
-                                      </Markdown>
-                                    </div>
-                                  )
-                                  : (
-                                    <span className="text-slate-600/80 dark:text-slate-300/80">
-                                      (empty message)
-                                    </span>
-                                  )}
-                              </div>
-                            )}
+                        // Check if user message exists in any task history
+                        const userMessageInTaskHistory = hasTasks &&
+                          entry.tasks.some((item) => {
+                            const updates = buildTaskUpdates(item.task)
+                            return updates.some((update) =>
+                              update.kind === "message" &&
+                              update.role === "user" &&
+                              update.text === entry.user.content
+                            )
+                          })
 
-                            {showAgentCard && entry.agent && (
-                              <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-slate-900 shadow-sm dark:border-slate-700 dark:bg-slate-900/60 dark:text-slate-100">
-                                <div className="mb-2 flex items-center justify-between text-xs font-semibold uppercase tracking-wide text-slate-700/80 dark:text-slate-200/80">
-                                  <span>Agent</span>
-                                  <span>
-                                    {formatTimestamp(entry.agent.timestamp)}
-                                  </span>
-                                </div>
-                                {entry.agent.isLoading
-                                  ? (
-                                    <span className="inline-flex items-center gap-2 text-muted-foreground">
-                                      <Loader2 className="h-4 w-4 animate-spin" />
-                                      {hasTasks
-                                        ? "Working on task..."
-                                        : "Thinking..."}
+                        return (
+                          <div
+                            key={entry.id}
+                            className="space-y-3"
+                          >
+                            <div className="space-y-3">
+                              {!userMessageInTaskHistory && (
+                                <div className="rounded-2xl border border-sky-400/60 bg-sky-200/70 px-4 py-3 text-slate-900 shadow-sm dark:border-sky-900/70 dark:bg-sky-900/40 dark:text-sky-50">
+                                  <div className="mb-2 flex items-center justify-between text-xs font-semibold uppercase tracking-wide text-slate-700/80 dark:text-sky-200/80">
+                                    <span>You</span>
+                                    <span>
+                                      {formatTimestamp(entry.user.timestamp)}
                                     </span>
-                                  )
-                                  : entry.agent.content
-                                  ? (
-                                    <div className="prose prose-sm text-slate-900 dark:prose-invert max-w-none">
-                                      <Markdown remarkPlugins={[remarkGfm]}>
-                                        {entry.agent.content}
-                                      </Markdown>
-                                    </div>
-                                  )
-                                  : !hasTasks
-                                  ? (
-                                    <span className="text-slate-600/80 dark:text-slate-300/80">
-                                      No response
-                                    </span>
-                                  )
-                                  : null}
-                                {!entry.agent.isLoading && !hasTasks &&
-                                  entry.agent.capabilityCalls &&
-                                  entry.agent.capabilityCalls.length > 0 && (
-                                  <div className="mt-3 space-y-1 text-xs text-muted-foreground">
-                                    <div className="font-medium uppercase tracking-wide">
-                                      Capability Calls
-                                    </div>
-                                    <ul className="ml-4 list-disc space-y-1">
-                                      {entry.agent.capabilityCalls.map((
-                                        call,
-                                        idx,
-                                      ) => (
-                                        <li key={`${call.name}-${idx}`}>
-                                          <span className="font-medium text-foreground/80">
-                                            {call.name}
-                                          </span>
-                                        </li>
-                                      ))}
-                                    </ul>
                                   </div>
-                                )}
-                              </div>
-                            )}
-
-                            {entry.tasks.map((item, taskIndex) => {
-                              const task = item.task
-                              const statusInfo = getTaskStatusInfo(task)
-                              const updates = entry.agent?.taskUpdates ??
-                                buildTaskUpdates(task)
-                              const hasUpdates = updates.length > 0
-                              const shortId = item.id.slice(-8)
-                              const statusTimestampSeconds = toTimestampSeconds(
-                                task.status?.timestamp ?? null,
-                              )
-                              const statusTimestamp =
-                                statusTimestampSeconds != null
-                                  ? formatTimestamp(statusTimestampSeconds)
-                                  : null
-                              const capabilityCallsForTask = taskIndex === 0
-                                ? capabilityCalls
-                                : []
-
-                              return (
-                                <div
-                                  key={item.id}
-                                  className="relative mt-6 space-y-4"
-                                >
-                                  <div
-                                    className={`inline-flex items-center gap-3 rounded-full border px-4 py-1.5 text-xs font-semibold shadow-sm ${
-                                      task.status?.state === "submitted"
-                                        ? "border-blue-500/40 bg-blue-200/80 text-blue-900 dark:border-blue-900/60 dark:bg-blue-950/60 dark:text-blue-100"
-                                        : task.status?.state === "working"
-                                        ? "border-amber-500/40 bg-amber-200/80 text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/60 dark:text-amber-100"
-                                        : task.status?.state ===
-                                            "input-required"
-                                        ? "border-orange-500/40 bg-orange-200/80 text-orange-900 dark:border-orange-900/60 dark:bg-orange-950/60 dark:text-orange-100"
-                                        : task.status?.state === "completed"
-                                        ? "border-emerald-500/40 bg-emerald-200/80 text-emerald-900 dark:border-emerald-900/60 dark:bg-emerald-950/60 dark:text-emerald-100"
-                                        : task.status?.state === "failed"
-                                        ? "border-rose-500/40 bg-rose-200/80 text-rose-900 dark:border-rose-900/60 dark:bg-rose-950/60 dark:text-rose-100"
-                                        : task.status?.state === "canceled"
-                                        ? "border-gray-500/40 bg-gray-200/80 text-gray-900 dark:border-gray-900/60 dark:bg-gray-950/60 dark:text-gray-100"
-                                        : "border-slate-500/40 bg-slate-200/80 text-slate-900 dark:border-slate-900/60 dark:bg-slate-950/60 dark:text-slate-100"
-                                    }`}
-                                  >
-                                    {task.status?.state === "working" && (
-                                      <Loader2 className="h-3 w-3 animate-spin" />
-                                    )}
-                                    <span>{statusInfo.label}</span>
-                                    <span
-                                      className={task.status?.state ===
-                                          "submitted"
-                                        ? "text-blue-700/90 dark:text-blue-200/80"
-                                        : task.status?.state === "working"
-                                        ? "text-amber-700/90 dark:text-amber-200/80"
-                                        : task.status?.state ===
-                                            "input-required"
-                                        ? "text-orange-700/90 dark:text-orange-200/80"
-                                        : task.status?.state === "completed"
-                                        ? "text-emerald-700/90 dark:text-emerald-200/80"
-                                        : task.status?.state === "failed"
-                                        ? "text-rose-700/90 dark:text-rose-200/80"
-                                        : task.status?.state === "canceled"
-                                        ? "text-gray-700/90 dark:text-gray-200/80"
-                                        : "text-slate-700/90 dark:text-slate-200/80"}
-                                    >
-                                      Task {shortId}
-                                    </span>
-                                    {statusTimestamp && (
-                                      <span
-                                        className={task.status?.state ===
-                                            "submitted"
-                                          ? "text-blue-700/70 dark:text-blue-300/70"
-                                          : task.status?.state === "working"
-                                          ? "text-amber-700/70 dark:text-amber-300/70"
-                                          : task.status?.state ===
-                                              "input-required"
-                                          ? "text-orange-700/70 dark:text-orange-300/70"
-                                          : task.status?.state === "completed"
-                                          ? "text-emerald-700/70 dark:text-emerald-300/70"
-                                          : task.status?.state === "failed"
-                                          ? "text-rose-700/70 dark:text-rose-300/70"
-                                          : task.status?.state === "canceled"
-                                          ? "text-gray-700/70 dark:text-gray-300/70"
-                                          : "text-slate-700/70 dark:text-slate-300/70"}
-                                      >
-                                        • {statusTimestamp}
+                                  {entry.user.content
+                                    ? (
+                                      <div className="prose prose-sm text-slate-900 dark:prose-invert max-w-none">
+                                        <Markdown remarkPlugins={[remarkGfm]}>
+                                          {entry.user.content}
+                                        </Markdown>
+                                      </div>
+                                    )
+                                    : (
+                                      <span className="text-slate-600/80 dark:text-slate-300/80">
+                                        (empty message)
                                       </span>
                                     )}
+                                </div>
+                              )}
+
+                              {showAgentCard && entry.agent && (
+                                <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-slate-900 shadow-sm dark:border-slate-700 dark:bg-slate-900/60 dark:text-slate-100">
+                                  <div className="mb-2 flex items-center justify-between text-xs font-semibold uppercase tracking-wide text-slate-700/80 dark:text-slate-200/80">
+                                    <span>Agent</span>
+                                    <span>
+                                      {formatTimestamp(entry.agent.timestamp)}
+                                    </span>
                                   </div>
-                                  {hasUpdates && (
-                                    <div className="pointer-events-none absolute left-0 top-12 bottom-4 w-[2px] bg-border/70" />
-                                  )}
-                                  <div className="space-y-3 pl-4">
-                                    {!hasUpdates
-                                      ? (
-                                        <p className="text-xs text-emerald-800/80 dark:text-emerald-100/80">
-                                          No task updates yet.
-                                        </p>
-                                      )
-                                      : (
-                                        updates.map(renderTaskUpdate)
-                                      )}
-                                    {capabilityCallsForTask.length > 0 && (
-                                      <ul className="ml-6 list-disc space-y-1 text-xs text-emerald-800/90 dark:text-emerald-100">
-                                        {capabilityCallsForTask.map((
+                                  {entry.agent.isLoading
+                                    ? (
+                                      <span className="inline-flex items-center gap-2 text-muted-foreground">
+                                        <Loader2 className="h-4 w-4 animate-spin" />
+                                        {hasTasks
+                                          ? "Working on task..."
+                                          : "Thinking..."}
+                                      </span>
+                                    )
+                                    : entry.agent.content
+                                    ? (
+                                      <div className="prose prose-sm text-slate-900 dark:prose-invert max-w-none">
+                                        <Markdown remarkPlugins={[remarkGfm]}>
+                                          {entry.agent.content}
+                                        </Markdown>
+                                      </div>
+                                    )
+                                    : !hasTasks
+                                    ? (
+                                      <span className="text-slate-600/80 dark:text-slate-300/80">
+                                        No response
+                                      </span>
+                                    )
+                                    : null}
+                                  {!entry.agent.isLoading && !hasTasks &&
+                                    entry.agent.capabilityCalls &&
+                                    entry.agent.capabilityCalls.length > 0 && (
+                                    <div className="mt-3 space-y-1 text-xs text-muted-foreground">
+                                      <div className="font-medium uppercase tracking-wide">
+                                        Capability Calls
+                                      </div>
+                                      <ul className="ml-4 list-disc space-y-1">
+                                        {entry.agent.capabilityCalls.map((
                                           call,
                                           idx,
                                         ) => (
                                           <li key={`${call.name}-${idx}`}>
-                                            <span className="font-semibold text-foreground">
+                                            <span className="font-medium text-foreground/80">
                                               {call.name}
                                             </span>
                                           </li>
                                         ))}
                                       </ul>
-                                    )}
-                                  </div>
+                                    </div>
+                                  )}
                                 </div>
-                              )
-                            })}
+                              )}
+
+                              {entry.tasks.map((item, taskIndex) => {
+                                const task = item.task
+                                const statusInfo = getTaskStatusInfo(task)
+                                const updates = entry.agent?.taskUpdates ??
+                                  buildTaskUpdates(task)
+                                const hasUpdates = updates.length > 0
+                                const shortId = item.id.slice(-8)
+                                const statusTimestampSeconds = toTimestampSeconds(
+                                  task.status?.timestamp ?? null,
+                                )
+                                const statusTimestamp =
+                                  statusTimestampSeconds != null
+                                    ? formatTimestamp(statusTimestampSeconds)
+                                    : null
+                                const capabilityCallsForTask = taskIndex === 0
+                                  ? capabilityCalls
+                                  : []
+
+                                return (
+                                  <div
+                                    key={item.id}
+                                    className="relative mt-6 space-y-4"
+                                  >
+                                    <div
+                                      className={`inline-flex items-center gap-3 rounded-full border px-4 py-1.5 text-xs font-semibold shadow-sm ${
+                                        task.status?.state === "submitted"
+                                          ? "border-blue-500/40 bg-blue-200/80 text-blue-900 dark:border-blue-900/60 dark:bg-blue-950/60 dark:text-blue-100"
+                                          : task.status?.state === "working"
+                                          ? "border-amber-500/40 bg-amber-200/80 text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/60 dark:text-amber-100"
+                                          : task.status?.state ===
+                                              "input-required"
+                                          ? "border-orange-500/40 bg-orange-200/80 text-orange-900 dark:border-orange-900/60 dark:bg-orange-950/60 dark:text-orange-100"
+                                          : task.status?.state === "completed"
+                                          ? "border-emerald-500/40 bg-emerald-200/80 text-emerald-900 dark:border-emerald-900/60 dark:bg-emerald-950/60 dark:text-emerald-100"
+                                          : task.status?.state === "failed"
+                                          ? "border-rose-500/40 bg-rose-200/80 text-rose-900 dark:border-rose-900/60 dark:bg-rose-950/60 dark:text-rose-100"
+                                          : task.status?.state === "canceled"
+                                          ? "border-gray-500/40 bg-gray-200/80 text-gray-900 dark:border-gray-900/60 dark:bg-gray-950/60 dark:text-gray-100"
+                                          : "border-slate-500/40 bg-slate-200/80 text-slate-900 dark:border-slate-900/60 dark:bg-slate-950/60 dark:text-slate-100"
+                                      }`}
+                                    >
+                                      {task.status?.state === "working" && (
+                                        <Loader2 className="h-3 w-3 animate-spin" />
+                                      )}
+                                      <span>{statusInfo.label}</span>
+                                      <span
+                                        className={task.status?.state ===
+                                            "submitted"
+                                          ? "text-blue-700/90 dark:text-blue-200/80"
+                                          : task.status?.state === "working"
+                                          ? "text-amber-700/90 dark:text-amber-200/80"
+                                          : task.status?.state ===
+                                              "input-required"
+                                          ? "text-orange-700/90 dark:text-orange-200/80"
+                                          : task.status?.state === "completed"
+                                          ? "text-emerald-700/90 dark:text-emerald-200/80"
+                                          : task.status?.state === "failed"
+                                          ? "text-rose-700/90 dark:text-rose-200/80"
+                                          : task.status?.state === "canceled"
+                                          ? "text-gray-700/90 dark:text-gray-200/80"
+                                          : "text-slate-700/90 dark:text-slate-200/80"}
+                                      >
+                                        Task {shortId}
+                                      </span>
+                                      {statusTimestamp && (
+                                        <span
+                                          className={task.status?.state ===
+                                              "submitted"
+                                            ? "text-blue-700/70 dark:text-blue-300/70"
+                                            : task.status?.state === "working"
+                                            ? "text-amber-700/70 dark:text-amber-300/70"
+                                            : task.status?.state ===
+                                                "input-required"
+                                            ? "text-orange-700/70 dark:text-orange-300/70"
+                                            : task.status?.state === "completed"
+                                            ? "text-emerald-700/70 dark:text-emerald-300/70"
+                                            : task.status?.state === "failed"
+                                            ? "text-rose-700/70 dark:text-rose-300/70"
+                                            : task.status?.state === "canceled"
+                                            ? "text-gray-700/70 dark:text-gray-300/70"
+                                            : "text-slate-700/70 dark:text-slate-300/70"}
+                                        >
+                                          • {statusTimestamp}
+                                        </span>
+                                      )}
+                                    </div>
+                                    {hasUpdates && (
+                                      <div className="pointer-events-none absolute left-0 top-12 bottom-4 w-[2px] bg-border/70" />
+                                    )}
+                                    <div className="space-y-3 pl-4">
+                                      {!hasUpdates
+                                        ? (
+                                          <p className="text-xs text-emerald-800/80 dark:text-emerald-100/80">
+                                            No task updates yet.
+                                          </p>
+                                        )
+                                        : (
+                                          updates.map(renderTaskUpdate)
+                                        )}
+                                      {capabilityCallsForTask.length > 0 && (
+                                        <ul className="ml-6 list-disc space-y-1 text-xs text-emerald-800/90 dark:text-emerald-100">
+                                          {capabilityCallsForTask.map((
+                                            call,
+                                            idx,
+                                          ) => (
+                                            <li key={`${call.name}-${idx}`}>
+                                              <span className="font-semibold text-foreground">
+                                                {call.name}
+                                              </span>
+                                            </li>
+                                          ))}
+                                        </ul>
+                                      )}
+                                    </div>
+                                  </div>
+                                )
+                              })}
+                            </div>
                           </div>
-                        </div>
-                      )
-                    })
-                  )}
-                <div ref={messagesEndRef} />
-              </div>
-            </div>
-            {/* Conversations inline panel */}
-            <div
-              className={[
-                "relative border-l bg-background/50 transition-all duration-300 ease-out",
-                isConversationsOpen
-                  ? "w-[340px] sm:w-[360px] opacity-100"
-                  : "w-0 opacity-0 pointer-events-none",
-              ].join(" ")}
-            >
-              <div className="h-full flex flex-col">
-                <div className="flex-1 min-h-0">
-                  <ChatSidebar
-                    variant="inline"
-                    hideTitleBar
-                    currentChatId={currentChatId}
-                    onChatSelect={(id) => onChatSelect && onChatSelect(id)}
-                    onNewChat={startNewChat}
-                    refreshKey={chatsRefreshKey}
-                  />
+                        )
+                      })
+                    )}
+                  <div ref={messagesEndRef} />
                 </div>
               </div>
             </div>
-          </div>
-        </CardContent>
+          </CardContent>
 
-        <CardFooter className="border-t p-4">
-          <div className="flex w-full items-end gap-2">
-            <Textarea
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder="Type your message here"
-              className="flex-1 rounded-2xl min-h-[44px]"
-              disabled={isLoading || !isBackendConnected}
-              autoResize
-              minRows={1}
-              maxRows={8}
-            />
-            <Button
-              onClick={currentTaskId ? handleCancelTask : handleSendMessage}
-              size="icon"
-              className="rounded-full h-11 w-11 shrink-0"
-              disabled={currentTaskId
-                ? false
-                : (!input.trim() || isLoading || !isBackendConnected)}
-            >
-              {currentTaskId
-                ? <X className="h-4 w-4" />
-                : isLoading
-                ? <Loader2 className="h-4 w-4 animate-spin" />
-                : <ArrowRight className="h-4 w-4" />}
-              <span className="sr-only">
-                {currentTaskId ? "Cancel task" : "Send message"}
-              </span>
-            </Button>
-          </div>
-        </CardFooter>
-      </Card>
+          <CardFooter className="border-t p-4">
+            <div className="flex w-full items-end gap-2">
+              <Textarea
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={handleKeyDown}
+                placeholder="Type your message here"
+                className="flex-1 rounded-2xl min-h-[44px]"
+                disabled={isLoading || !isBackendConnected}
+                autoResize
+                minRows={1}
+                maxRows={8}
+              />
+              <Button
+                onClick={currentTaskId ? handleCancelTask : handleSendMessage}
+                size="icon"
+                className="rounded-full h-11 w-11 shrink-0"
+                disabled={currentTaskId
+                  ? false
+                  : (!input.trim() || isLoading || !isBackendConnected)}
+              >
+                {currentTaskId
+                  ? <X className="h-4 w-4" />
+                  : isLoading
+                  ? <Loader2 className="h-4 w-4 animate-spin" />
+                  : <ArrowRight className="h-4 w-4" />}
+                <span className="sr-only">
+                  {currentTaskId ? "Cancel task" : "Send message"}
+                </span>
+              </Button>
+            </div>
+          </CardFooter>
+        </Card>
 
-      {/* Rail button aligned to Chat Interface when panel is hidden */}
-      {!isConversationsOpen && (
-        <div className="absolute right-3 top-1/2 -translate-y-1/2 z-10">
-          <Button
-            variant="outline"
-            size="icon"
-            className="shadow-sm"
-            title="Show conversations (Cmd/Ctrl+K)"
-            onClick={onToggleConversations}
-          >
-            <PanelRightOpen className="h-4 w-4" />
-          </Button>
+        <div className="min-h-0 h-[420px] lg:h-full">
+          <ChatSidebar
+            variant="card"
+            className="h-full min-h-0 shadow-md border border-slate-200/80 bg-white/90 backdrop-blur"
+            currentChatId={currentChatId}
+            onChatSelect={(id) => onChatSelect && onChatSelect(id)}
+            onNewChat={startNewChat}
+            refreshKey={chatsRefreshKey}
+          />
         </div>
-      )}
+      </div>
 
       <Dialog
         open={previewArtifact !== null}
