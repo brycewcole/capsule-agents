@@ -1372,9 +1372,17 @@ export default function ChatInterface({
             taskId: string
             contextId: string
             artifact: Artifact
+            append?: boolean
             lastChunk?: boolean
           }
-          console.log("Received artifact-update:", artifactEvent)
+          console.log("Received artifact-update:", {
+            append: artifactEvent.append,
+            lastChunk: artifactEvent.lastChunk,
+            contentLength: artifactEvent.artifact.parts?.[0]?.kind === "text"
+              ? artifactEvent.artifact.parts[0].text?.length
+              : 0,
+            artifactId: artifactEvent.artifact.artifactId,
+          })
           const lastChunk = Boolean(artifactEvent.lastChunk)
 
           // Fall back to the active entry or the most recent entry if we
@@ -1422,15 +1430,61 @@ export default function ChatInterface({
                 let updatedArtifacts: typeof existingArtifacts
                 if (artifactIndex >= 0) {
                   const existing = existingArtifacts[artifactIndex]
+                  const shouldAppend = artifactEvent.append === true
 
-                  // Replace artifact with latest content
-                  const mergedArtifact: Artifact = {
-                    ...existing,
-                    ...artifactEvent.artifact,
-                    metadata: {
-                      ...(existing.metadata ?? {}),
-                      ...(artifactEvent.artifact.metadata ?? {}),
-                    },
+                  let mergedArtifact: Artifact
+                  if (shouldAppend) {
+                    // Append mode: concatenate content to existing parts
+                    const newParts = artifactEvent.artifact.parts || []
+                    const existingParts = existing.parts || []
+
+                    // Append text content to the last text part, or add new parts
+                    const appendedParts = [...existingParts]
+                    for (const newPart of newParts) {
+                      if (newPart.kind === "text" && newPart.text) {
+                        // Find the last text part and append to it
+                        const lastTextPartIndex = appendedParts.findLastIndex(
+                          (p) => p.kind === "text",
+                        )
+                        if (lastTextPartIndex >= 0) {
+                          const lastTextPart = appendedParts[lastTextPartIndex]
+                          if (lastTextPart.kind === "text") {
+                            appendedParts[lastTextPartIndex] = {
+                              ...lastTextPart,
+                              text: (lastTextPart.text || "") + newPart.text,
+                            }
+                          } else {
+                            appendedParts.push(newPart)
+                          }
+                        } else {
+                          appendedParts.push(newPart)
+                        }
+                      } else {
+                        appendedParts.push(newPart)
+                      }
+                    }
+
+                    mergedArtifact = {
+                      ...existing,
+                      name: artifactEvent.artifact.name || existing.name,
+                      description: artifactEvent.artifact.description ||
+                        existing.description,
+                      parts: appendedParts,
+                      metadata: {
+                        ...(existing.metadata ?? {}),
+                        ...(artifactEvent.artifact.metadata ?? {}),
+                      },
+                    }
+                  } else {
+                    // Replace mode: replace with new content
+                    mergedArtifact = {
+                      ...existing,
+                      ...artifactEvent.artifact,
+                      metadata: {
+                        ...(existing.metadata ?? {}),
+                        ...(artifactEvent.artifact.metadata ?? {}),
+                      },
+                    }
                   }
 
                   const artifactWithTimestamp = ensureArtifactTimestamp(
