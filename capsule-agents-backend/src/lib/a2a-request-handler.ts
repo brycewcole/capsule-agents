@@ -59,6 +59,7 @@ type ArtifactStreamState = {
   content: string
   inputBuffer: string
   isComplete: boolean
+  hasEmitted: boolean // Track if we've emitted anything yet
 }
 
 export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
@@ -548,6 +549,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
           content: "",
           inputBuffer: "",
           isComplete: false,
+          hasEmitted: false,
         })
       }
       return null
@@ -556,6 +558,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
     if (event.type === "tool-call" && this.isArtifactTool(event.toolName)) {
       const state = artifactStreamStates.get(event.toolCallId)
       if (state) {
+        const prevContentLen = state.content.length
         this.updateArtifactStateFromInput(
           state,
           typeof event.input === "string"
@@ -567,7 +570,8 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
         )
         // Mark artifact as complete and emit final event with lastChunk
         state.isComplete = true
-        return this.toArtifactUpdateEvent(task, state, true)
+        const contentDelta = state.content.slice(prevContentLen)
+        return this.toArtifactUpdateEvent(task, state, contentDelta, true)
       }
       return null
     }
@@ -576,7 +580,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
       const state = artifactStreamStates.get(event.id)
       if (state) {
         state.inputBuffer += event.delta
-        let hasUpdate = false
+        const prevContentLen = state.content.length
 
         const parsedInput = parsePartialObjectFromStream<ArtifactInput>(
           state.inputBuffer,
@@ -584,7 +588,6 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
         )
         if (parsedInput) {
           this.updateArtifactStateFromInput(state, parsedInput)
-          hasUpdate = true
         }
 
         const streamingFields = extractStringFieldsFromBuffer<ArtifactInput>(
@@ -593,12 +596,12 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
         )
         if (streamingFields) {
           this.updateArtifactStateFromInput(state, streamingFields)
-          hasUpdate = true
         }
 
-        // Emit whenever any field was updated (name, description, or content)
-        if (hasUpdate) {
-          return this.toArtifactUpdateEvent(task, state, false)
+        // Emit if content grew
+        const contentDelta = state.content.slice(prevContentLen)
+        if (contentDelta.length > 0) {
+          return this.toArtifactUpdateEvent(task, state, contentDelta, false)
         }
       }
     }
@@ -625,21 +628,25 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
   private toArtifactUpdateEvent(
     task: A2A.Task | null,
     state: ArtifactStreamState,
+    contentDelta: string,
     isLastChunk: boolean,
   ): A2A.TaskArtifactUpdateEvent | null {
     if (!task) return null
+
+    const isAppend = state.hasEmitted && contentDelta.length > 0
+    state.hasEmitted = true
 
     return {
       kind: "artifact-update",
       taskId: task.id,
       contextId: task.contextId,
-      append: false, // Always send full content, frontend replaces
+      append: isAppend, // First emit or empty: false, subsequent: true
       lastChunk: isLastChunk,
       artifact: {
         artifactId: state.artifactId,
         name: state.name || "Artifact",
         description: state.description,
-        parts: [{ kind: "text", text: state.content }],
+        parts: [{ kind: "text", text: contentDelta }],
       },
     }
   }
@@ -1263,7 +1270,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
           kind: "artifact-update",
           taskId: currentTaskRef.current.id,
           contextId,
-          append: false,
+          append: update.isAppend,
           lastChunk: update.isComplete,
           artifact: {
             artifactId: update.artifactId,
@@ -1273,18 +1280,38 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
           },
         }
 
+        console.debug(
+          `[A2A Handler] Sending artifact event: append=${update.isAppend}, deltaLength=${update.content.length}, isComplete=${update.isComplete}`,
+        )
+
         // Push to queue - will be yielded by orchestrator
         eventUpdateQueue.push(artifactEvent)
 
         // Track artifact for persistence when complete
-        if (update.isComplete) {
+        // Accumulate content for database storage
+        if (!artifactResultRef.current) {
+          // First chunk - initialize
           artifactResultRef.current = {
             artifactId: update.artifactId,
             name: update.name,
             description: update.description,
             content: update.content,
           }
+          console.debug(
+            `[A2A Handler] Initialized artifact accumulator: contentLength=${update.content.length}`,
+          )
+        } else if (artifactResultRef.current.artifactId === update.artifactId) {
+          // Append delta to accumulated content (including final chunk)
+          const prevLength = artifactResultRef.current.content.length
+          artifactResultRef.current.content += update.content
+          // Update name/description in case they changed
+          artifactResultRef.current.name = update.name
+          artifactResultRef.current.description = update.description
+          console.debug(
+            `[A2A Handler] Appended to artifact: prevLength=${prevLength}, deltaLength=${update.content.length}, newTotalLength=${artifactResultRef.current.content.length}, isComplete=${update.isComplete}`,
+          )
         }
+        // Note: isComplete doesn't affect accumulation, just signals end of stream
       }
 
       const allTools = {
@@ -1430,6 +1457,9 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
       if (currentTaskRef.current && artifactResultRef.current) {
         // Artifact was streamed, just persist it
         const details = artifactResultRef.current
+        console.info(
+          `Persisting streamed artifact to database: contentLength=${details.content.length}`,
+        )
         this.taskService.createArtifact(currentTaskRef.current, {
           name: details.name,
           description: details.description,
@@ -1459,7 +1489,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
             kind: "artifact-update",
             taskId: currentTaskRef.current.id,
             contextId,
-            append: false,
+            append: update.isAppend,
             lastChunk: update.isComplete,
             artifact: {
               artifactId: update.artifactId,
@@ -1471,14 +1501,25 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
 
           forcedArtifactQueue.push(artifactEvent)
 
-          if (update.isComplete) {
+          // Accumulate content for database storage
+          if (!forcedArtifactResultRef.current) {
+            // First chunk - initialize
             forcedArtifactResultRef.current = {
               artifactId: update.artifactId,
               name: update.name,
               description: update.description,
               content: update.content,
             }
+          } else if (
+            forcedArtifactResultRef.current.artifactId === update.artifactId
+          ) {
+            // Append delta to accumulated content (including final chunk)
+            forcedArtifactResultRef.current.content += update.content
+            // Update name/description in case they changed
+            forcedArtifactResultRef.current.name = update.name
+            forcedArtifactResultRef.current.description = update.description
           }
+          // Note: isComplete doesn't affect accumulation, just signals end of stream
         }
 
         // Get current message count before forced artifact generation

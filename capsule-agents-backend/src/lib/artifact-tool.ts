@@ -27,8 +27,9 @@ export type ArtifactStreamCallback = (update: {
   artifactId: string
   name: string
   description?: string
-  content: string
+  content: string // Delta content (new content since last emit)
   isComplete: boolean
+  isAppend: boolean // True if this is an append operation (not first emit)
 }) => void
 
 /**
@@ -40,6 +41,7 @@ type ArtifactStreamingState = {
   name: string
   description?: string
   content: string
+  hasEmitted: boolean // Track if we've emitted anything yet
 }
 
 /**
@@ -77,6 +79,7 @@ export function createArtifactTool(
         inputBuffer: "",
         name: "Artifact",
         content: "",
+        hasEmitted: false,
       })
     },
 
@@ -121,14 +124,25 @@ export function createArtifactTool(
       const contentChanged = state.content.length !== prevContentLen
 
       if (nameChanged || descriptionChanged || contentChanged) {
+        // Content delta is the new portion since last check
+        const contentDelta = state.content.slice(prevContentLen)
+        const isAppend = state.hasEmitted
+
+        console.debug(
+          `[Artifact Tool] Emitting update: isAppend=${isAppend}, deltaLength=${contentDelta.length}, hasEmitted=${state.hasEmitted}`,
+        )
+
         onArtifactUpdate({
           toolCallId,
           artifactId: state.artifactId,
           name: state.name,
           description: state.description,
-          content: state.content,
+          content: contentDelta,
           isComplete: false,
+          isAppend,
         })
+
+        state.hasEmitted = true
       }
     },
 
@@ -139,13 +153,18 @@ export function createArtifactTool(
 
       const typedInput = input as ArtifactInput
 
+      // Send any remaining content as delta
+      const prevLen = state?.content.length ?? 0
+      const contentDelta = typedInput.content.slice(prevLen)
+
       onArtifactUpdate({
         toolCallId,
         artifactId: state?.artifactId ?? crypto.randomUUID(),
         name: typedInput.name,
         description: typedInput.description,
-        content: typedInput.content,
+        content: contentDelta,
         isComplete: true,
+        isAppend: state?.hasEmitted ?? false,
       })
 
       // Clean up state
