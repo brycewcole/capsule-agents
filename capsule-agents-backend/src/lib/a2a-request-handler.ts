@@ -1338,7 +1338,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
       const allTools = {
         ...tools,
         ...mcpTools.tools,
-        createArtifact: createArtifactTool(artifactStreamCallback),
+        create_artifact: createArtifactTool(artifactStreamCallback),
       }
 
       // Track current agent activity for status updates
