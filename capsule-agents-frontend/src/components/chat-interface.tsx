@@ -294,7 +294,11 @@ const getArtifactContentInfo = (artifact: Artifact) => {
     artifact.name?.toLowerCase().endsWith(".md") ||
     artifact.name?.toLowerCase().endsWith(".markdown"))
 
-  const fallbackMime = isHtml ? "text/html" : isMarkdown ? "text/markdown" : "text/plain"
+  const fallbackMime = isHtml
+    ? "text/html"
+    : isMarkdown
+    ? "text/markdown"
+    : "text/plain"
 
   return {
     content: textContent,

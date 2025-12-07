@@ -120,7 +120,9 @@ export function createArtifactTool(
           state.description = streamingFields.description
         }
         if (streamingFields.content) state.content = streamingFields.content
-        if (streamingFields.contentType) state.contentType = streamingFields.contentType
+        if (streamingFields.contentType) {
+          state.contentType = streamingFields.contentType
+        }
       }
 
       // Only emit if something actually changed
