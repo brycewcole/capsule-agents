@@ -18,6 +18,11 @@ function safeLiteralReplace(
   oldString: string,
   newString: string,
 ): { result: string; count: number } {
+  // Guard against empty oldString which would cause infinite loop
+  if (oldString === "") {
+    return { result: content, count: 0 }
+  }
+
   let count = 0
   let result = content
   let index = 0
@@ -135,6 +140,19 @@ export const editFileTool = tool({
 
       // Read existing file content
       const content = await Deno.readTextFile(file_path)
+
+      // Check for empty old_string on existing file (would cause infinite loop)
+      if (old_string === "") {
+        console.error("❌ Cannot use empty old_string on existing file")
+        return {
+          success: false,
+          file_path,
+          operation: "edit" as const,
+          error:
+            "Cannot use empty old_string to edit an existing file. Use a non-empty old_string to perform replacements.",
+          error_type: "no_change" as EditErrorType,
+        }
+      }
 
       // Check for no-change scenario (old_string === new_string)
       if (old_string === new_string) {
