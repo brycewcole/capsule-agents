@@ -2,7 +2,7 @@ import type * as A2A from "@a2a-js/sdk"
 import * as Vercel from "ai"
 import { a2aMessageRepository } from "../repositories/message.repository.ts"
 
-const STATUS_UPDATE_INTERVAL_MS = 5000
+const STATUS_UPDATE_INTERVAL_MS = 10000
 
 export class StatusUpdateService {
   private intervals: Map<string, number> = new Map()
