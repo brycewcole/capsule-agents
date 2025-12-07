@@ -6,8 +6,11 @@ import { createProviderRegistry } from "ai"
 import { StreamableHTTPClientTransport } from "mcp/client/streamableHttp.js"
 import { z } from "zod"
 import { executeA2ACall } from "../capabilities/a2a.ts"
+import { editFileSkill, editFileTool } from "../capabilities/edit-file.ts"
 import { execSkill, execTool } from "../capabilities/exec.ts"
+import { grepFilesSkill, grepFilesTool } from "../capabilities/grep-files.ts"
 import { memorySkill, memoryTool } from "../capabilities/memory.ts"
+import { readFileSkill, readFileTool } from "../capabilities/read-file.ts"
 import { contextRepository } from "../repositories/context.repository.ts"
 import { A2AMessageRepository } from "../repositories/message.repository.ts"
 import { TaskRepository } from "../repositories/task.repository.ts"
@@ -172,6 +175,15 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
           case "memory":
             capabilities.memory = memoryTool
             break
+          case "read_file":
+            capabilities.read_file = readFileTool
+            break
+          case "grep_files":
+            capabilities.grep_files = grepFilesTool
+            break
+          case "edit_file":
+            capabilities.edit_file = editFileTool
+            break
         }
       } else if (capability.type === "a2a") {
         const agentUrl = capability.agentUrl
@@ -297,6 +309,15 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
     }
     if ("memory" in availableCapabilities) {
       skills.push(memorySkill)
+    }
+    if ("read_file" in availableCapabilities) {
+      skills.push(readFileSkill)
+    }
+    if ("grep_files" in availableCapabilities) {
+      skills.push(grepFilesSkill)
+    }
+    if ("edit_file" in availableCapabilities) {
+      skills.push(editFileSkill)
     }
 
     return {
@@ -524,7 +545,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
   }
 
   private isArtifactTool(toolName: string): boolean {
-    return toolName === "createArtifact" || toolName === "generateArtifact"
+    return toolName === "create_artifact"
   }
 
   /**
@@ -676,7 +697,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
     console.info("Forcing artifact generation for task", task.id)
 
     const artifactToolSet = {
-      createArtifact: createArtifactTool(onArtifactUpdate),
+      create_artifact: createArtifactTool(onArtifactUpdate),
     }
 
     const streamResult = Vercel.streamText({
@@ -690,7 +711,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
         },
       ],
       tools: artifactToolSet,
-      toolChoice: { type: "tool", toolName: "createArtifact" },
+      toolChoice: { type: "tool", toolName: "create_artifact" },
     })
 
     const artifactStreamStates = new Map<string, ArtifactStreamState>()
@@ -713,6 +734,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
     name: string
     description?: string
     content: string
+    contentType: string
   } | null {
     const { toolResults, toolCalls } = stepResult
 
@@ -720,7 +742,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
     for (const toolResult of toolResults || []) {
       if (
         toolResult.dynamic !== true &&
-        toolResult.toolName === "createArtifact" &&
+        toolResult.toolName === "create_artifact" &&
         "input" in toolResult
       ) {
         const input = toolResult.input as ArtifactInput
@@ -736,6 +758,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
           name: input.name,
           description: input.description,
           content: state?.content ?? input.content,
+          contentType: input.contentType,
         }
       }
     }
@@ -744,7 +767,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
     for (const toolCall of toolCalls || []) {
       if (
         toolCall.type === "tool-call" &&
-        toolCall.toolName === "createArtifact"
+        toolCall.toolName === "create_artifact"
       ) {
         // toolCall has input property with the tool arguments
         const callInput = "input" in toolCall
@@ -763,6 +786,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
           name: state?.name || callInput?.name || "Artifact",
           description: state?.description || callInput?.description,
           content: state?.content || callInput?.content || "",
+          contentType: callInput?.contentType ?? "text",
         }
       }
     }
@@ -779,6 +803,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
         name: string
         description?: string
         content: string
+        contentType: string
       } | null
     },
     abortController?: AbortController,
@@ -947,13 +972,14 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
           name: string
           description?: string
           content: string
+          contentType: string
         } | null
       } = { current: null }
 
       const allTools = {
         ...tools,
         ...mcpTools.tools,
-        createArtifact: staticArtifactTool,
+        create_artifact: staticArtifactTool,
       }
 
       console.info(
@@ -1067,6 +1093,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
             name: artifactState.name,
             description: artifactState.description,
             content: artifactState.content,
+            contentType: "text", // Default for forced artifacts
           }
         }
       }
@@ -1074,10 +1101,19 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
       // Persist all collected artifacts
       if (currentTaskRef.current && artifactResultRef.current) {
         const artifact = artifactResultRef.current
+        const partWithMetadata = {
+          kind: "text" as const,
+          text: artifact.content,
+          metadata: { contentType: artifact.contentType },
+        }
+        console.debug(
+          `[A2A Handler] Persisting artifact with part metadata:`,
+          JSON.stringify(partWithMetadata.metadata),
+        )
         this.taskService.createArtifact(currentTaskRef.current, {
           name: artifact.name,
           description: artifact.description,
-          parts: [{ kind: "text", text: artifact.content }],
+          parts: [partWithMetadata],
         })
 
         // Return task with artifacts attached
@@ -1258,6 +1294,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
           name: string
           description?: string
           content: string
+          contentType: string
         } | null
       } = { current: null }
 
@@ -1276,7 +1313,11 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
             artifactId: update.artifactId,
             name: update.name,
             description: update.description,
-            parts: [{ kind: "text", text: update.content }],
+            parts: [{
+              kind: "text",
+              text: update.content,
+              metadata: { contentType: update.contentType },
+            }],
           },
         }
 
@@ -1296,17 +1337,19 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
             name: update.name,
             description: update.description,
             content: update.content,
+            contentType: update.contentType,
           }
           console.debug(
-            `[A2A Handler] Initialized artifact accumulator: contentLength=${update.content.length}`,
+            `[A2A Handler] Initialized artifact accumulator: contentLength=${update.content.length}, contentType=${update.contentType}`,
           )
         } else if (artifactResultRef.current.artifactId === update.artifactId) {
           // Append delta to accumulated content (including final chunk)
           const prevLength = artifactResultRef.current.content.length
           artifactResultRef.current.content += update.content
-          // Update name/description in case they changed
+          // Update name/description/contentType in case they changed
           artifactResultRef.current.name = update.name
           artifactResultRef.current.description = update.description
+          artifactResultRef.current.contentType = update.contentType
           console.debug(
             `[A2A Handler] Appended to artifact: prevLength=${prevLength}, deltaLength=${update.content.length}, newTotalLength=${artifactResultRef.current.content.length}, isComplete=${update.isComplete}`,
           )
@@ -1317,7 +1360,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
       const allTools = {
         ...tools,
         ...mcpTools.tools,
-        createArtifact: createArtifactTool(artifactStreamCallback),
+        create_artifact: createArtifactTool(artifactStreamCallback),
       }
 
       // Track current agent activity for status updates
@@ -1375,7 +1418,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
         providerOptions,
         stopWhen: [
           Vercel.stepCountIs(100),
-          Vercel.hasToolCall("createArtifact"),
+          Vercel.hasToolCall("create_artifact"),
         ],
         onError: (error) => {
           this.handleStreamError(error)

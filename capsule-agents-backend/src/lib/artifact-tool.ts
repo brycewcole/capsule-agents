@@ -28,6 +28,7 @@ export type ArtifactStreamCallback = (update: {
   name: string
   description?: string
   content: string // Delta content (new content since last emit)
+  contentType: string // Content type from tool input (html, markdown, code, text)
   isComplete: boolean
   isAppend: boolean // True if this is an append operation (not first emit)
 }) => void
@@ -41,6 +42,7 @@ type ArtifactStreamingState = {
   name: string
   description?: string
   content: string
+  contentType: string
   hasEmitted: boolean // Track if we've emitted anything yet
 }
 
@@ -79,6 +81,7 @@ export function createArtifactTool(
         inputBuffer: "",
         name: "Artifact",
         content: "",
+        contentType: "text",
         hasEmitted: false,
       })
     },
@@ -104,11 +107,12 @@ export function createArtifactTool(
         if (parsedInput.name) state.name = parsedInput.name
         if (parsedInput.description) state.description = parsedInput.description
         if (parsedInput.content) state.content = parsedInput.content
+        if (parsedInput.contentType) state.contentType = parsedInput.contentType
       }
 
       const streamingFields = extractStringFieldsFromBuffer<ArtifactInput>(
         state.inputBuffer,
-        ["content", "name", "description"],
+        ["content", "name", "description", "contentType"],
       )
       if (streamingFields) {
         if (streamingFields.name) state.name = streamingFields.name
@@ -116,6 +120,9 @@ export function createArtifactTool(
           state.description = streamingFields.description
         }
         if (streamingFields.content) state.content = streamingFields.content
+        if (streamingFields.contentType) {
+          state.contentType = streamingFields.contentType
+        }
       }
 
       // Only emit if something actually changed
@@ -138,6 +145,7 @@ export function createArtifactTool(
           name: state.name,
           description: state.description,
           content: contentDelta,
+          contentType: state.contentType,
           isComplete: false,
           isAppend,
         })
@@ -163,6 +171,7 @@ export function createArtifactTool(
         name: typedInput.name,
         description: typedInput.description,
         content: contentDelta,
+        contentType: typedInput.contentType,
         isComplete: true,
         isAppend: state?.hasEmitted ?? false,
       })

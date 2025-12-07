@@ -86,6 +86,7 @@ type ArtifactPreviewState = {
   content: string
   mimeType: string
   isHtml: boolean
+  isMarkdown: boolean
 }
 
 type TimelineEntry = {
@@ -279,18 +280,33 @@ const looksLikeHtml = (content: string): boolean => {
 const getArtifactContentInfo = (artifact: Artifact) => {
   const textContent = getArtifactTextContent(artifact)
   const metadata = getTextPartMetadata(artifact)
-  const providedMime = inferMimeTypeFromMetadata(metadata)
-  const normalizedMime = providedMime?.toLowerCase()
-  const isHtml = (normalizedMime ? normalizedMime.includes("html") : false) ||
-    looksLikeHtml(textContent)
-  const fallbackMime = isHtml ? "text/html" : "text/plain"
+  const providedType = inferMimeTypeFromMetadata(metadata)
+  const normalizedType = providedType?.toLowerCase()
+
+  // Check if contentType from backend matches known types
+  const isHtml = !!(normalizedType === "html" ||
+    normalizedType?.includes("html") ||
+    looksLikeHtml(textContent))
+
+  const isMarkdown = !!(normalizedType === "markdown" ||
+    normalizedType?.includes("markdown") ||
+    normalizedType === "text/md" ||
+    artifact.name?.toLowerCase().endsWith(".md") ||
+    artifact.name?.toLowerCase().endsWith(".markdown"))
+
+  const fallbackMime = isHtml
+    ? "text/html"
+    : isMarkdown
+    ? "text/markdown"
+    : "text/plain"
 
   return {
     content: textContent,
     metadata,
-    mimeType: normalizedMime ?? fallbackMime,
-    displayMimeType: providedMime,
+    mimeType: normalizedType ?? fallbackMime,
+    displayMimeType: providedType,
     isHtml,
+    isMarkdown,
   }
 }
 
@@ -453,10 +469,11 @@ const ArtifactPreviewInline = ({
   onDownload,
 }: ArtifactPreviewInlineProps) => {
   const textRef = useRef<HTMLPreElement>(null)
-  const [canExpand, setCanExpand] = useState(info.isHtml)
+  const markdownRef = useRef<HTMLDivElement>(null)
+  const [canExpand, setCanExpand] = useState(info.isHtml || info.isMarkdown)
 
   useEffect(() => {
-    if (info.isHtml) {
+    if (info.isHtml || info.isMarkdown) {
       setCanExpand(true)
       return
     }
@@ -471,7 +488,7 @@ const ArtifactPreviewInline = ({
       setCanExpand(verticalOverflow || horizontalOverflow)
     }
     update()
-  }, [info.content, info.isHtml])
+  }, [info.content, info.isHtml, info.isMarkdown])
 
   return (
     <div className="relative rounded-md border border-indigo-200/70 bg-white dark:border-indigo-900/40 dark:bg-indigo-950/30">
@@ -505,6 +522,17 @@ const ArtifactPreviewInline = ({
             sandbox=""
             className="h-60 w-full rounded-md bg-white dark:bg-slate-900"
           />
+        )
+        : info.isMarkdown
+        ? (
+          <div
+            ref={markdownRef}
+            className="prose prose-sm dark:prose-invert max-h-64 overflow-auto rounded-md bg-white/70 p-3 pt-10 pr-4 text-xs dark:bg-indigo-950/40 max-w-none"
+          >
+            <Markdown remarkPlugins={[remarkGfm]}>
+              {info.content}
+            </Markdown>
+          </div>
         )
         : (
           <pre
@@ -609,6 +637,7 @@ export default function ChatInterface({
         content: info.content,
         mimeType: info.mimeType,
         isHtml: info.isHtml,
+        isMarkdown: info.isMarkdown,
       })
     },
     [setPreviewArtifact],
@@ -2051,6 +2080,14 @@ export default function ChatInterface({
                       sandbox=""
                       className="h-[70vh] w-full bg-white dark:bg-slate-900"
                     />
+                  )
+                  : previewArtifact.isMarkdown
+                  ? (
+                    <div className="prose prose-base dark:prose-invert max-h-[70vh] overflow-auto p-4 max-w-none">
+                      <Markdown remarkPlugins={[remarkGfm]}>
+                        {previewArtifact.content}
+                      </Markdown>
+                    </div>
                   )
                   : previewArtifact.content
                   ? (

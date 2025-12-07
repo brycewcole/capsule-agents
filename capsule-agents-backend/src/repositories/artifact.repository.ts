@@ -23,6 +23,11 @@ export class ArtifactRepository {
     const db = getDb()
     const now = Date.now() / 1000
     const id = `artifact_${crypto.randomUUID()}`
+    const partsJson = JSON.stringify(artifact.parts)
+    console.debug(
+      `[ArtifactRepository] Saving artifact parts to DB:`,
+      partsJson,
+    )
     db.prepare(
       `INSERT INTO artifacts (id, task_id, name, description, parts, created_at) VALUES (?, ?, ?, ?, ?, ?)`,
     ).run(
@@ -30,7 +35,7 @@ export class ArtifactRepository {
       taskId,
       artifact.name ?? null,
       artifact.description ?? null,
-      JSON.stringify(artifact.parts),
+      partsJson,
       now,
     )
 
