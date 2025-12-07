@@ -734,6 +734,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
     name: string
     description?: string
     content: string
+    contentType: string
   } | null {
     const { toolResults, toolCalls } = stepResult
 
@@ -757,6 +758,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
           name: input.name,
           description: input.description,
           content: state?.content ?? input.content,
+          contentType: input.contentType,
         }
       }
     }
@@ -784,6 +786,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
           name: state?.name || callInput?.name || "Artifact",
           description: state?.description || callInput?.description,
           content: state?.content || callInput?.content || "",
+          contentType: callInput?.contentType ?? "text",
         }
       }
     }
@@ -800,6 +803,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
         name: string
         description?: string
         content: string
+        contentType: string
       } | null
     },
     abortController?: AbortController,
@@ -968,6 +972,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
           name: string
           description?: string
           content: string
+          contentType: string
         } | null
       } = { current: null }
 
@@ -1088,6 +1093,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
             name: artifactState.name,
             description: artifactState.description,
             content: artifactState.content,
+            contentType: "text", // Default for forced artifacts
           }
         }
       }
@@ -1098,7 +1104,11 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
         this.taskService.createArtifact(currentTaskRef.current, {
           name: artifact.name,
           description: artifact.description,
-          parts: [{ kind: "text", text: artifact.content }],
+          parts: [{
+            kind: "text",
+            text: artifact.content,
+            metadata: { contentType: artifact.contentType },
+          }],
         })
 
         // Return task with artifacts attached
@@ -1279,6 +1289,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
           name: string
           description?: string
           content: string
+          contentType: string
         } | null
       } = { current: null }
 
@@ -1297,7 +1308,11 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
             artifactId: update.artifactId,
             name: update.name,
             description: update.description,
-            parts: [{ kind: "text", text: update.content }],
+            parts: [{
+              kind: "text",
+              text: update.content,
+              metadata: { contentType: update.contentType },
+            }],
           },
         }
 
@@ -1317,17 +1332,19 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
             name: update.name,
             description: update.description,
             content: update.content,
+            contentType: update.contentType,
           }
           console.debug(
-            `[A2A Handler] Initialized artifact accumulator: contentLength=${update.content.length}`,
+            `[A2A Handler] Initialized artifact accumulator: contentLength=${update.content.length}, contentType=${update.contentType}`,
           )
         } else if (artifactResultRef.current.artifactId === update.artifactId) {
           // Append delta to accumulated content (including final chunk)
           const prevLength = artifactResultRef.current.content.length
           artifactResultRef.current.content += update.content
-          // Update name/description in case they changed
+          // Update name/description/contentType in case they changed
           artifactResultRef.current.name = update.name
           artifactResultRef.current.description = update.description
+          artifactResultRef.current.contentType = update.contentType
           console.debug(
             `[A2A Handler] Appended to artifact: prevLength=${prevLength}, deltaLength=${update.content.length}, newTotalLength=${artifactResultRef.current.content.length}, isComplete=${update.isComplete}`,
           )
