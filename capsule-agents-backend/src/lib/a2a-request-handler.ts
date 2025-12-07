@@ -1101,14 +1101,19 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
       // Persist all collected artifacts
       if (currentTaskRef.current && artifactResultRef.current) {
         const artifact = artifactResultRef.current
+        const partWithMetadata = {
+          kind: "text" as const,
+          text: artifact.content,
+          metadata: { contentType: artifact.contentType },
+        }
+        console.debug(
+          `[A2A Handler] Persisting artifact with part metadata:`,
+          JSON.stringify(partWithMetadata.metadata),
+        )
         this.taskService.createArtifact(currentTaskRef.current, {
           name: artifact.name,
           description: artifact.description,
-          parts: [{
-            kind: "text",
-            text: artifact.content,
-            metadata: { contentType: artifact.contentType },
-          }],
+          parts: [partWithMetadata],
         })
 
         // Return task with artifacts attached
