@@ -6,8 +6,11 @@ import { createProviderRegistry } from "ai"
 import { StreamableHTTPClientTransport } from "mcp/client/streamableHttp.js"
 import { z } from "zod"
 import { executeA2ACall } from "../capabilities/a2a.ts"
+import { editFileSkill, editFileTool } from "../capabilities/edit-file.ts"
 import { execSkill, execTool } from "../capabilities/exec.ts"
+import { grepFilesSkill, grepFilesTool } from "../capabilities/grep-files.ts"
 import { memorySkill, memoryTool } from "../capabilities/memory.ts"
+import { readFileSkill, readFileTool } from "../capabilities/read-file.ts"
 import { contextRepository } from "../repositories/context.repository.ts"
 import { A2AMessageRepository } from "../repositories/message.repository.ts"
 import { TaskRepository } from "../repositories/task.repository.ts"
@@ -172,6 +175,15 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
           case "memory":
             capabilities.memory = memoryTool
             break
+          case "read_file":
+            capabilities.read_file = readFileTool
+            break
+          case "grep_files":
+            capabilities.grep_files = grepFilesTool
+            break
+          case "edit_file":
+            capabilities.edit_file = editFileTool
+            break
         }
       } else if (capability.type === "a2a") {
         const agentUrl = capability.agentUrl
@@ -297,6 +309,15 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
     }
     if ("memory" in availableCapabilities) {
       skills.push(memorySkill)
+    }
+    if ("read_file" in availableCapabilities) {
+      skills.push(readFileSkill)
+    }
+    if ("grep_files" in availableCapabilities) {
+      skills.push(grepFilesSkill)
+    }
+    if ("edit_file" in availableCapabilities) {
+      skills.push(editFileSkill)
     }
 
     return {
@@ -524,7 +545,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
   }
 
   private isArtifactTool(toolName: string): boolean {
-    return toolName === "createArtifact" || toolName === "generateArtifact"
+    return toolName === "create_artifact"
   }
 
   /**
@@ -676,7 +697,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
     console.info("Forcing artifact generation for task", task.id)
 
     const artifactToolSet = {
-      createArtifact: createArtifactTool(onArtifactUpdate),
+      create_artifact: createArtifactTool(onArtifactUpdate),
     }
 
     const streamResult = Vercel.streamText({
@@ -690,7 +711,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
         },
       ],
       tools: artifactToolSet,
-      toolChoice: { type: "tool", toolName: "createArtifact" },
+      toolChoice: { type: "tool", toolName: "create_artifact" },
     })
 
     const artifactStreamStates = new Map<string, ArtifactStreamState>()
@@ -720,7 +741,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
     for (const toolResult of toolResults || []) {
       if (
         toolResult.dynamic !== true &&
-        toolResult.toolName === "createArtifact" &&
+        toolResult.toolName === "create_artifact" &&
         "input" in toolResult
       ) {
         const input = toolResult.input as ArtifactInput
@@ -744,7 +765,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
     for (const toolCall of toolCalls || []) {
       if (
         toolCall.type === "tool-call" &&
-        toolCall.toolName === "createArtifact"
+        toolCall.toolName === "create_artifact"
       ) {
         // toolCall has input property with the tool arguments
         const callInput = "input" in toolCall
@@ -953,7 +974,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
       const allTools = {
         ...tools,
         ...mcpTools.tools,
-        createArtifact: staticArtifactTool,
+        create_artifact: staticArtifactTool,
       }
 
       console.info(
@@ -1375,7 +1396,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
         providerOptions,
         stopWhen: [
           Vercel.stepCountIs(100),
-          Vercel.hasToolCall("createArtifact"),
+          Vercel.hasToolCall("create_artifact"),
         ],
         onError: (error) => {
           this.handleStreamError(error)
