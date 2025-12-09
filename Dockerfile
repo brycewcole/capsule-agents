@@ -56,8 +56,10 @@ COPY --from=frontend-builder --chown=deno:deno /home/app/capsule-agents-frontend
 
 # ensure writable runtime dirs
 USER root
-RUN install -d -o deno -g deno /app/data /app/agent-workspace /app/static /app/config /app/node_modules
-RUN curl -L "https://github.com/BurntSushi/ripgrep/releases/download/15.1.0/ripgrep-15.1.0-x86_64-unknown-linux-musl.tar.gz" \
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends curl ca-certificates \
+  && rm -rf /var/lib/apt/lists/* \
+  && curl -L "https://github.com/BurntSushi/ripgrep/releases/download/15.1.0/ripgrep-15.1.0-x86_64-unknown-linux-musl.tar.gz" \
   | tar xz --strip-components=1 -C /usr/local/bin rg \
   && chmod +x /usr/local/bin/rg
 USER deno
