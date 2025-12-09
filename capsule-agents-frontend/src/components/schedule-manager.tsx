@@ -262,7 +262,7 @@ export default function ScheduleManager() {
               </div>
             )
             : (
-              <div className="rounded-lg border">
+              <div className="rounded-lg border [&_[data-slot=table-container]]:overflow-hidden">
                 <Table>
                   <TableHeader>
                     <TableRow>
@@ -275,10 +275,12 @@ export default function ScheduleManager() {
                   <TableBody>
                     {schedules.map((schedule) => (
                       <TableRow key={schedule.id}>
-                        <TableCell>
-                          <div className="space-y-1">
-                            <div className="font-medium">{schedule.name}</div>
-                            <div className="text-xs text-muted-foreground line-clamp-1">
+                        <TableCell className="max-w-md !whitespace-normal">
+                          <div className="space-y-1 min-w-0">
+                            <div className="font-medium truncate">
+                              {schedule.name}
+                            </div>
+                            <div className="text-xs text-muted-foreground line-clamp-1 break-words">
                               {schedule.prompt}
                             </div>
                           </div>
