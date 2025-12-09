@@ -12,7 +12,6 @@ import {
   Loader2,
   Maximize2,
   MessageSquare,
-  PanelRightOpen,
   X,
 } from "lucide-react"
 import {
@@ -77,6 +76,7 @@ type TaskTimelineUpdate = {
   role?: "user" | "agent" | "status"
   text?: string
   artifact?: Artifact
+  lastChunk?: boolean
 }
 
 type ArtifactPreviewState = {
@@ -86,6 +86,7 @@ type ArtifactPreviewState = {
   content: string
   mimeType: string
   isHtml: boolean
+  isMarkdown: boolean
 }
 
 type TimelineEntry = {
@@ -279,18 +280,60 @@ const looksLikeHtml = (content: string): boolean => {
 const getArtifactContentInfo = (artifact: Artifact) => {
   const textContent = getArtifactTextContent(artifact)
   const metadata = getTextPartMetadata(artifact)
-  const providedMime = inferMimeTypeFromMetadata(metadata)
-  const normalizedMime = providedMime?.toLowerCase()
-  const isHtml = (normalizedMime ? normalizedMime.includes("html") : false) ||
-    looksLikeHtml(textContent)
-  const fallbackMime = isHtml ? "text/html" : "text/plain"
+  const providedType = inferMimeTypeFromMetadata(metadata)
+  const normalizedType = providedType?.toLowerCase()
+
+  // Check if contentType from backend matches known types
+  const isHtml = !!(normalizedType === "html" ||
+    normalizedType?.includes("html") ||
+    looksLikeHtml(textContent))
+
+  const isMarkdown = !!(normalizedType === "markdown" ||
+    normalizedType?.includes("markdown") ||
+    normalizedType === "text/md" ||
+    artifact.name?.toLowerCase().endsWith(".md") ||
+    artifact.name?.toLowerCase().endsWith(".markdown"))
+
+  const fallbackMime = isHtml
+    ? "text/html"
+    : isMarkdown
+    ? "text/markdown"
+    : "text/plain"
 
   return {
     content: textContent,
     metadata,
-    mimeType: normalizedMime ?? fallbackMime,
-    displayMimeType: providedMime,
+    mimeType: normalizedType ?? fallbackMime,
+    displayMimeType: providedType,
     isHtml,
+    isMarkdown,
+  }
+}
+
+const ensureArtifactTimestamp = (artifact: Artifact): Artifact => {
+  const artifactMetadata = artifact.metadata as
+    | { timestamp?: string | number }
+    | undefined
+  const partMetadata = getTextPartMetadata(artifact)
+  const partTimestamp = partMetadata && typeof (partMetadata as {
+        timestamp?: unknown
+      }).timestamp !== "undefined"
+    ? (partMetadata as { timestamp?: unknown }).timestamp
+    : null
+  const timestampSeconds = normalizeTimestamp(
+    artifactMetadata?.timestamp ??
+      (typeof partTimestamp === "string" || typeof partTimestamp === "number"
+        ? partTimestamp
+        : null),
+  ) ?? Date.now() / 1000
+
+  const timestampIso = new Date(timestampSeconds * 1000).toISOString()
+  return {
+    ...artifact,
+    metadata: {
+      ...(artifact.metadata as Record<string, unknown> | undefined),
+      timestamp: timestampIso,
+    },
   }
 }
 
@@ -388,8 +431,7 @@ const buildTaskUpdates = (task: A2ATask): TaskTimelineUpdate[] => {
 
       const timestamp = normalizeTimestamp(
         (metadataTimestamp ?? null) as string | number | null,
-      )
-      if (timestamp == null) return
+      ) ?? Date.now() / 1000
 
       updates.push({
         id: artifactId,
@@ -397,6 +439,7 @@ const buildTaskUpdates = (task: A2ATask): TaskTimelineUpdate[] => {
         timestamp,
         artifact,
         text: getArtifactTextContent(artifact),
+        lastChunk: true, // Artifacts from storage are always complete
       })
     })
   }
@@ -426,10 +469,11 @@ const ArtifactPreviewInline = ({
   onDownload,
 }: ArtifactPreviewInlineProps) => {
   const textRef = useRef<HTMLPreElement>(null)
-  const [canExpand, setCanExpand] = useState(info.isHtml)
+  const markdownRef = useRef<HTMLDivElement>(null)
+  const [canExpand, setCanExpand] = useState(info.isHtml || info.isMarkdown)
 
   useEffect(() => {
-    if (info.isHtml) {
+    if (info.isHtml || info.isMarkdown) {
       setCanExpand(true)
       return
     }
@@ -444,7 +488,7 @@ const ArtifactPreviewInline = ({
       setCanExpand(verticalOverflow || horizontalOverflow)
     }
     update()
-  }, [info.content, info.isHtml])
+  }, [info.content, info.isHtml, info.isMarkdown])
 
   return (
     <div className="relative rounded-md border border-indigo-200/70 bg-white dark:border-indigo-900/40 dark:bg-indigo-950/30">
@@ -479,6 +523,17 @@ const ArtifactPreviewInline = ({
             className="h-60 w-full rounded-md bg-white dark:bg-slate-900"
           />
         )
+        : info.isMarkdown
+        ? (
+          <div
+            ref={markdownRef}
+            className="prose prose-sm dark:prose-invert max-h-64 overflow-auto rounded-md bg-white/70 p-3 pt-10 pr-4 text-xs dark:bg-indigo-950/40 max-w-none"
+          >
+            <Markdown remarkPlugins={[remarkGfm]}>
+              {info.content}
+            </Markdown>
+          </div>
+        )
         : (
           <pre
             ref={textRef}
@@ -496,8 +551,6 @@ interface ChatInterfaceProps {
   initialChatData?: ChatWithHistory | null
   isLoadingChat?: boolean
   onChatCreated?: (chatId: string) => void
-  isConversationsOpen?: boolean
-  onToggleConversations?: () => void
   onNewChat?: () => void
   currentChatId?: string | null
   onChatSelect?: (chatId: string) => void
@@ -509,8 +562,6 @@ export default function ChatInterface({
   initialChatData,
   isLoadingChat = false,
   onChatCreated,
-  isConversationsOpen,
-  onToggleConversations,
   onNewChat,
   currentChatId,
   onChatSelect,
@@ -586,6 +637,7 @@ export default function ChatInterface({
         content: info.content,
         mimeType: info.mimeType,
         isHtml: info.isHtml,
+        isMarkdown: info.isMarkdown,
       })
     },
     [setPreviewArtifact],
@@ -643,6 +695,9 @@ export default function ChatInterface({
     if (update.kind === "artifact" && update.artifact) {
       const artifact = update.artifact
       const artifactInfo = getArtifactContentInfo(artifact)
+      // lastChunk is stored in update metadata, not artifact metadata
+      const updateMetadata = update as { lastChunk?: boolean }
+      const isComplete = updateMetadata.lastChunk ?? true
 
       return renderCard(
         "Artifact",
@@ -650,8 +705,14 @@ export default function ChatInterface({
         "text-indigo-800/80 dark:text-indigo-200/80",
         <div className="space-y-3 text-indigo-900 dark:text-indigo-100">
           <div className="flex items-center gap-2 text-sm font-semibold">
+            {!isComplete && <Loader2 className="h-4 w-4 animate-spin" />}
             <FileText className="h-4 w-4" />
             <span>{artifact.name || "Untitled Artifact"}</span>
+            {!isComplete && (
+              <span className="text-xs font-normal text-indigo-700/70 dark:text-indigo-300/70">
+                (Generating...)
+              </span>
+            )}
           </div>
           {artifact.description && (
             <div className="text-xs">
@@ -1046,7 +1107,7 @@ export default function ChatInterface({
     try {
       // Use A2A streaming
       let currentResponseText = ""
-      let finalCapabilityCalls: CapabilityCall[] = []
+      let _finalCapabilityCalls: CapabilityCall[] = []
 
       for await (const event of streamMessage(userMessage, contextId)) {
         console.log("Received A2A event:", event)
@@ -1117,7 +1178,7 @@ export default function ChatInterface({
             task.history?.length ?? 0,
           )
           if (mergedTask) {
-            finalCapabilityCalls = extractCapabilityCalls(mergedTask)
+            _finalCapabilityCalls = extractCapabilityCalls(mergedTask)
             console.log(
               "Merged task history length:",
               (mergedTask as A2ATask).history?.length ?? 0,
@@ -1214,95 +1275,124 @@ export default function ChatInterface({
             }
           }
         } else if (event.kind === "status-update") {
-          // Handle status updates
+          // Handle status updates - use single atomic state update to avoid
+          // stale ref issues and ensure immediate UI updates
           const targetEntryId = resolveEntryIdForTask(event.taskId)
 
-          const nextTask = upsertTask(
-            targetEntryId,
-            event.taskId,
-            (prevTask) => {
+          setTimelineEntries((prev) => {
+            return prev.map((entry) => {
+              if (entry.id !== targetEntryId) return entry
+
+              // Find and update the task
+              const existingTaskIndex = entry.tasks.findIndex(
+                (item) => item.id === event.taskId,
+              )
+              const prevTask = existingTaskIndex >= 0
+                ? entry.tasks[existingTaskIndex].task
+                : null
+
               // Build updated history
               const prevHistory = prevTask?.history || []
               const newHistory = event.status.message
                 ? [...prevHistory, event.status.message]
                 : prevHistory
 
-              if (prevTask) {
-                return {
+              // Build the updated task
+              const updatedTask: A2ATask = prevTask
+                ? {
                   ...prevTask,
                   status: event.status,
+                  artifacts: prevTask.artifacts,
                   history: newHistory,
                 }
-              }
-              return {
-                id: event.taskId,
-                kind: "task",
-                contextId: event.contextId,
-                status: event.status,
-                history: newHistory,
-              }
-            },
-          )
+                : {
+                  id: event.taskId,
+                  kind: "task",
+                  contextId: event.contextId,
+                  status: event.status,
+                  artifacts: [],
+                  history: newHistory,
+                }
 
-          // Update task updates in the UI whenever history changes
-          if (
-            nextTask && "history" in nextTask &&
-            (nextTask as A2ATask).history &&
-            (nextTask as A2ATask).history!.length > 0
-          ) {
-            const taskUpdates = buildTaskUpdates(nextTask)
-            updateEntry(targetEntryId, (entry) => {
+              // Build task updates from the fresh task data
+              const taskUpdates = buildTaskUpdates(updatedTask)
+
+              // Update or append the task in the tasks array
+              const createdAt = updatedTask.status?.timestamp
+                ? Date.parse(updatedTask.status.timestamp) / 1000
+                : Date.now() / 1000
+
+              let updatedTasks: typeof entry.tasks
+              if (existingTaskIndex >= 0) {
+                updatedTasks = [...entry.tasks]
+                updatedTasks[existingTaskIndex] = {
+                  id: event.taskId,
+                  task: updatedTask,
+                  createdAt,
+                  artifacts: updatedTask.artifacts,
+                }
+              } else {
+                updatedTasks = [
+                  ...entry.tasks,
+                  {
+                    id: event.taskId,
+                    task: updatedTask,
+                    createdAt,
+                    artifacts: updatedTask.artifacts,
+                  },
+                ]
+              }
+
+              // Sort tasks by time
+              updatedTasks = updatedTasks
+                .slice()
+                .sort((a, b) => a.createdAt - b.createdAt)
+
+              // Handle final states
+              const isFinal = event.final
+              const isCompleted = event.status.state === "completed"
+              const isCanceled = event.status.state === "canceled"
+              const isFailed = event.status.state === "failed"
+
+              if (isFinal && isFailed) {
+                // Will throw after state update
+              }
+
               return {
                 ...entry,
+                tasks: updatedTasks,
                 agent: entry.agent
                   ? {
                     ...entry.agent,
                     taskUpdates,
-                  }
-                  : entry.agent,
-              }
-            })
-          }
-
-          if (event.final && event.status.state === "completed") {
-            updateEntry(targetEntryId, (entry) => {
-              const updates = nextTask ? buildTaskUpdates(nextTask) : []
-              const newCapabilities = nextTask
-                ? extractCapabilityCalls(nextTask)
-                : finalCapabilityCalls
-              return {
-                ...entry,
-                agent: entry.agent
-                  ? {
-                    ...entry.agent,
-                    capabilityCalls: newCapabilities.length > 0
-                      ? newCapabilities
+                    isLoading: isFinal && (isCompleted || isCanceled)
+                      ? false
+                      : entry.agent.isLoading,
+                    capabilityCalls: isFinal && isCompleted
+                      ? (extractCapabilityCalls(updatedTask).length > 0
+                        ? extractCapabilityCalls(updatedTask)
+                        : entry.agent.capabilityCalls)
                       : entry.agent.capabilityCalls,
-                    isLoading: false,
-                    taskUpdates: updates,
                   }
                   : entry.agent,
               }
             })
+          })
+
+          // Update task locations ref
+          setTaskLocations((prev) => ({
+            ...prev,
+            [event.taskId]: {
+              entryId: targetEntryId,
+              index: 0, // Will be corrected by next access
+            },
+          }))
+
+          if (event.final) {
             activeEntryIdRef.current = null
-          } else if (event.final && event.status.state === "canceled") {
-            updateEntry(targetEntryId, (entry) => {
-              const updates = nextTask ? buildTaskUpdates(nextTask) : []
-              return {
-                ...entry,
-                agent: entry.agent
-                  ? {
-                    ...entry.agent,
-                    isLoading: false,
-                    taskUpdates: updates,
-                  }
-                  : entry.agent,
-              }
-            })
-            activeEntryIdRef.current = null
-          } else if (event.final && event.status.state === "failed") {
-            activeEntryIdRef.current = null
-            throw new Error(extractResponseText(event) || "Task failed")
+            if (event.status.state === "failed") {
+              throw new Error(extractResponseText(event) || "Task failed")
+            }
           }
         } else if (event.kind === "artifact-update") {
           // Handle artifact updates
@@ -1311,72 +1401,199 @@ export default function ChatInterface({
             taskId: string
             contextId: string
             artifact: Artifact
+            append?: boolean
+            lastChunk?: boolean
           }
-          console.log("Received artifact-update:", artifactEvent)
+          console.log("Received artifact-update:", {
+            append: artifactEvent.append,
+            lastChunk: artifactEvent.lastChunk,
+            contentLength: artifactEvent.artifact.parts?.[0]?.kind === "text"
+              ? artifactEvent.artifact.parts[0].text?.length
+              : 0,
+            artifactId: artifactEvent.artifact.artifactId,
+          })
+          const lastChunk = Boolean(artifactEvent.lastChunk)
 
-          const targetEntryId = resolveEntryIdForTask(artifactEvent.taskId)
+          // Fall back to the active entry or the most recent entry if we
+          // somehow don't have a mapped entry for this task yet.
+          const targetEntryId = resolveEntryIdForTask(artifactEvent.taskId) ??
+            activeEntryIdRef.current ??
+            timelineEntriesRef.current.at(-1)?.id
+
+          if (!targetEntryId) {
+            console.warn(
+              "Received artifact-update but could not resolve target entry",
+              artifactEvent,
+            )
+            continue
+          }
 
           // Update the task's artifacts
-          let updatedTaskForTimeline: A2ATask | undefined
+          let _updatedTaskForTimeline: A2ATask | undefined
           setTimelineEntries((prev) => {
             return prev.map((entry) => {
               if (entry.id !== targetEntryId) return entry
 
-              return {
-                ...entry,
-                tasks: entry.tasks.map((timelineTask) => {
-                  if (timelineTask.id !== artifactEvent.taskId) {
-                    return timelineTask
+              let updatedTaskLocal: A2ATask | undefined
+
+              const updatedTasks = entry.tasks.map((timelineTask) => {
+                if (timelineTask.id !== artifactEvent.taskId) {
+                  return timelineTask
+                }
+
+                console.log(
+                  "Updating artifact for task in entry",
+                  targetEntryId,
+                  "taskId",
+                  timelineTask.id,
+                  "lastChunk",
+                  lastChunk,
+                )
+
+                // Add or update artifact
+                const existingArtifacts = timelineTask.artifacts || []
+                const artifactIndex = existingArtifacts.findIndex(
+                  (a) => a.artifactId === artifactEvent.artifact.artifactId,
+                )
+
+                let updatedArtifacts: typeof existingArtifacts
+                if (artifactIndex >= 0) {
+                  const existing = existingArtifacts[artifactIndex]
+                  const shouldAppend = artifactEvent.append === true
+
+                  let mergedArtifact: Artifact
+                  if (shouldAppend) {
+                    // Append mode: concatenate content to existing parts
+                    const newParts = artifactEvent.artifact.parts || []
+                    const existingParts = existing.parts || []
+
+                    // Append text content to the last text part, or add new parts
+                    const appendedParts = [...existingParts]
+                    for (const newPart of newParts) {
+                      if (newPart.kind === "text" && newPart.text) {
+                        // Find the last text part and append to it
+                        const lastTextPartIndex = appendedParts.findLastIndex(
+                          (p) => p.kind === "text",
+                        )
+                        if (lastTextPartIndex >= 0) {
+                          const lastTextPart = appendedParts[lastTextPartIndex]
+                          if (lastTextPart.kind === "text") {
+                            appendedParts[lastTextPartIndex] = {
+                              ...lastTextPart,
+                              text: (lastTextPart.text || "") + newPart.text,
+                            }
+                          } else {
+                            appendedParts.push(newPart)
+                          }
+                        } else {
+                          appendedParts.push(newPart)
+                        }
+                      } else {
+                        appendedParts.push(newPart)
+                      }
+                    }
+
+                    mergedArtifact = {
+                      ...existing,
+                      name: artifactEvent.artifact.name || existing.name,
+                      description: artifactEvent.artifact.description ||
+                        existing.description,
+                      parts: appendedParts,
+                      metadata: {
+                        ...(existing.metadata ?? {}),
+                        ...(artifactEvent.artifact.metadata ?? {}),
+                      },
+                    }
+                  } else {
+                    // Replace mode: replace with new content
+                    mergedArtifact = {
+                      ...existing,
+                      ...artifactEvent.artifact,
+                      metadata: {
+                        ...(existing.metadata ?? {}),
+                        ...(artifactEvent.artifact.metadata ?? {}),
+                      },
+                    }
                   }
 
-                  // Add or update artifact
-                  const existingArtifacts = timelineTask.artifacts || []
-                  const artifactIndex = existingArtifacts.findIndex(
-                    (a) => a.artifactId === artifactEvent.artifact.artifactId,
+                  const artifactWithTimestamp = ensureArtifactTimestamp(
+                    mergedArtifact,
                   )
 
-                  let updatedArtifacts: typeof existingArtifacts
-                  if (artifactIndex >= 0) {
-                    // Update existing artifact
-                    updatedArtifacts = [...existingArtifacts]
-                    updatedArtifacts[artifactIndex] = artifactEvent.artifact
-                  } else {
-                    // Add new artifact
-                    updatedArtifacts = [
-                      ...existingArtifacts,
-                      artifactEvent.artifact,
-                    ]
-                  }
+                  // Update existing artifact
+                  updatedArtifacts = [...existingArtifacts]
+                  updatedArtifacts[artifactIndex] = artifactWithTimestamp
+                } else {
+                  const artifactWithTimestamp = ensureArtifactTimestamp(
+                    artifactEvent.artifact,
+                  )
+                  // Add new artifact
+                  updatedArtifacts = [
+                    ...existingArtifacts,
+                    artifactWithTimestamp,
+                  ]
+                }
 
-                  // IMPORTANT: Update both the TimelineTask.artifacts AND the task.artifacts
-                  // so that subsequent upsertTask calls don't overwrite our changes
-                  const updatedTask = {
-                    ...timelineTask.task,
-                    artifacts: updatedArtifacts,
-                  }
-                  updatedTaskForTimeline = updatedTask
+                // IMPORTANT: Update both the TimelineTask.artifacts AND the task.artifacts
+                // so that subsequent upsertTask calls don't overwrite our changes
+                const updatedTask = {
+                  ...timelineTask.task,
+                  artifacts: updatedArtifacts,
+                }
+                updatedTaskLocal = updatedTask
 
-                  return {
-                    ...timelineTask,
-                    task: updatedTask,
-                    artifacts: updatedArtifacts,
+                return {
+                  ...timelineTask,
+                  task: updatedTask,
+                  artifacts: updatedArtifacts,
+                }
+              })
+
+              if (updatedTaskLocal) {
+                const taskUpdates = buildTaskUpdates(updatedTaskLocal)
+
+                // Update or add the artifact update with lastChunk from event
+                const artifactUpdateIndex = taskUpdates.findIndex(
+                  (u) =>
+                    u.kind === "artifact" &&
+                    u.artifact?.artifactId ===
+                      artifactEvent.artifact.artifactId,
+                )
+
+                if (artifactUpdateIndex >= 0) {
+                  // Update existing artifact update with lastChunk from event
+                  taskUpdates[artifactUpdateIndex] = {
+                    ...taskUpdates[artifactUpdateIndex],
+                    lastChunk,
                   }
-                }),
+                }
+
+                console.log(
+                  "Applying artifact updates to entry",
+                  targetEntryId,
+                  "taskUpdates:",
+                  taskUpdates.length,
+                  "lastChunk:",
+                  lastChunk,
+                )
+                return {
+                  ...entry,
+                  tasks: updatedTasks,
+                  agent: entry.agent
+                    ? {
+                      ...entry.agent,
+                      taskUpdates,
+                    }
+                    : entry.agent,
+                }
+              }
+
+              return {
+                ...entry,
+                tasks: updatedTasks,
               }
             })
           })
-          if (updatedTaskForTimeline && targetEntryId) {
-            const taskUpdates = buildTaskUpdates(updatedTaskForTimeline)
-            updateEntry(targetEntryId, (entry) => ({
-              ...entry,
-              agent: entry.agent
-                ? {
-                  ...entry.agent,
-                  taskUpdates,
-                }
-                : entry.agent,
-            }))
-          }
         }
       }
     } catch (error) {
@@ -1479,395 +1696,361 @@ export default function ChatInterface({
 
   return (
     <div ref={containerRef} className="relative h-full">
-      <Card className="flex flex-col h-full overflow-hidden shadow-md">
-        <CardHeader className="pb-4 flex flex-row justify-between items-center">
-          <div>
-            <CardTitle className="flex items-center gap-2 text-xl">
-              <MessageSquare className="h-5 w-5 text-primary" />
-              Chat with agent
-            </CardTitle>
-            <CardDescription>
-              {!isBackendConnected
-                ? "⚠️ Backend not connected. Check your API connection."
-                : isLoadingChat
-                ? "Loading conversation..."
-                : contextId
-                ? `Active chat: ${contextId.slice(-8)}`
-                : "Start a new conversation"}
-            </CardDescription>
-          </div>
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              title={isConversationsOpen
-                ? "Hide conversations"
-                : "Show conversations"}
-              onClick={onToggleConversations}
-              className="gap-2"
-            >
-              <MessageSquare className="h-4 w-4" />
-              {isConversationsOpen ? "Hide" : "Show"}
-            </Button>
-            {onNewChat && (
-              <Button
-                variant="outline"
-                size="sm"
-                title="New chat"
-                onClick={startNewChat}
-              >
-                New
-              </Button>
-            )}
-          </div>
-        </CardHeader>
-
-        <CardContent className="flex-1 min-h-0 p-0">
-          <div className="h-full w-full flex">
-            {/* Messages area */}
-            <div className="flex-1 min-w-0 p-4 overflow-y-auto">
-              {connectionError && !isBackendConnected && (
-                <div className="mb-4">
-                  <ErrorDisplay
-                    error={connectionError}
-                    title="Connection Error"
-                    onRetry={() => {
-                      const checkBackendHealth = async () => {
-                        try {
-                          const health = await checkHealth()
-                          setIsBackendConnected(health.status === "ok")
-                          setConnectionError(null)
-                        } catch (error) {
-                          console.error("Backend health check failed:", error)
-                          setIsBackendConnected(false)
-                          setConnectionError(
-                            error as JSONRPCError | Error | string,
-                          )
-                        }
-                      }
-                      checkBackendHealth()
-                    }}
-                    onDismiss={() => setConnectionError(null)}
-                  />
-                </div>
+      <div className="grid h-full grid-cols-1 gap-4 lg:grid-cols-[3fr_1fr]">
+        <Card className="flex min-h-0 flex-col overflow-hidden shadow-md">
+          <CardHeader className="pb-4 border-b flex flex-row justify-between items-center">
+            <div>
+              <CardTitle className="flex items-center gap-2 text-xl">
+                <MessageSquare className="h-5 w-5 text-primary" />
+                Chat with agent
+              </CardTitle>
+              <CardDescription>
+                {!isBackendConnected
+                  ? "⚠️ Backend not connected. Check your API connection."
+                  : isLoadingChat
+                  ? "Loading agent context..."
+                  : contextId
+                  ? `Active context: ${contextId.slice(-8)}`
+                  : "Start a new agent context"}
+              </CardDescription>
+            </div>
+            <div className="flex items-center gap-2">
+              {onNewChat && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  title="New context"
+                  onClick={startNewChat}
+                >
+                  New context
+                </Button>
               )}
-              {/* Render unified timeline */}
-              <div className="flex flex-col space-y-6">
-                {isLoadingChat
-                  ? (
-                    <div className="flex items-center justify-center h-full text-muted-foreground">
-                      <Loader2 className="h-6 w-6 animate-spin mr-2" />
-                      Loading conversation...
-                    </div>
-                  )
-                  : !hasEntries
-                  ? (
-                    <div className="flex items-center justify-center h-full text-muted-foreground">
-                      Send a message to start the conversation
-                    </div>
-                  )
-                  : (
-                    timelineEntries.map((entry) => {
-                      const hasTasks = entry.tasks.length > 0
-                      const capabilityCalls = entry.agent?.capabilityCalls ?? []
-                      // Only show agent card if there are NO tasks
-                      const showAgentCard = entry.agent && !hasTasks
+            </div>
+          </CardHeader>
 
-                      // Check if user message exists in any task history
-                      const userMessageInTaskHistory = hasTasks &&
-                        entry.tasks.some((item) => {
-                          const updates = buildTaskUpdates(item.task)
-                          return updates.some((update) =>
-                            update.kind === "message" &&
-                            update.role === "user" &&
-                            update.text === entry.user.content
-                          )
-                        })
+          <CardContent className="flex-1 min-h-0 p-0">
+            <div className="flex h-full w-full flex-col">
+              {/* Messages area */}
+              <div className="flex-1 min-h-0 p-4 overflow-y-auto">
+                {connectionError && !isBackendConnected && (
+                  <div className="mb-4">
+                    <ErrorDisplay
+                      error={connectionError}
+                      title="Connection Error"
+                      onRetry={() => {
+                        const checkBackendHealth = async () => {
+                          try {
+                            const health = await checkHealth()
+                            setIsBackendConnected(health.status === "ok")
+                            setConnectionError(null)
+                          } catch (error) {
+                            console.error("Backend health check failed:", error)
+                            setIsBackendConnected(false)
+                            setConnectionError(
+                              error as JSONRPCError | Error | string,
+                            )
+                          }
+                        }
+                        checkBackendHealth()
+                      }}
+                      onDismiss={() => setConnectionError(null)}
+                    />
+                  </div>
+                )}
+                {/* Render unified timeline */}
+                <div className="flex flex-col space-y-6">
+                  {isLoadingChat
+                    ? (
+                      <div className="flex items-center justify-center h-full text-muted-foreground">
+                        <Loader2 className="h-6 w-6 animate-spin mr-2" />
+                        Loading agent context...
+                      </div>
+                    )
+                    : !hasEntries
+                    ? (
+                      <div className="flex items-center justify-center h-full text-muted-foreground">
+                        Send a message to start this agent context
+                      </div>
+                    )
+                    : (
+                      timelineEntries.map((entry) => {
+                        const hasTasks = entry.tasks.length > 0
+                        const capabilityCalls = entry.agent?.capabilityCalls ??
+                          []
+                        // Only show agent card if there are NO tasks
+                        const showAgentCard = entry.agent && !hasTasks
 
-                      return (
-                        <div
-                          key={entry.id}
-                          className="space-y-3"
-                        >
-                          <div className="space-y-3">
-                            {!userMessageInTaskHistory && (
-                              <div className="rounded-2xl border border-sky-400/60 bg-sky-200/70 px-4 py-3 text-slate-900 shadow-sm dark:border-sky-900/70 dark:bg-sky-900/40 dark:text-sky-50">
-                                <div className="mb-2 flex items-center justify-between text-xs font-semibold uppercase tracking-wide text-slate-700/80 dark:text-sky-200/80">
-                                  <span>You</span>
-                                  <span>
-                                    {formatTimestamp(entry.user.timestamp)}
-                                  </span>
-                                </div>
-                                {entry.user.content
-                                  ? (
-                                    <div className="prose prose-sm text-slate-900 dark:prose-invert max-w-none">
-                                      <Markdown remarkPlugins={[remarkGfm]}>
-                                        {entry.user.content}
-                                      </Markdown>
-                                    </div>
-                                  )
-                                  : (
-                                    <span className="text-slate-600/80 dark:text-slate-300/80">
-                                      (empty message)
-                                    </span>
-                                  )}
-                              </div>
-                            )}
+                        // Check if user message exists in any task history
+                        const userMessageInTaskHistory = hasTasks &&
+                          entry.tasks.some((item) => {
+                            const updates = buildTaskUpdates(item.task)
+                            return updates.some((update) =>
+                              update.kind === "message" &&
+                              update.role === "user" &&
+                              update.text === entry.user.content
+                            )
+                          })
 
-                            {showAgentCard && entry.agent && (
-                              <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-slate-900 shadow-sm dark:border-slate-700 dark:bg-slate-900/60 dark:text-slate-100">
-                                <div className="mb-2 flex items-center justify-between text-xs font-semibold uppercase tracking-wide text-slate-700/80 dark:text-slate-200/80">
-                                  <span>Agent</span>
-                                  <span>
-                                    {formatTimestamp(entry.agent.timestamp)}
-                                  </span>
-                                </div>
-                                {entry.agent.isLoading
-                                  ? (
-                                    <span className="inline-flex items-center gap-2 text-muted-foreground">
-                                      <Loader2 className="h-4 w-4 animate-spin" />
-                                      {hasTasks
-                                        ? "Working on task..."
-                                        : "Thinking..."}
+                        return (
+                          <div
+                            key={entry.id}
+                            className="space-y-3"
+                          >
+                            <div className="space-y-3">
+                              {!userMessageInTaskHistory && (
+                                <div className="rounded-2xl border border-sky-400/60 bg-sky-200/70 px-4 py-3 text-slate-900 shadow-sm dark:border-sky-900/70 dark:bg-sky-900/40 dark:text-sky-50">
+                                  <div className="mb-2 flex items-center justify-between text-xs font-semibold uppercase tracking-wide text-slate-700/80 dark:text-sky-200/80">
+                                    <span>You</span>
+                                    <span>
+                                      {formatTimestamp(entry.user.timestamp)}
                                     </span>
-                                  )
-                                  : entry.agent.content
-                                  ? (
-                                    <div className="prose prose-sm text-slate-900 dark:prose-invert max-w-none">
-                                      <Markdown remarkPlugins={[remarkGfm]}>
-                                        {entry.agent.content}
-                                      </Markdown>
-                                    </div>
-                                  )
-                                  : !hasTasks
-                                  ? (
-                                    <span className="text-slate-600/80 dark:text-slate-300/80">
-                                      No response
-                                    </span>
-                                  )
-                                  : null}
-                                {!entry.agent.isLoading && !hasTasks &&
-                                  entry.agent.capabilityCalls &&
-                                  entry.agent.capabilityCalls.length > 0 && (
-                                  <div className="mt-3 space-y-1 text-xs text-muted-foreground">
-                                    <div className="font-medium uppercase tracking-wide">
-                                      Capability Calls
-                                    </div>
-                                    <ul className="ml-4 list-disc space-y-1">
-                                      {entry.agent.capabilityCalls.map((
-                                        call,
-                                        idx,
-                                      ) => (
-                                        <li key={`${call.name}-${idx}`}>
-                                          <span className="font-medium text-foreground/80">
-                                            {call.name}
-                                          </span>
-                                        </li>
-                                      ))}
-                                    </ul>
                                   </div>
-                                )}
-                              </div>
-                            )}
-
-                            {entry.tasks.map((item, taskIndex) => {
-                              const task = item.task
-                              const statusInfo = getTaskStatusInfo(task)
-                              const updates = entry.agent?.taskUpdates ??
-                                buildTaskUpdates(task)
-                              const hasUpdates = updates.length > 0
-                              const shortId = item.id.slice(-8)
-                              const statusTimestampSeconds = toTimestampSeconds(
-                                task.status?.timestamp ?? null,
-                              )
-                              const statusTimestamp =
-                                statusTimestampSeconds != null
-                                  ? formatTimestamp(statusTimestampSeconds)
-                                  : null
-                              const capabilityCallsForTask = taskIndex === 0
-                                ? capabilityCalls
-                                : []
-
-                              return (
-                                <div
-                                  key={item.id}
-                                  className="relative mt-6 space-y-4"
-                                >
-                                  <div
-                                    className={`inline-flex items-center gap-3 rounded-full border px-4 py-1.5 text-xs font-semibold shadow-sm ${
-                                      task.status?.state === "submitted"
-                                        ? "border-blue-500/40 bg-blue-200/80 text-blue-900 dark:border-blue-900/60 dark:bg-blue-950/60 dark:text-blue-100"
-                                        : task.status?.state === "working"
-                                        ? "border-amber-500/40 bg-amber-200/80 text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/60 dark:text-amber-100"
-                                        : task.status?.state ===
-                                            "input-required"
-                                        ? "border-orange-500/40 bg-orange-200/80 text-orange-900 dark:border-orange-900/60 dark:bg-orange-950/60 dark:text-orange-100"
-                                        : task.status?.state === "completed"
-                                        ? "border-emerald-500/40 bg-emerald-200/80 text-emerald-900 dark:border-emerald-900/60 dark:bg-emerald-950/60 dark:text-emerald-100"
-                                        : task.status?.state === "failed"
-                                        ? "border-rose-500/40 bg-rose-200/80 text-rose-900 dark:border-rose-900/60 dark:bg-rose-950/60 dark:text-rose-100"
-                                        : task.status?.state === "canceled"
-                                        ? "border-gray-500/40 bg-gray-200/80 text-gray-900 dark:border-gray-900/60 dark:bg-gray-950/60 dark:text-gray-100"
-                                        : "border-slate-500/40 bg-slate-200/80 text-slate-900 dark:border-slate-900/60 dark:bg-slate-950/60 dark:text-slate-100"
-                                    }`}
-                                  >
-                                    {task.status?.state === "working" && (
-                                      <Loader2 className="h-3 w-3 animate-spin" />
-                                    )}
-                                    <span>{statusInfo.label}</span>
-                                    <span
-                                      className={task.status?.state ===
-                                          "submitted"
-                                        ? "text-blue-700/90 dark:text-blue-200/80"
-                                        : task.status?.state === "working"
-                                        ? "text-amber-700/90 dark:text-amber-200/80"
-                                        : task.status?.state ===
-                                            "input-required"
-                                        ? "text-orange-700/90 dark:text-orange-200/80"
-                                        : task.status?.state === "completed"
-                                        ? "text-emerald-700/90 dark:text-emerald-200/80"
-                                        : task.status?.state === "failed"
-                                        ? "text-rose-700/90 dark:text-rose-200/80"
-                                        : task.status?.state === "canceled"
-                                        ? "text-gray-700/90 dark:text-gray-200/80"
-                                        : "text-slate-700/90 dark:text-slate-200/80"}
-                                    >
-                                      Task {shortId}
-                                    </span>
-                                    {statusTimestamp && (
-                                      <span
-                                        className={task.status?.state ===
-                                            "submitted"
-                                          ? "text-blue-700/70 dark:text-blue-300/70"
-                                          : task.status?.state === "working"
-                                          ? "text-amber-700/70 dark:text-amber-300/70"
-                                          : task.status?.state ===
-                                              "input-required"
-                                          ? "text-orange-700/70 dark:text-orange-300/70"
-                                          : task.status?.state === "completed"
-                                          ? "text-emerald-700/70 dark:text-emerald-300/70"
-                                          : task.status?.state === "failed"
-                                          ? "text-rose-700/70 dark:text-rose-300/70"
-                                          : task.status?.state === "canceled"
-                                          ? "text-gray-700/70 dark:text-gray-300/70"
-                                          : "text-slate-700/70 dark:text-slate-300/70"}
-                                      >
-                                        • {statusTimestamp}
+                                  {entry.user.content
+                                    ? (
+                                      <div className="prose prose-sm text-slate-900 dark:prose-invert max-w-none">
+                                        <Markdown remarkPlugins={[remarkGfm]}>
+                                          {entry.user.content}
+                                        </Markdown>
+                                      </div>
+                                    )
+                                    : (
+                                      <span className="text-slate-600/80 dark:text-slate-300/80">
+                                        (empty message)
                                       </span>
                                     )}
+                                </div>
+                              )}
+
+                              {showAgentCard && entry.agent && (
+                                <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-slate-900 shadow-sm dark:border-slate-700 dark:bg-slate-900/60 dark:text-slate-100">
+                                  <div className="mb-2 flex items-center justify-between text-xs font-semibold uppercase tracking-wide text-slate-700/80 dark:text-slate-200/80">
+                                    <span>Agent</span>
+                                    <span>
+                                      {formatTimestamp(entry.agent.timestamp)}
+                                    </span>
                                   </div>
-                                  {hasUpdates && (
-                                    <div className="pointer-events-none absolute left-0 top-12 bottom-4 w-[2px] bg-border/70" />
-                                  )}
-                                  <div className="space-y-3 pl-4">
-                                    {!hasUpdates
-                                      ? (
-                                        <p className="text-xs text-emerald-800/80 dark:text-emerald-100/80">
-                                          No task updates yet.
-                                        </p>
-                                      )
-                                      : (
-                                        updates.map(renderTaskUpdate)
-                                      )}
-                                    {capabilityCallsForTask.length > 0 && (
-                                      <ul className="ml-6 list-disc space-y-1 text-xs text-emerald-800/90 dark:text-emerald-100">
-                                        {capabilityCallsForTask.map((
+                                  {entry.agent.isLoading
+                                    ? (
+                                      <span className="inline-flex items-center gap-2 text-muted-foreground">
+                                        <Loader2 className="h-4 w-4 animate-spin" />
+                                        {hasTasks
+                                          ? "Working on task..."
+                                          : "Thinking..."}
+                                      </span>
+                                    )
+                                    : entry.agent.content
+                                    ? (
+                                      <div className="prose prose-sm text-slate-900 dark:prose-invert max-w-none">
+                                        <Markdown remarkPlugins={[remarkGfm]}>
+                                          {entry.agent.content}
+                                        </Markdown>
+                                      </div>
+                                    )
+                                    : !hasTasks
+                                    ? (
+                                      <span className="text-slate-600/80 dark:text-slate-300/80">
+                                        No response
+                                      </span>
+                                    )
+                                    : null}
+                                  {!entry.agent.isLoading && !hasTasks &&
+                                    entry.agent.capabilityCalls &&
+                                    entry.agent.capabilityCalls.length > 0 && (
+                                    <div className="mt-3 space-y-1 text-xs text-muted-foreground">
+                                      <div className="font-medium uppercase tracking-wide">
+                                        Capability Calls
+                                      </div>
+                                      <ul className="ml-4 list-disc space-y-1">
+                                        {entry.agent.capabilityCalls.map((
                                           call,
                                           idx,
                                         ) => (
                                           <li key={`${call.name}-${idx}`}>
-                                            <span className="font-semibold text-foreground">
+                                            <span className="font-medium text-foreground/80">
                                               {call.name}
                                             </span>
                                           </li>
                                         ))}
                                       </ul>
-                                    )}
-                                  </div>
+                                    </div>
+                                  )}
                                 </div>
-                              )
-                            })}
+                              )}
+
+                              {entry.tasks.map((item, taskIndex) => {
+                                const task = item.task
+                                const statusInfo = getTaskStatusInfo(task)
+                                const updates = entry.agent?.taskUpdates ??
+                                  buildTaskUpdates(task)
+                                const hasUpdates = updates.length > 0
+                                const shortId = item.id.slice(-8)
+                                const statusTimestampSeconds =
+                                  toTimestampSeconds(
+                                    task.status?.timestamp ?? null,
+                                  )
+                                const statusTimestamp =
+                                  statusTimestampSeconds != null
+                                    ? formatTimestamp(statusTimestampSeconds)
+                                    : null
+                                const capabilityCallsForTask = taskIndex === 0
+                                  ? capabilityCalls
+                                  : []
+
+                                return (
+                                  <div
+                                    key={item.id}
+                                    className="relative mt-6 space-y-4"
+                                  >
+                                    <div
+                                      className={`inline-flex items-center gap-3 rounded-full border px-4 py-1.5 text-xs font-semibold shadow-sm ${
+                                        task.status?.state === "submitted"
+                                          ? "border-blue-500/40 bg-blue-200/80 text-blue-900 dark:border-blue-900/60 dark:bg-blue-950/60 dark:text-blue-100"
+                                          : task.status?.state === "working"
+                                          ? "border-amber-500/40 bg-amber-200/80 text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/60 dark:text-amber-100"
+                                          : task.status?.state ===
+                                              "input-required"
+                                          ? "border-orange-500/40 bg-orange-200/80 text-orange-900 dark:border-orange-900/60 dark:bg-orange-950/60 dark:text-orange-100"
+                                          : task.status?.state === "completed"
+                                          ? "border-emerald-500/40 bg-emerald-200/80 text-emerald-900 dark:border-emerald-900/60 dark:bg-emerald-950/60 dark:text-emerald-100"
+                                          : task.status?.state === "failed"
+                                          ? "border-rose-500/40 bg-rose-200/80 text-rose-900 dark:border-rose-900/60 dark:bg-rose-950/60 dark:text-rose-100"
+                                          : task.status?.state === "canceled"
+                                          ? "border-gray-500/40 bg-gray-200/80 text-gray-900 dark:border-gray-900/60 dark:bg-gray-950/60 dark:text-gray-100"
+                                          : "border-slate-500/40 bg-slate-200/80 text-slate-900 dark:border-slate-900/60 dark:bg-slate-950/60 dark:text-slate-100"
+                                      }`}
+                                    >
+                                      {task.status?.state === "working" && (
+                                        <Loader2 className="h-3 w-3 animate-spin" />
+                                      )}
+                                      <span>{statusInfo.label}</span>
+                                      <span
+                                        className={task.status?.state ===
+                                            "submitted"
+                                          ? "text-blue-700/90 dark:text-blue-200/80"
+                                          : task.status?.state === "working"
+                                          ? "text-amber-700/90 dark:text-amber-200/80"
+                                          : task.status?.state ===
+                                              "input-required"
+                                          ? "text-orange-700/90 dark:text-orange-200/80"
+                                          : task.status?.state === "completed"
+                                          ? "text-emerald-700/90 dark:text-emerald-200/80"
+                                          : task.status?.state === "failed"
+                                          ? "text-rose-700/90 dark:text-rose-200/80"
+                                          : task.status?.state === "canceled"
+                                          ? "text-gray-700/90 dark:text-gray-200/80"
+                                          : "text-slate-700/90 dark:text-slate-200/80"}
+                                      >
+                                        Task {shortId}
+                                      </span>
+                                      {statusTimestamp && (
+                                        <span
+                                          className={task.status?.state ===
+                                              "submitted"
+                                            ? "text-blue-700/70 dark:text-blue-300/70"
+                                            : task.status?.state === "working"
+                                            ? "text-amber-700/70 dark:text-amber-300/70"
+                                            : task.status?.state ===
+                                                "input-required"
+                                            ? "text-orange-700/70 dark:text-orange-300/70"
+                                            : task.status?.state === "completed"
+                                            ? "text-emerald-700/70 dark:text-emerald-300/70"
+                                            : task.status?.state === "failed"
+                                            ? "text-rose-700/70 dark:text-rose-300/70"
+                                            : task.status?.state === "canceled"
+                                            ? "text-gray-700/70 dark:text-gray-300/70"
+                                            : "text-slate-700/70 dark:text-slate-300/70"}
+                                        >
+                                          • {statusTimestamp}
+                                        </span>
+                                      )}
+                                    </div>
+                                    {hasUpdates && (
+                                      <div className="pointer-events-none absolute left-0 top-12 bottom-4 w-[2px] bg-border/70" />
+                                    )}
+                                    <div className="space-y-3 pl-4">
+                                      {!hasUpdates
+                                        ? (
+                                          <p className="text-xs text-emerald-800/80 dark:text-emerald-100/80">
+                                            No task updates yet.
+                                          </p>
+                                        )
+                                        : (
+                                          updates.map(renderTaskUpdate)
+                                        )}
+                                      {capabilityCallsForTask.length > 0 && (
+                                        <ul className="ml-6 list-disc space-y-1 text-xs text-emerald-800/90 dark:text-emerald-100">
+                                          {capabilityCallsForTask.map((
+                                            call,
+                                            idx,
+                                          ) => (
+                                            <li key={`${call.name}-${idx}`}>
+                                              <span className="font-semibold text-foreground">
+                                                {call.name}
+                                              </span>
+                                            </li>
+                                          ))}
+                                        </ul>
+                                      )}
+                                    </div>
+                                  </div>
+                                )
+                              })}
+                            </div>
                           </div>
-                        </div>
-                      )
-                    })
-                  )}
-                <div ref={messagesEndRef} />
-              </div>
-            </div>
-            {/* Conversations inline panel */}
-            <div
-              className={[
-                "relative border-l bg-background/50 transition-all duration-300 ease-out",
-                isConversationsOpen
-                  ? "w-[340px] sm:w-[360px] opacity-100"
-                  : "w-0 opacity-0 pointer-events-none",
-              ].join(" ")}
-            >
-              <div className="h-full flex flex-col">
-                <div className="flex-1 min-h-0">
-                  <ChatSidebar
-                    variant="inline"
-                    hideTitleBar
-                    currentChatId={currentChatId}
-                    onChatSelect={(id) => onChatSelect && onChatSelect(id)}
-                    onNewChat={startNewChat}
-                    refreshKey={chatsRefreshKey}
-                  />
+                        )
+                      })
+                    )}
+                  <div ref={messagesEndRef} />
                 </div>
               </div>
             </div>
-          </div>
-        </CardContent>
+          </CardContent>
 
-        <CardFooter className="border-t p-4">
-          <div className="flex w-full items-end gap-2">
-            <Textarea
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder="Type your message here"
-              className="flex-1 rounded-2xl min-h-[44px]"
-              disabled={isLoading || !isBackendConnected}
-              autoResize
-              minRows={1}
-              maxRows={8}
-            />
-            <Button
-              onClick={currentTaskId ? handleCancelTask : handleSendMessage}
-              size="icon"
-              className="rounded-full h-11 w-11 shrink-0"
-              disabled={currentTaskId
-                ? false
-                : (!input.trim() || isLoading || !isBackendConnected)}
-            >
-              {currentTaskId
-                ? <X className="h-4 w-4" />
-                : isLoading
-                ? <Loader2 className="h-4 w-4 animate-spin" />
-                : <ArrowRight className="h-4 w-4" />}
-              <span className="sr-only">
-                {currentTaskId ? "Cancel task" : "Send message"}
-              </span>
-            </Button>
-          </div>
-        </CardFooter>
-      </Card>
+          <CardFooter className="border-t p-4">
+            <div className="flex w-full items-end gap-2">
+              <Textarea
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={handleKeyDown}
+                placeholder="Type your message here"
+                className="flex-1 rounded-2xl min-h-[44px]"
+                disabled={isLoading || !isBackendConnected}
+                autoResize
+                minRows={1}
+                maxRows={8}
+              />
+              <Button
+                onClick={currentTaskId ? handleCancelTask : handleSendMessage}
+                size="icon"
+                className="rounded-full h-11 w-11 shrink-0"
+                disabled={currentTaskId
+                  ? false
+                  : (!input.trim() || isLoading || !isBackendConnected)}
+              >
+                {currentTaskId
+                  ? <X className="h-4 w-4" />
+                  : isLoading
+                  ? <Loader2 className="h-4 w-4 animate-spin" />
+                  : <ArrowRight className="h-4 w-4" />}
+                <span className="sr-only">
+                  {currentTaskId ? "Cancel task" : "Send message"}
+                </span>
+              </Button>
+            </div>
+          </CardFooter>
+        </Card>
 
-      {/* Rail button aligned to Chat Interface when panel is hidden */}
-      {!isConversationsOpen && (
-        <div className="absolute right-3 top-1/2 -translate-y-1/2 z-10">
-          <Button
-            variant="outline"
-            size="icon"
-            className="shadow-sm"
-            title="Show conversations (Cmd/Ctrl+K)"
-            onClick={onToggleConversations}
-          >
-            <PanelRightOpen className="h-4 w-4" />
-          </Button>
+        <div className="min-h-0 h-[420px] lg:h-full">
+          <ChatSidebar
+            variant="card"
+            className="h-full min-h-0 shadow-md border border-slate-200/80 bg-white/90 backdrop-blur"
+            currentChatId={currentChatId}
+            onChatSelect={(id) => onChatSelect && onChatSelect(id)}
+            onNewChat={startNewChat}
+            refreshKey={chatsRefreshKey}
+          />
         </div>
-      )}
+      </div>
 
       <Dialog
         open={previewArtifact !== null}
@@ -1897,6 +2080,14 @@ export default function ChatInterface({
                       sandbox=""
                       className="h-[70vh] w-full bg-white dark:bg-slate-900"
                     />
+                  )
+                  : previewArtifact.isMarkdown
+                  ? (
+                    <div className="prose prose-base dark:prose-invert max-h-[70vh] overflow-auto p-4 max-w-none">
+                      <Markdown remarkPlugins={[remarkGfm]}>
+                        {previewArtifact.content}
+                      </Markdown>
+                    </div>
                   )
                   : previewArtifact.content
                   ? (

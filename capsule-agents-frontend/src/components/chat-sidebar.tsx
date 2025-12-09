@@ -1,10 +1,9 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { Button } from "./ui/button.tsx"
 import { Input } from "./ui/input.tsx"
 import { Card, CardContent, CardHeader } from "./ui/card.tsx"
-import { Loader2, MessageSquare, Plus, Search } from "lucide-react"
+import { Bot, Loader2, Search } from "lucide-react"
 import { type ChatSummary, deleteChatById, getChatsList } from "../lib/api.ts"
 import { showErrorToast } from "../lib/error-utils.ts"
 import { ChatListItem } from "./chat-list-item.tsx"
@@ -86,7 +85,7 @@ export function ChatSidebar({
 
     if (
       !confirm(
-        "Are you sure you want to delete this conversation? This action cannot be undone.",
+        "Are you sure you want to delete this agent context? This action cannot be undone.",
       )
     ) {
       return
@@ -132,28 +131,17 @@ export function ChatSidebar({
   }
 
   const header = (
-    <div className="p-3 border-b">
+    <div className="flex flex-col gap-3">
       {!hideTitleBar && (
-        <div className="flex items-center justify-between mb-2">
-          <div className="flex items-center gap-2 text-lg font-medium">
-            <MessageSquare className="h-5 w-5 text-primary" />
-            Conversations
-          </div>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={onNewChat}
-            className="flex items-center gap-1"
-          >
-            <Plus className="h-4 w-4" />
-            New
-          </Button>
+        <div className="flex items-center gap-2 text-lg font-medium">
+          <Bot className="h-5 w-5 text-primary" />
+          Agent Contexts
         </div>
       )}
       <div className="relative">
         <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
         <Input
-          placeholder="Search conversations..."
+          placeholder="Search contexts..."
           value={searchQuery}
           onChange={(e) =>
             setSearchQuery(
@@ -176,13 +164,15 @@ export function ChatSidebar({
         : filteredChats.length === 0
         ? (
           <div className="flex flex-col items-center justify-center p-8 text-center">
-            <MessageSquare className="h-12 w-12 text-muted-foreground mb-4" />
+            <Bot className="h-12 w-12 text-muted-foreground mb-4" />
             <p className="text-muted-foreground">
-              {searchQuery ? "No conversations found" : "No conversations yet"}
+              {searchQuery
+                ? "No agent contexts found"
+                : "No agent contexts yet"}
             </p>
             {!searchQuery && (
               <p className="text-sm text-muted-foreground mt-2">
-                Start a new conversation to get going
+                Start a new agent context to get going
               </p>
             )}
           </div>
@@ -216,7 +206,9 @@ export function ChatSidebar({
 
   return (
     <Card className={`flex flex-col h-full ${className}`}>
-      <CardHeader className="pb-4">{header}</CardHeader>
+      <CardHeader className="pb-4 border-b flex flex-col gap-3">
+        {header}
+      </CardHeader>
       <CardContent className="flex-1 overflow-y-auto p-0">{body}</CardContent>
     </Card>
   )

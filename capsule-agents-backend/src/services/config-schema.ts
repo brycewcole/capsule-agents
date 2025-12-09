@@ -16,6 +16,15 @@ export const CapabilitiesConfigSchema = z.object({
   exec: BuiltInCapabilityConfigSchema.optional().default({
     enabled: true,
   }),
+  read_file: BuiltInCapabilityConfigSchema.optional().default({
+    enabled: true,
+  }),
+  grep_files: BuiltInCapabilityConfigSchema.optional().default({
+    enabled: true,
+  }),
+  edit_file: BuiltInCapabilityConfigSchema.optional().default({
+    enabled: true,
+  }),
 })
 
 export const DefaultPromptsConfigSchema = z.object({
@@ -49,6 +58,9 @@ export const AgentConfigSchema = z.object({
   tools: CapabilitiesConfigSchema.optional().default({
     memory: { enabled: false },
     exec: { enabled: true },
+    read_file: { enabled: true },
+    grep_files: { enabled: true },
+    edit_file: { enabled: true },
   }),
   a2a: z.array(A2AAgentConfigSchema).optional().default([]),
   builtInPrompts: DefaultPromptsConfigSchema.optional().default({
@@ -63,6 +75,9 @@ export const ConfigFileSchema = z.object({
     tools: {
       memory: { enabled: false },
       exec: { enabled: true },
+      read_file: { enabled: true },
+      grep_files: { enabled: true },
+      edit_file: { enabled: true },
     },
     a2a: [],
     builtInPrompts: {
@@ -101,6 +116,9 @@ export type ConfigFile = z.infer<typeof ConfigFileSchema>
 export const BUILTIN_CAPABILITIES = [
   "memory",
   "exec",
+  "read_file",
+  "grep_files",
+  "edit_file",
 ] as const
 export type BuiltInCapabilityName = typeof BUILTIN_CAPABILITIES[number]
 
@@ -174,6 +192,9 @@ export function transformAgentInfoToConfig(agentInfo: AgentInfo): {
   const tools: CapabilitiesConfig = {
     memory: { enabled: false },
     exec: { enabled: true },
+    read_file: { enabled: true },
+    grep_files: { enabled: true },
+    edit_file: { enabled: true },
   }
   const mcpServers: Record<
     string,

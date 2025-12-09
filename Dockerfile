@@ -56,11 +56,13 @@ COPY --from=frontend-builder --chown=deno:deno /home/app/capsule-agents-frontend
 
 # ensure writable runtime dirs
 USER root
-RUN install -d -o deno -g deno /app/data /app/agent-workspace /app/static /app/config /app/node_modules
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends ripgrep \
+  && rm -rf /var/lib/apt/lists/*
 USER deno
 
 # Create default config directory and ensure it's writable
-EXPOSE 80
+EXPOSE 9000
 # Disable automatic lockfile writes in runtime container to avoid
 # permission issues when writing /app/deno.lock
 CMD ["deno", "run", "--allow-all", "--unstable-cron","--unstable-otel", "--node-modules-dir", "--no-lock", "src/index.ts"]

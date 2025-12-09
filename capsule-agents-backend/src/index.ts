@@ -10,6 +10,7 @@ import { createScheduleController } from "./controllers/schedule.controller.ts"
 import { createWorkspaceController } from "./controllers/workspace.controller.ts"
 import { getDb } from "./infrastructure/db.ts"
 import { CapsuleAgentA2ARequestHandler } from "./lib/a2a-request-handler.ts"
+import { basicAuth } from "./middleware/auth.ts"
 import { AgentConfigService, type AgentInfo } from "./services/agent-config.ts"
 import { ChatService } from "./services/chat.service.ts"
 import { ConfigFileService } from "./services/config-file.ts"
@@ -38,6 +39,18 @@ app.use(
     exposeHeaders: ["Content-Type"],
   }),
 )
+
+// Apply authentication to protected API routes
+// Skip auth for health check endpoint and A2A protocol endpoints
+app.use("/api/agent", basicAuth)
+app.use("/api/chat/*", basicAuth)
+app.use("/api/chats", basicAuth)
+app.use("/api/chats/*", basicAuth)
+app.use("/api/schedules", basicAuth)
+app.use("/api/schedules/*", basicAuth)
+app.use("/api/workspace/*", basicAuth)
+app.use("/api/models", basicAuth)
+app.use("/api/providers", basicAuth)
 
 // Initialize DB
 console.info("Initializing database...")
@@ -134,7 +147,7 @@ app.get(
   serveStatic({ root: "./static", rewriteRequestPath: () => "/index.html" }),
 )
 
-const port = parseInt(Deno.env.get("PORT") || "80")
+const port = parseInt(Deno.env.get("PORT") || "9000")
 const agentUrl = Deno.env.get("AGENT_URL")
 if (!agentUrl) {
   throw new Error("AGENT_URL environment variable is not set")
