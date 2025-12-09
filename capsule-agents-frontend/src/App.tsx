@@ -19,9 +19,9 @@ import { showErrorToast } from "./lib/error-utils.ts"
 import "./App.css"
 
 function App() {
-  const [showLogin, setShowLogin] = useState(false)
+  const [showLogin, setShowLogin] = useState(true)
   const [loginError, setLoginError] = useState<string>()
-  const [, setIsAuthenticated] = useState(true) // Temporarily always authenticated
+  const [isAuthenticated, setIsAuthenticated] = useState(false)
 
   // Chat management state
   const [currentChatId, setCurrentChatId] = useState<string | null>(() => {
@@ -36,12 +36,6 @@ function App() {
   >(null)
   const [isLoadingChat, setIsLoadingChat] = useState(false)
   const [chatsRefreshKey, setChatsRefreshKey] = useState(0)
-
-  useEffect(() => {
-    // Temporarily skip authentication for new backend
-    setIsAuthenticated(true)
-    setShowLogin(false)
-  }, [])
 
   // Update document title with agent name
   useEffect(() => {
@@ -162,53 +156,55 @@ function App() {
 
   return (
     <>
-      <main className="flex h-screen flex-col bg-slate-50 overflow-hidden">
-        <Header />
+      {isAuthenticated && (
+        <main className="flex h-screen flex-col bg-slate-50 overflow-hidden">
+          <Header />
 
-        <Routes>
-          <Route
-            path="chat"
-            element={
-              <div className="container mx-auto flex flex-1 flex-col p-4 md:p-6 lg:p-8 min-h-0">
-                <div className="flex h-full min-h-0 flex-col">
-                  <div className="flex-1 min-h-0">
-                    <ChatInterface
-                      contextId={currentChatId}
-                      initialChatData={currentChatData}
-                      isLoadingChat={isLoadingChat}
-                      onChatCreated={(newChatId) => {
-                        setCurrentChatId(newChatId)
-                        setChatsRefreshKey((k) => k + 1)
-                      }}
-                      onNewChat={handleNewChat}
-                      currentChatId={currentChatId}
-                      onChatSelect={handleChatSelect}
-                      chatsRefreshKey={chatsRefreshKey}
-                    />
-                  </div>
-                </div>
-              </div>
-            }
-          />
-          <Route
-            index
-            element={
-              <div className="flex-1 overflow-y-auto min-h-0">
-                <div className="mx-auto flex w-full max-w-[1600px] flex-col gap-6 p-4 md:p-6 lg:p-8">
-                  <div className="grid gap-6 lg:grid-cols-2 lg:items-start">
-                    <AgentEditor />
-                    <div className="flex flex-col gap-6">
-                      <WorkspaceManager />
-                      <ScheduleManager />
+          <Routes>
+            <Route
+              path="chat"
+              element={
+                <div className="container mx-auto flex flex-1 flex-col p-4 md:p-6 lg:p-8 min-h-0">
+                  <div className="flex h-full min-h-0 flex-col">
+                    <div className="flex-1 min-h-0">
+                      <ChatInterface
+                        contextId={currentChatId}
+                        initialChatData={currentChatData}
+                        isLoadingChat={isLoadingChat}
+                        onChatCreated={(newChatId) => {
+                          setCurrentChatId(newChatId)
+                          setChatsRefreshKey((k) => k + 1)
+                        }}
+                        onNewChat={handleNewChat}
+                        currentChatId={currentChatId}
+                        onChatSelect={handleChatSelect}
+                        chatsRefreshKey={chatsRefreshKey}
+                      />
                     </div>
                   </div>
                 </div>
-              </div>
-            }
-          />
-          <Route path="*" element={<Navigate to="chat" replace />} />
-        </Routes>
-      </main>
+              }
+            />
+            <Route
+              index
+              element={
+                <div className="flex-1 overflow-y-auto min-h-0">
+                  <div className="mx-auto flex w-full max-w-[1600px] flex-col gap-6 p-4 md:p-6 lg:p-8">
+                    <div className="grid gap-6 lg:grid-cols-2 lg:items-start">
+                      <AgentEditor />
+                      <div className="flex flex-col gap-6">
+                        <WorkspaceManager />
+                        <ScheduleManager />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              }
+            />
+            <Route path="*" element={<Navigate to="chat" replace />} />
+          </Routes>
+        </main>
+      )}
 
       <LoginDialog
         open={showLogin}
