@@ -211,19 +211,23 @@ export class ScheduleService {
       // Send message
       const result = await handler.sendMessage({
         message,
-      })
-
-      // If result is a task, execute hooks with schedule source info
-      if (result && "kind" in result && result.kind === "task") {
-        handler["hookExecutorService"]?.executeHooksAsync(
-          result,
-          result.artifacts || [],
-          {
+        metadata: {
+          source: {
             type: "schedule",
             scheduleId: schedule.id,
             scheduleName: schedule.name,
           },
-        )
+        },
+      })
+
+      // Treat non-completed tasks as failures so backoff/retries work correctly
+      if (result && "kind" in result && result.kind === "task") {
+        const state = result.status.state
+        if (state !== "completed") {
+          throw new Error(
+            `Schedule ${schedule.name} produced task ${result.id} in state ${state}`,
+          )
+        }
       }
 
       // Record successful execution
