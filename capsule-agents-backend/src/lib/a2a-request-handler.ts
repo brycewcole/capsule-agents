@@ -26,7 +26,6 @@ import { VercelService } from "../services/vercel.service.ts"
 import {
   type ArtifactInput,
   type ArtifactStreamCallback,
-  artifactTool as staticArtifactTool,
   createArtifactTool,
 } from "./artifact-tool.ts"
 import { isMCPCapability } from "./capability-types.ts"
