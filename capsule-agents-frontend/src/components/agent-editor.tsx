@@ -48,15 +48,9 @@ import {
   type ProvidersResponse,
   updateAgentInfo,
 } from "../lib/api.ts"
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "./ui/table.tsx"
 import { CapabilityDialog } from "./capability-dialog.tsx"
+import { HooksConfig } from "./hooks-config.tsx"
+import { ItemsTable } from "./ui/items-table.tsx"
 
 export default function AgentEditor() {
   const [name, setName] = useState("")
@@ -103,6 +97,7 @@ export default function AgentEditor() {
   const [builtInPromptsEnabled, setDefaultPromptsEnabled] = useState(true)
   const [builtInPrompts, setDefaultPrompts] = useState<DefaultPrompt[]>([])
   const [showDefaultPromptDialog, setShowDefaultPromptDialog] = useState(false)
+  const [hooks, setHooks] = useState<import("../lib/api.ts").HookConfig[]>([])
 
   const handleSaveNameDescription = async () => {
     // Validate agent name before saving
@@ -123,6 +118,7 @@ export default function AgentEditor() {
         modelParameters: {},
         capabilities: capabilities,
         builtInPromptsEnabled,
+        hooks,
       }
       const updated = await updateAgentInfo(agentInfo)
 
@@ -166,6 +162,7 @@ export default function AgentEditor() {
     nextName?: string,
     nextDescription?: string,
     nextDefaultPromptsEnabled?: boolean,
+    nextHooks?: import("../lib/api.ts").HookConfig[],
   ) => {
     try {
       const finalName = nextName ?? name
@@ -174,6 +171,7 @@ export default function AgentEditor() {
       const finalCapabilities = nextCapabilities ?? capabilities
       const finalDefaultPromptsEnabled = nextDefaultPromptsEnabled ??
         builtInPromptsEnabled
+      const finalHooks = nextHooks ?? hooks
 
       const agentInfo: AgentInfo = {
         name: finalName,
@@ -182,6 +180,7 @@ export default function AgentEditor() {
         modelParameters: {},
         capabilities: finalCapabilities,
         builtInPromptsEnabled: finalDefaultPromptsEnabled,
+        hooks: finalHooks,
       }
       const updated = await updateAgentInfo(agentInfo)
 
@@ -234,6 +233,7 @@ export default function AgentEditor() {
           agentInfo.builtInPromptsEnabled ?? true,
         )
         setDefaultPrompts(agentInfo.builtInPrompts ?? [])
+        setHooks(agentInfo.hooks ?? [])
 
         // Update document title with agent name from config
         if (agentInfo.name) {
@@ -856,105 +856,85 @@ export default function AgentEditor() {
             />
 
             {/* Custom Capabilities Table */}
-            {capabilities.filter((capability) =>
-                !isPrebuiltCapability(capability)
-              ).length > 0
-              ? (
-                <div className="space-y-2">
-                  <Label className="text-sm font-medium">
-                    Custom Capabilities
-                  </Label>
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Name</TableHead>
-                        <TableHead>Type</TableHead>
-                        <TableHead>Status</TableHead>
-                        <TableHead className="w-20">Actions</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {capabilities.filter((capability) =>
-                        !isPrebuiltCapability(capability)
-                      ).map(
-                        (capability, _originalIndex) => {
-                          const actualIndex = capabilities.findIndex((t) =>
-                            t === capability
-                          )
-                          return (
-                            <TableRow key={actualIndex}>
-                              <TableCell>{capability.name}</TableCell>
-                              <TableCell>
-                                {isA2ACapability(capability)
-                                  ? "Agent (A2A)"
-                                  : isMCPCapability(capability)
-                                  ? "MCP Server"
-                                  : isPrebuiltCapability(capability)
-                                  ? "Prebuilt"
-                                  : "Unknown"}
-                              </TableCell>
-                              <TableCell>
-                                <span
-                                  className={`px-2 py-1 rounded-full text-xs ${
-                                    capability.enabled
-                                      ? "bg-green-100 text-green-800"
-                                      : "bg-gray-100 text-gray-600"
-                                  }`}
-                                >
-                                  {capability.enabled ? "Enabled" : "Disabled"}
-                                </span>
-                              </TableCell>
-                              <TableCell className="flex gap-1">
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={() => editCapability(actualIndex)}
-                                  title="Edit capability"
-                                >
-                                  <Edit className="h-4 w-4" />
-                                </Button>
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={() => deleteCapability(actualIndex)}
-                                  title="Remove capability"
-                                >
-                                  <Trash className="h-4 w-4" />
-                                </Button>
-                              </TableCell>
-                            </TableRow>
-                          )
-                        },
-                      )}
-                    </TableBody>
-                  </Table>
-                </div>
-              )
-              : (
-                <div className="space-y-2">
-                  <Label className="text-sm font-medium">
-                    Custom Capabilities
-                  </Label>
-                  <div className="text-center p-4 text-muted-foreground border border-dashed rounded-md">
-                    No custom capabilities configured. Add custom capabilities
-                    like Agent (A2A) connections and remote MCP servers.
-                  </div>
-                </div>
-              )}
-
-            {/* Add Custom Capability Button */}
-            <div className="flex justify-end">
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={handleAddNewCapabilityClick}
-              >
-                <Plus className="mr-2 h-4 w-4" />
-                Add
-              </Button>
+            <div className="space-y-2">
+              <Label className="text-sm font-medium">
+                Custom Capabilities
+              </Label>
+              <ItemsTable
+                items={capabilities.filter((capability) =>
+                  !isPrebuiltCapability(capability)
+                ).map((capability) => ({
+                  capability,
+                  actualIndex: capabilities.findIndex((t) => t === capability),
+                }))}
+                columns={[
+                  {
+                    header: "Name",
+                    accessor: (item) => item.capability.name,
+                  },
+                  {
+                    header: "Type",
+                    accessor: (item) =>
+                      isA2ACapability(item.capability)
+                        ? "Agent (A2A)"
+                        : isMCPCapability(item.capability)
+                        ? "MCP Server"
+                        : isPrebuiltCapability(item.capability)
+                        ? "Prebuilt"
+                        : "Unknown",
+                  },
+                ]}
+                getEnabled={(item) => item.capability.enabled}
+                onAdd={handleAddNewCapabilityClick}
+                onEdit={(index) => {
+                  const item = capabilities.filter((capability) =>
+                    !isPrebuiltCapability(capability)
+                  ).map((capability) => ({
+                    capability,
+                    actualIndex: capabilities.findIndex((t) =>
+                      t === capability
+                    ),
+                  }))[index]
+                  editCapability(item.actualIndex)
+                }}
+                onDelete={(index) => {
+                  const item = capabilities.filter((capability) =>
+                    !isPrebuiltCapability(capability)
+                  ).map((capability) => ({
+                    capability,
+                    actualIndex: capabilities.findIndex((t) =>
+                      t === capability
+                    ),
+                  }))[index]
+                  deleteCapability(item.actualIndex)
+                }}
+                addButtonLabel="Add"
+                emptyMessage="No custom capabilities configured. Add custom capabilities like Agent (A2A) connections and remote MCP servers."
+              />
             </div>
           </div>
         </section>
+
+        {/* Hooks Configuration */}
+        <HooksConfig
+          hooks={hooks}
+          onChange={(newHooks) => {
+            setHooks(newHooks)
+            toast.success("Hooks updated")
+            setTimeout(
+              () =>
+                autoSaveAgent(
+                  undefined,
+                  undefined,
+                  undefined,
+                  undefined,
+                  undefined,
+                  newHooks,
+                ),
+              0,
+            )
+          }}
+        />
 
         <Dialog
           open={showDefaultPromptDialog}

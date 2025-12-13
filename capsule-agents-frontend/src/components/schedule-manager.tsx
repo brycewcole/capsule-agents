@@ -27,10 +27,12 @@ import { toast } from "sonner"
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover.tsx"
 import { CronBuilder } from "./cron-builder.tsx"
 import { BackoffConfig } from "./backoff-config.tsx"
+import { HooksConfig } from "./hooks-config.tsx"
 import {
   createSchedule,
   deleteSchedule,
   getSchedules,
+  HookConfig,
   runScheduleNow,
   Schedule,
   ScheduleInput,
@@ -60,6 +62,7 @@ export default function ScheduleManager() {
     5000,
     10000,
   ])
+  const [hooks, setHooks] = useState<HookConfig[]>([])
 
   useEffect(() => {
     fetchSchedules()
@@ -85,6 +88,7 @@ export default function ScheduleManager() {
     setCronExpression("0 9 * * *")
     setBackoffEnabled(false)
     setBackoffSchedule([1000, 5000, 10000])
+    setHooks([])
     setShowDialog(true)
   }
 
@@ -95,6 +99,7 @@ export default function ScheduleManager() {
     setCronExpression(schedule.cronExpression)
     setBackoffEnabled(schedule.backoffEnabled)
     setBackoffSchedule(schedule.backoffSchedule || [1000, 5000, 10000])
+    setHooks(schedule.hooks || [])
     setShowDialog(true)
   }
 
@@ -114,6 +119,7 @@ export default function ScheduleManager() {
         enabled: editingSchedule ? editingSchedule.enabled : true,
         backoffEnabled,
         backoffSchedule: backoffEnabled ? backoffSchedule : undefined,
+        hooks: hooks.length > 0 ? hooks : undefined,
       }
 
       if (editingSchedule) {
@@ -437,6 +443,8 @@ export default function ScheduleManager() {
               onEnabledChange={setBackoffEnabled}
               onScheduleChange={setBackoffSchedule}
             />
+
+            <HooksConfig hooks={hooks} onChange={setHooks} />
           </div>
 
           <div className="flex justify-end gap-2">
