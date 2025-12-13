@@ -209,9 +209,22 @@ export class ScheduleService {
       )
 
       // Send message
-      await handler.sendMessage({
+      const result = await handler.sendMessage({
         message,
       })
+
+      // If result is a task, execute hooks with schedule source info
+      if (result && "kind" in result && result.kind === "task") {
+        handler["hookExecutorService"]?.executeHooksAsync(
+          result,
+          result.artifacts || [],
+          {
+            type: "schedule",
+            scheduleId: schedule.id,
+            scheduleName: schedule.name,
+          },
+        )
+      }
 
       // Record successful execution
       this.scheduleRepository.recordExecution(schedule.id, true)

@@ -5,6 +5,7 @@ import { serveStatic } from "hono/deno"
 import { createA2AController } from "./controllers/a2a.controller.ts"
 import { createAgentController } from "./controllers/agent.controller.ts"
 import { createChatController } from "./controllers/chat.controller.ts"
+import { createContextController } from "./controllers/context.controller.ts"
 import { createHealthController } from "./controllers/health.controller.ts"
 import { createScheduleController } from "./controllers/schedule.controller.ts"
 import { createWorkspaceController } from "./controllers/workspace.controller.ts"
@@ -46,6 +47,8 @@ app.use("/api/agent", basicAuth)
 app.use("/api/chat/*", basicAuth)
 app.use("/api/chats", basicAuth)
 app.use("/api/chats/*", basicAuth)
+app.use("/api/contexts", basicAuth)
+app.use("/api/contexts/*", basicAuth)
 app.use("/api/schedules", basicAuth)
 app.use("/api/schedules/*", basicAuth)
 app.use("/api/workspace/*", basicAuth)
@@ -116,6 +119,7 @@ app.route("/", createA2AController({ jsonRpcHandler, a2aRequestHandler }))
 app.route("/api", createHealthController())
 app.route("/api", createAgentController(agentConfigService))
 app.route("/api", createChatController(chatService))
+app.route("/api", createContextController())
 app.route("/api", createScheduleController(scheduleService))
 app.route("/api", createWorkspaceController())
 

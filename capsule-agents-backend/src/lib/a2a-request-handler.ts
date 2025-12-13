@@ -12,6 +12,7 @@ import { grepFilesSkill, grepFilesTool } from "../capabilities/grep-files.ts"
 import { memorySkill, memoryTool } from "../capabilities/memory.ts"
 import { readFileSkill, readFileTool } from "../capabilities/read-file.ts"
 import { contextRepository } from "../repositories/context.repository.ts"
+import { HookExecutorService } from "../hooks/hook-executor.service.ts"
 import { A2AMessageRepository } from "../repositories/message.repository.ts"
 import { TaskRepository } from "../repositories/task.repository.ts"
 import { VercelMessageRepository } from "../repositories/vercel-message.repository.ts"
@@ -80,6 +81,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
   private statusUpdateService = new StatusUpdateService()
   private taskRoutingService: TaskRoutingService
   private taskAbortControllers = new Map<string, AbortController>()
+  private hookExecutorService: HookExecutorService
 
   constructor(agentConfigService?: AgentConfigService) {
     console.info("Initializing CapsuleAgentA2ARequestHandler...")
@@ -92,6 +94,10 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
         this.a2aMessageRepository,
       )
       console.info("TaskRoutingService initialized successfully")
+      this.hookExecutorService = new HookExecutorService(
+        this.agentConfigService,
+      )
+      console.info("HookExecutorService initialized successfully")
     } catch (error) {
       console.error("Failed to initialize services:", error)
       throw error
@@ -1121,6 +1127,11 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
           currentTaskRef.current.id,
         )
         if (taskWithArtifacts) {
+          // Execute hooks asynchronously (fire-and-forget)
+          this.hookExecutorService.executeHooksAsync(
+            taskWithArtifacts,
+            taskWithArtifacts.artifacts || [],
+          )
           return taskWithArtifacts
         }
         return currentTaskRef.current
@@ -1633,6 +1644,15 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
           "completed",
         )
         yield completedStatus
+
+        // Execute hooks asynchronously (fire-and-forget)
+        const finalTask = this.taskStorage.getTask(currentTaskRef.current.id)
+        if (finalTask) {
+          this.hookExecutorService.executeHooksAsync(
+            finalTask,
+            finalTask.artifacts || [],
+          )
+        }
       }
     } catch (error) {
       // Clean up abort controller and status updates on error

@@ -9,6 +9,7 @@ export interface Schedule {
   contextId?: string
   backoffEnabled: boolean
   backoffSchedule?: number[]
+  hooks?: unknown[] // HookConfig[]
   lastRunAt?: number
   nextRunAt?: number
   runCount: number
@@ -25,6 +26,7 @@ export interface ScheduleInput {
   contextId?: string
   backoffEnabled?: boolean
   backoffSchedule?: number[]
+  hooks?: unknown[] // HookConfig[]
 }
 
 interface ScheduleRow {
@@ -36,6 +38,7 @@ interface ScheduleRow {
   context_id: string | null
   backoff_enabled: number
   backoff_schedule: string | null
+  hooks: string | null
   last_run_at: number | null
   next_run_at: number | null
   run_count: number
@@ -59,6 +62,7 @@ export class ScheduleRepository {
       backoffSchedule: row.backoff_schedule
         ? JSON.parse(row.backoff_schedule)
         : undefined,
+      hooks: row.hooks ? JSON.parse(row.hooks) : undefined,
       lastRunAt: row.last_run_at || undefined,
       nextRunAt: row.next_run_at || undefined,
       runCount: row.run_count,
@@ -75,9 +79,9 @@ export class ScheduleRepository {
     const stmt = this.db.prepare(`
       INSERT INTO schedules (
         id, name, prompt, cron_expression, enabled, context_id,
-        backoff_enabled, backoff_schedule, run_count, failure_count,
+        backoff_enabled, backoff_schedule, hooks, run_count, failure_count,
         created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, 0, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, ?, ?)
     `)
 
     stmt.run(
@@ -89,6 +93,7 @@ export class ScheduleRepository {
       input.contextId || null,
       input.backoffEnabled ? 1 : 0,
       input.backoffSchedule ? JSON.stringify(input.backoffSchedule) : null,
+      input.hooks ? JSON.stringify(input.hooks) : null,
       now,
       now,
     )
@@ -164,6 +169,10 @@ export class ScheduleRepository {
       values.push(
         input.backoffSchedule ? JSON.stringify(input.backoffSchedule) : null,
       )
+    }
+    if (input.hooks !== undefined) {
+      updates.push("hooks = ?")
+      values.push(input.hooks ? JSON.stringify(input.hooks) : null)
     }
 
     if (updates.length === 0) return true
