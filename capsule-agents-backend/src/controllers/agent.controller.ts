@@ -1,5 +1,6 @@
 import { Hono } from "hono"
 import { AgentConfigService } from "../services/agent-config.ts"
+import { HooksArraySchema } from "../hooks/hook-types.ts"
 import { getBuiltInPromptUsage } from "../lib/default-prompts.ts"
 
 export function createAgentController(agentConfigService: AgentConfigService) {
@@ -45,7 +46,22 @@ export function createAgentController(agentConfigService: AgentConfigService) {
     console.info("PUT /api/agent - Updating agent configuration")
     try {
       const body = await c.req.json()
-      console.info("Request body hooks:", body.hooks)
+
+      let hooks = body.hooks
+      if (hooks !== undefined) {
+        try {
+          hooks = HooksArraySchema.parse(hooks)
+        } catch (error) {
+          return c.json(
+            {
+              error: "Invalid hook configuration",
+              details: error instanceof Error ? error.message : String(error),
+            },
+            400,
+          )
+        }
+      }
+
       const agentInfo = {
         name: body.name,
         description: body.description,
@@ -55,11 +71,9 @@ export function createAgentController(agentConfigService: AgentConfigService) {
         built_in_prompts_enabled: body.builtInPromptsEnabled !== undefined
           ? !!body.builtInPromptsEnabled
           : true,
-        hooks: body.hooks,
+        hooks,
       }
-      console.info("Parsed agentInfo hooks:", agentInfo.hooks)
       const updatedInfo = agentConfigService.updateAgentInfo(agentInfo)
-      console.info("Updated info hooks:", updatedInfo.hooks)
       return c.json(toAgentResponse(updatedInfo))
     } catch (error) {
       console.error("Error updating agent info:", error)

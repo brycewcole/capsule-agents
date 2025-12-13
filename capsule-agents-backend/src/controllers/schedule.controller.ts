@@ -1,6 +1,7 @@
 import { Hono } from "hono"
 import type { ScheduleService } from "../services/schedule.service.ts"
 import type { ScheduleInput } from "../repositories/schedule.repository.ts"
+import { HooksArraySchema } from "../hooks/hook-types.ts"
 
 export function createScheduleController(scheduleService: ScheduleService) {
   const app = new Hono()
@@ -32,6 +33,21 @@ export function createScheduleController(scheduleService: ScheduleService) {
         )
       }
 
+      let hooks = body.hooks
+      if (hooks !== undefined) {
+        try {
+          hooks = HooksArraySchema.parse(hooks)
+        } catch (error) {
+          return c.json(
+            {
+              error: "Invalid hook configuration",
+              details: error instanceof Error ? error.message : String(error),
+            },
+            400,
+          )
+        }
+      }
+
       const input: ScheduleInput = {
         name: body.name,
         prompt: body.prompt,
@@ -40,7 +56,7 @@ export function createScheduleController(scheduleService: ScheduleService) {
         contextId: body.contextId,
         backoffEnabled: body.backoffEnabled || false,
         backoffSchedule: body.backoffSchedule,
-        hooks: body.hooks,
+        hooks,
       }
 
       const schedule = scheduleService.createSchedule(input)
@@ -80,6 +96,21 @@ export function createScheduleController(scheduleService: ScheduleService) {
       const id = c.req.param("id")
       const body = await c.req.json()
 
+      let hooks = body.hooks
+      if (hooks !== undefined) {
+        try {
+          hooks = HooksArraySchema.parse(hooks)
+        } catch (error) {
+          return c.json(
+            {
+              error: "Invalid hook configuration",
+              details: error instanceof Error ? error.message : String(error),
+            },
+            400,
+          )
+        }
+      }
+
       const input: Partial<ScheduleInput> = {}
 
       if (body.name !== undefined) input.name = body.name
@@ -95,8 +126,8 @@ export function createScheduleController(scheduleService: ScheduleService) {
       if (body.backoffSchedule !== undefined) {
         input.backoffSchedule = body.backoffSchedule
       }
-      if (body.hooks !== undefined) {
-        input.hooks = body.hooks
+      if (hooks !== undefined) {
+        input.hooks = hooks
       }
 
       const schedule = scheduleService.updateSchedule(id, input)

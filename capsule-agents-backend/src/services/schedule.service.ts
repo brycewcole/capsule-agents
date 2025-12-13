@@ -37,6 +37,7 @@ export class ScheduleService {
             contextId: configSchedule.context_id,
             backoffEnabled: configSchedule.backoff?.enabled || false,
             backoffSchedule: configSchedule.backoff?.schedule,
+            hooks: configSchedule.hooks,
           }
           this.scheduleRepository.upsertScheduleByName(scheduleInput)
           console.info(`Loaded schedule from config: ${configSchedule.name}`)
