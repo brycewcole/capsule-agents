@@ -157,6 +157,13 @@ export type DefaultPrompt = {
   willApply: boolean
 }
 
+// Hook configuration types
+export interface HookConfig {
+  type: "discord"
+  enabled?: boolean
+  webhookUrl: string
+}
+
 // Types for agent configuration
 export type AgentInfo = {
   name: string
@@ -166,6 +173,7 @@ export type AgentInfo = {
   capabilities?: Capability[]
   builtInPromptsEnabled: boolean
   builtInPrompts?: DefaultPrompt[]
+  hooks?: HookConfig[]
 }
 
 export async function fetchTaskById(
@@ -398,6 +406,7 @@ export async function getAgentInfo(): Promise<AgentInfo> {
 // Function to update agent configuration
 export async function updateAgentInfo(info: AgentInfo): Promise<AgentInfo> {
   const { builtInPrompts: _builtInPrompts, ...body } = info
+  console.log("updateAgentInfo - sending hooks:", body.hooks)
   const response = await fetch(`${API_BASE_URL}/api/agent`, {
     method: "PUT",
     headers: {
@@ -829,6 +838,7 @@ export interface Schedule {
   contextId?: string
   backoffEnabled: boolean
   backoffSchedule?: number[]
+  hooks?: HookConfig[]
   lastRunAt?: number
   nextRunAt?: number
   runCount: number
@@ -845,6 +855,7 @@ export interface ScheduleInput {
   contextId?: string
   backoffEnabled?: boolean
   backoffSchedule?: number[]
+  hooks?: HookConfig[]
 }
 
 export async function getSchedules(): Promise<Schedule[]> {

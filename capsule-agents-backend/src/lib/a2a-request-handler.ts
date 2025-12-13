@@ -12,6 +12,8 @@ import { grepFilesSkill, grepFilesTool } from "../capabilities/grep-files.ts"
 import { memorySkill, memoryTool } from "../capabilities/memory.ts"
 import { readFileSkill, readFileTool } from "../capabilities/read-file.ts"
 import { contextRepository } from "../repositories/context.repository.ts"
+import { HookExecutorService } from "../hooks/hook-executor.service.ts"
+import type { TaskCompletionPayload } from "../hooks/hook-types.ts"
 import { A2AMessageRepository } from "../repositories/message.repository.ts"
 import { TaskRepository } from "../repositories/task.repository.ts"
 import { VercelMessageRepository } from "../repositories/vercel-message.repository.ts"
@@ -24,7 +26,6 @@ import { VercelService } from "../services/vercel.service.ts"
 import {
   type ArtifactInput,
   type ArtifactStreamCallback,
-  artifactTool as staticArtifactTool,
   createArtifactTool,
 } from "./artifact-tool.ts"
 import { isMCPCapability } from "./capability-types.ts"
@@ -80,6 +81,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
   private statusUpdateService = new StatusUpdateService()
   private taskRoutingService: TaskRoutingService
   private taskAbortControllers = new Map<string, AbortController>()
+  private hookExecutorService: HookExecutorService
 
   constructor(agentConfigService?: AgentConfigService) {
     console.info("Initializing CapsuleAgentA2ARequestHandler...")
@@ -92,6 +94,10 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
         this.a2aMessageRepository,
       )
       console.info("TaskRoutingService initialized successfully")
+      this.hookExecutorService = new HookExecutorService(
+        this.agentConfigService,
+      )
+      console.info("HookExecutorService initialized successfully")
     } catch (error) {
       console.error("Failed to initialize services:", error)
       throw error
@@ -941,218 +947,61 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
     return contextId
   }
 
+  private extractSourceFromMetadata(
+    metadata?: unknown,
+  ): TaskCompletionPayload["source"] | undefined {
+    if (!metadata || typeof metadata !== "object") return undefined
+    const source = (metadata as { source?: unknown }).source
+    if (!source || typeof source !== "object") return undefined
+    const maybeSource = source as TaskCompletionPayload["source"] | undefined
+    if (!maybeSource) return undefined
+    if (
+      maybeSource.type === "schedule" || maybeSource.type === "api" ||
+      maybeSource.type === "user"
+    ) {
+      return maybeSource
+    }
+    return undefined
+  }
+
   async sendMessage(
     params: A2A.MessageSendParams,
   ): Promise<A2A.Message | A2A.Task> {
-    params.message.contextId = this.ensureContext(params.message.contextId)
-    const contextId = params.message.contextId
+    let lastMessage: A2A.Message | null = null
+    let finalTaskId: string | null = null
+    let finalStatus: A2A.TaskStatusUpdateEvent | null = null
 
-    await this.saveUserMessage(params.message, contextId)
-
-    try {
-      const {
-        tools,
-        mcpTools,
-        model,
-        messages,
-        systemPrompt,
-        providerOptions,
-      } = await this
-        .prepareStreamContext(contextId)
-
-      await using _mcpTools = mcpTools
-
-      const currentTaskRef = { current: null as A2A.Task | null }
-      const artifactStreamStates = new Map<string, ArtifactStreamState>()
-
-      // Single ref to track artifact result
-      const artifactResultRef: {
-        current: {
-          artifactId: string
-          name: string
-          description?: string
-          content: string
-          contentType: string
-        } | null
-      } = { current: null }
-
-      const allTools = {
-        ...tools,
-        ...mcpTools.tools,
-        create_artifact: staticArtifactTool,
-      }
-
-      console.info(
-        `Prepared ${Object.keys(allTools).length} tools for message sending`,
-      )
-
-      const modelMessages = Vercel.convertToModelMessages(messages, {
-        tools: allTools,
-      })
-
-      console.debug("Sending message to model:", {
-        contextId: params.message.contextId,
-        messages: modelMessages,
-        tools: Object.keys(allTools),
-        systemPrompt,
-      })
-
-      const result = Vercel.streamText({
-        experimental_telemetry: {
-          isEnabled: true,
-          functionId: "sendMessage",
-        },
-        onError: (error) => {
-          this.handleStreamError(error)
-        },
-        system: systemPrompt || undefined,
-        model,
-        messages: modelMessages,
-        tools: allTools,
-        providerOptions,
-        stopWhen: Vercel.stepCountIs(100),
-        onStepFinish: this.createOnStepFinishHandler(
-          currentTaskRef,
-          () => {}, // No status handler for non-streaming
-          artifactResultRef,
-          undefined, // No abort controller for non-streaming
-          artifactStreamStates,
-        ),
-      })
-
-      const originalMessageCount = messages.length
-
-      const uiResponse = result.toUIMessageStreamResponse({
-        originalMessages: messages,
-        generateMessageId: () => crypto.randomUUID(),
-        onFinish: async ({ messages: finalMessages }) => {
-          await this.persistStreamMessages(
-            finalMessages,
-            contextId,
-            originalMessageCount,
-            currentTaskRef.current?.id,
-          )
-        },
-      })
-
-      // Consume stream to trigger onFinish and collect artifact state
-      for await (const _chunk of uiResponse.body!) {
-        // Just consume to trigger callbacks
-      }
-
-      console.info("Stream consumed, collecting results")
-
-      // Check if we need to force artifact generation
-      if (currentTaskRef.current && !artifactResultRef.current) {
-        console.info("No artifact in non-streaming mode, forcing generation")
-
-        // Get current message count before forced artifact generation
-        const forcedOriginalMessages = this.vercelService.fromContext(contextId)
-        const forcedOriginalMessageCount = forcedOriginalMessages.length
-
-        const { streamResult, artifactStreamStates: forcedStates } = this
-          .forceArtifactGeneration(currentTaskRef.current, contextId, allTools)
-
-        // Set up UI message tracking for message persistence
-        const forcedUiResponse = streamResult.toUIMessageStreamResponse({
-          originalMessages: forcedOriginalMessages,
-          generateMessageId: () => crypto.randomUUID(),
-          onFinish: async ({ messages: finalMessages }) => {
-            await this.persistStreamMessages(
-              finalMessages,
-              contextId,
-              forcedOriginalMessageCount,
-              currentTaskRef.current?.id,
-            )
-            console.info(
-              "Persisted forced artifact messages to avoid tool_use/tool_result mismatch (non-streaming)",
-            )
-          },
-        })
-
-        // Consume UI response to trigger message persistence
-        if (forcedUiResponse.body) {
-          const reader = forcedUiResponse.body.getReader()
-          try {
-            while (true) {
-              const { done } = await reader.read()
-              if (done) break
-            }
-          } catch (error) {
-            console.error(
-              "Error consuming forced artifact UI response (non-streaming):",
-              error,
-            )
-          }
+    for await (const event of this.sendMessageStream(params)) {
+      if (event.kind === "message") {
+        lastMessage = event
+      } else if (event.kind === "task") {
+        finalTaskId = event.id
+      } else if (event.kind === "status-update") {
+        if (event.final) {
+          finalStatus = event
         }
-
-        const artifactState = forcedStates.values().next().value
-        if (artifactState) {
-          artifactResultRef.current = {
-            artifactId: artifactState.artifactId,
-            name: artifactState.name,
-            description: artifactState.description,
-            content: artifactState.content,
-            contentType: "text", // Default for forced artifacts
-          }
-        }
+        finalTaskId = event.taskId
       }
-
-      // Persist all collected artifacts
-      if (currentTaskRef.current && artifactResultRef.current) {
-        const artifact = artifactResultRef.current
-        const partWithMetadata = {
-          kind: "text" as const,
-          text: artifact.content,
-          metadata: { contentType: artifact.contentType },
-        }
-        console.debug(
-          `[A2A Handler] Persisting artifact with part metadata:`,
-          JSON.stringify(partWithMetadata.metadata),
-        )
-        this.taskService.createArtifact(currentTaskRef.current, {
-          name: artifact.name,
-          description: artifact.description,
-          parts: [partWithMetadata],
-        })
-
-        // Return task with artifacts attached
-        const taskWithArtifacts = this.taskStorage.getTask(
-          currentTaskRef.current.id,
-        )
-        if (taskWithArtifacts) {
-          return taskWithArtifacts
-        }
-        return currentTaskRef.current
-      }
-
-      // No task created - this was a direct message response
-      if (currentTaskRef.current) {
-        return currentTaskRef.current
-      }
-
-      // Return direct message
-      const lastMessage = messages[messages.length - 1]
-      if (lastMessage && lastMessage.role === "assistant") {
-        return {
-          kind: "message",
-          messageId: lastMessage.id,
-          role: "agent",
-          parts: lastMessage.parts.map((part) => {
-            if (part.type === "text") {
-              return { kind: "text", text: part.text }
-            }
-            // Handle other part types if needed
-            return { kind: "text", text: "" }
-          }),
-          contextId,
-        }
-      }
-
-      throw new Error("No task or message generated from sendMessage")
-    } catch (error) {
-      this.handleStreamError(error)
     }
+
+    if (finalTaskId) {
+      const task = this.taskStorage.getTask(finalTaskId)
+      if (task) {
+        return task
+      }
+    }
+
+    if (lastMessage) {
+      return lastMessage
+    }
+
+    if (finalStatus) {
+      throw new Error(
+        `Task ${finalStatus.taskId} ended with status ${finalStatus.status.state}`,
+      )
+    }
+
+    throw new Error("No task or message generated from sendMessage")
   }
 
   getTask(params: A2A.TaskQueryParams): Promise<A2A.Task> {
@@ -1222,6 +1071,7 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
   > {
     params.message.contextId = this.ensureContext(params.message.contextId)
     const contextId = params.message.contextId
+    const taskSource = this.extractSourceFromMetadata(params.metadata)
 
     await this.saveUserMessage(params.message, contextId)
 
@@ -1633,6 +1483,16 @@ export class CapsuleAgentA2ARequestHandler implements A2ARequestHandler {
           "completed",
         )
         yield completedStatus
+
+        // Execute hooks asynchronously (fire-and-forget)
+        const finalTask = this.taskStorage.getTask(currentTaskRef.current.id)
+        if (finalTask) {
+          this.hookExecutorService.executeHooksAsync(
+            finalTask,
+            finalTask.artifacts || [],
+            taskSource,
+          )
+        }
       }
     } catch (error) {
       // Clean up abort controller and status updates on error
