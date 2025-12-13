@@ -108,7 +108,7 @@ export class HookExecutorService {
     if (!agentInfo.hooks || !Array.isArray(agentInfo.hooks)) {
       return []
     }
-    return agentInfo.hooks as HookConfig[]
+    return agentInfo.hooks
   }
 
   private getContextHooks(contextId: string): HookConfig[] {
@@ -120,6 +120,7 @@ export class HookExecutorService {
     // Metadata.hooks should be an array of HookConfig
     const hooks = context.metadata.hooks
     if (Array.isArray(hooks)) {
+      // Type assertion needed here since metadata is Record<string, unknown>
       return hooks as HookConfig[]
     }
 
@@ -131,7 +132,7 @@ export class HookExecutorService {
     if (!schedule?.hooks || !Array.isArray(schedule.hooks)) {
       return []
     }
-    return schedule.hooks as HookConfig[]
+    return schedule.hooks
   }
 
   private executeHook(

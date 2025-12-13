@@ -12,6 +12,7 @@ import {
   transformConfigToAgentInfo,
 } from "./config-schema.ts"
 import { ProviderService } from "./provider-service.ts"
+import type { HookConfig } from "../hooks/hook-types.ts"
 
 // Types for agent configuration
 interface AgentInfoRow {
@@ -31,7 +32,7 @@ export type AgentInfo = {
   model_parameters?: Record<string, unknown>
   capabilities: Capability[]
   built_in_prompts_enabled: boolean
-  hooks?: unknown[] // Will be validated as HookConfig[] when used
+  hooks?: HookConfig[]
 }
 
 export class AgentConfigService {

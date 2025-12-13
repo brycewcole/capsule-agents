@@ -1,4 +1,5 @@
 import { getDb } from "../infrastructure/db.ts"
+import type { HookConfig } from "../hooks/hook-types.ts"
 
 export interface Schedule {
   id: string
@@ -9,7 +10,7 @@ export interface Schedule {
   contextId?: string
   backoffEnabled: boolean
   backoffSchedule?: number[]
-  hooks?: unknown[] // HookConfig[]
+  hooks?: HookConfig[]
   lastRunAt?: number
   nextRunAt?: number
   runCount: number
@@ -26,7 +27,7 @@ export interface ScheduleInput {
   contextId?: string
   backoffEnabled?: boolean
   backoffSchedule?: number[]
-  hooks?: unknown[] // HookConfig[]
+  hooks?: HookConfig[]
 }
 
 interface ScheduleRow {
