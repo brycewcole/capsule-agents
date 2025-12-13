@@ -8,16 +8,13 @@ import { Button } from "./ui/button.tsx"
 import {
   Bot,
   Brain,
-  Edit,
   FileText,
   HelpCircle,
   Loader2,
   Pencil,
-  Plus,
   Save,
   Search,
   Terminal,
-  Trash,
   Zap,
 } from "lucide-react"
 import { toast } from "sonner"
@@ -1090,7 +1087,8 @@ export default function AgentEditor() {
             <div className="flex justify-end mt-4">
               <Button
                 variant="outline"
-                onClick={() => setShowNoModelsModal(false)}
+                onClick={() =>
+                  setShowNoModelsModal(false)}
               >
                 Got it
               </Button>

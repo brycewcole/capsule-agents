@@ -11,7 +11,12 @@ import {
   CardHeader,
   CardTitle,
 } from "./ui/card.tsx"
-import { Select, SelectContent, SelectItem, SelectTrigger } from "./ui/select.tsx"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+} from "./ui/select.tsx"
 import {
   Dialog,
   DialogContent,
@@ -118,7 +123,7 @@ export function HooksConfigBody({ hooks, onChange }: HooksConfigProps) {
         columns={[
           {
             header: "Type",
-            accessor: (hook) => "Discord",
+            accessor: () => "Discord",
           },
           {
             header: "Webhook URL",
@@ -142,7 +147,8 @@ export function HooksConfigBody({ hooks, onChange }: HooksConfigProps) {
                 {editIndex !== null ? "Edit Hook" : "Add Hook"}
               </DialogTitle>
               <DialogDescription className="text-base">
-                Configure how task results are delivered to your external service.
+                Configure how task results are delivered to your external
+                service.
               </DialogDescription>
             </DialogHeader>
           </div>
@@ -167,7 +173,9 @@ export function HooksConfigBody({ hooks, onChange }: HooksConfigProps) {
                   <div className="flex items-center gap-3">
                     <Webhook className="h-5 w-5 text-muted-foreground" />
                     <span className="font-semibold">
-                      {selectedOption ? selectedOption.label : "Select hook type"}
+                      {selectedOption
+                        ? selectedOption.label
+                        : "Select hook type"}
                     </span>
                   </div>
                 </SelectTrigger>
@@ -205,8 +213,8 @@ export function HooksConfigBody({ hooks, onChange }: HooksConfigProps) {
                 <div className="flex items-start gap-2 text-sm text-muted-foreground">
                   <Info className="mt-0.5 h-4 w-4" />
                   <span>
-                    From Discord: Server Settings → Integrations → Webhooks. Paste the
-                    full URL from the channel you want updates in.
+                    From Discord: Server Settings → Integrations → Webhooks.
+                    Paste the full URL from the channel you want updates in.
                   </span>
                 </div>
               </div>
@@ -214,7 +222,11 @@ export function HooksConfigBody({ hooks, onChange }: HooksConfigProps) {
           </div>
 
           <DialogFooter className="gap-2 border-t px-6 py-4 sm:flex-row sm:justify-end">
-            <Button variant="ghost" onClick={handleCloseDialog} className="h-10 px-4">
+            <Button
+              variant="ghost"
+              onClick={handleCloseDialog}
+              className="h-10 px-4"
+            >
               Cancel
             </Button>
             <Button
@@ -242,11 +254,13 @@ export function HooksConfig({ hooks, onChange }: HooksConfigProps) {
               Output Hooks
             </CardTitle>
             <CardDescription className="mt-1 space-y-1">
-              <p>Send task results to external services whenever a run completes.</p>
+              <p>
+                Send task results to external services whenever a run completes.
+              </p>
               <p className="text-muted-foreground">
-                Hooks set here travel with this context/schedule. They layer on top of
-                the agent’s defaults so you can override or specialize delivery for this
-                experience without touching the global config.
+                Hooks set here travel with this context/schedule. They layer on
+                top of the agent’s defaults so you can override or specialize
+                delivery for this experience without touching the global config.
               </p>
             </CardDescription>
           </div>

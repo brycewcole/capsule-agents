@@ -42,7 +42,10 @@ export class HookExecutorService {
     artifacts: A2A.Artifact[],
     source?: TaskCompletionPayload["source"],
   ): Promise<HookExecutionResult[]> {
-    const hooks = this.collectApplicableHooks(task.contextId, source?.scheduleId)
+    const hooks = this.collectApplicableHooks(
+      task.contextId,
+      source?.scheduleId,
+    )
 
     if (hooks.length === 0) {
       return []
