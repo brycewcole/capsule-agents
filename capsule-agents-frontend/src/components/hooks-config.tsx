@@ -11,13 +11,7 @@ import {
   CardHeader,
   CardTitle,
 } from "./ui/card.tsx"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "./ui/select.tsx"
+import { Select, SelectContent, SelectItem, SelectTrigger } from "./ui/select.tsx"
 import {
   Dialog,
   DialogContent,
@@ -26,8 +20,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from "./ui/dialog.tsx"
-import { Webhook } from "lucide-react"
 import { ItemsTable } from "./ui/items-table.tsx"
+import { Badge } from "./ui/badge.tsx"
+import { Info, Webhook } from "lucide-react"
 
 export interface HookConfig {
   type: "discord"
@@ -61,6 +56,7 @@ export function HooksConfig({ hooks, onChange }: HooksConfigProps) {
   const [selectedType, setSelectedType] = useState<HookType | null>(null)
   const [webhookUrl, setWebhookUrl] = useState("")
   const [editIndex, setEditIndex] = useState<number | null>(null)
+  const selectedOption = HOOK_TYPES.find((type) => type.value === selectedType)
 
   const handleOpenDialog = () => {
     setEditIndex(null)
@@ -146,46 +142,53 @@ export function HooksConfig({ hooks, onChange }: HooksConfigProps) {
           onAdd={handleOpenDialog}
           onEdit={handleEditHook}
           onDelete={handleRemoveHook}
-          addButtonLabel="Add Hook"
+          addButtonLabel="Add"
           emptyMessage="No hooks configured. Add a hook to send task results to external services."
         />
       </CardContent>
 
       {/* Add/Edit Hook Dialog */}
       <Dialog open={showDialog} onOpenChange={setShowDialog}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>
-              {editIndex !== null ? "Edit Hook" : "Add Hook"}
-            </DialogTitle>
-            <DialogDescription>
-              Configure a hook to send task results to an external service
-            </DialogDescription>
-          </DialogHeader>
+        <DialogContent className="max-w-lg gap-0 p-0">
+          <div className="px-6 pt-6 pb-4">
+            <DialogHeader className="space-y-1.5 text-left">
+              <DialogTitle className="text-2xl">
+                {editIndex !== null ? "Edit Hook" : "Add Hook"}
+              </DialogTitle>
+              <DialogDescription className="text-base">
+                Configure how task results are delivered to your external service.
+              </DialogDescription>
+            </DialogHeader>
+          </div>
 
-          <div className="space-y-4 py-4">
+          <div className="space-y-5 px-6 pb-2">
             <div className="space-y-2">
-              <Label>Hook Type</Label>
+              <div className="flex items-center justify-between">
+                <Label className="text-sm font-medium">Hook Type</Label>
+                <Badge variant="secondary" className="text-[11px]">
+                  Required
+                </Badge>
+              </div>
+              <p className="text-sm text-muted-foreground">
+                Choose where task results will be sent.
+              </p>
               <Select
                 value={selectedType || ""}
                 onValueChange={handleSelectType}
                 disabled={editIndex !== null}
               >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select hook type..." />
+                <SelectTrigger className="h-12 w-full justify-between">
+                  <div className="flex items-center gap-3">
+                    <Webhook className="h-5 w-5 text-muted-foreground" />
+                    <span className="font-semibold">
+                      {selectedOption ? selectedOption.label : "Select hook type"}
+                    </span>
+                  </div>
                 </SelectTrigger>
                 <SelectContent>
                   {HOOK_TYPES.map((type) => (
                     <SelectItem key={type.value} value={type.value}>
-                      <div className="flex items-center gap-2">
-                        <Webhook className="h-4 w-4" />
-                        <div>
-                          <div className="font-medium">{type.label}</div>
-                          <div className="text-xs text-muted-foreground">
-                            {type.description}
-                          </div>
-                        </div>
-                      </div>
+                      {type.label}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -194,7 +197,14 @@ export function HooksConfig({ hooks, onChange }: HooksConfigProps) {
 
             {selectedType === "discord" && (
               <div className="space-y-2">
-                <Label htmlFor="webhook-url">Webhook URL</Label>
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="webhook-url" className="text-sm font-medium">
+                    Webhook URL
+                  </Label>
+                  <Badge variant="outline" className="text-[11px]">
+                    Keep Private
+                  </Badge>
+                </div>
                 <Input
                   id="webhook-url"
                   type="url"
@@ -204,22 +214,27 @@ export function HooksConfig({ hooks, onChange }: HooksConfigProps) {
                   onKeyDown={(e) => {
                     if (e.key === "Enter") handleSaveHook()
                   }}
+                  className="h-11"
                 />
-                <p className="text-xs text-muted-foreground">
-                  Get webhook URL from Discord Server Settings → Integrations →
-                  Webhooks
-                </p>
+                <div className="flex items-start gap-2 text-sm text-muted-foreground">
+                  <Info className="mt-0.5 h-4 w-4" />
+                  <span>
+                    From Discord: Server Settings → Integrations → Webhooks. Paste the
+                    full URL from the channel you want updates in.
+                  </span>
+                </div>
               </div>
             )}
           </div>
 
-          <DialogFooter>
-            <Button variant="outline" onClick={handleCloseDialog}>
+          <DialogFooter className="gap-2 border-t px-6 py-4 sm:flex-row sm:justify-end">
+            <Button variant="ghost" onClick={handleCloseDialog} className="h-10 px-4">
               Cancel
             </Button>
             <Button
               onClick={handleSaveHook}
               disabled={!selectedType || !webhookUrl.trim()}
+              className="h-10 px-4"
             >
               {editIndex !== null ? "Save Changes" : "Add Hook"}
             </Button>
