@@ -26,6 +26,7 @@ export function createAgentController(agentConfigService: AgentConfigService) {
         matchesModel: prompt.matchesModel,
         willApply: agentInfo.built_in_prompts_enabled && prompt.matchesModel,
       })),
+      hooks: agentInfo.hooks,
     }
   }
 
@@ -44,6 +45,7 @@ export function createAgentController(agentConfigService: AgentConfigService) {
     console.info("PUT /api/agent - Updating agent configuration")
     try {
       const body = await c.req.json()
+      console.info("Request body hooks:", body.hooks)
       const agentInfo = {
         name: body.name,
         description: body.description,
@@ -53,8 +55,11 @@ export function createAgentController(agentConfigService: AgentConfigService) {
         built_in_prompts_enabled: body.builtInPromptsEnabled !== undefined
           ? !!body.builtInPromptsEnabled
           : true,
+        hooks: body.hooks,
       }
+      console.info("Parsed agentInfo hooks:", agentInfo.hooks)
       const updatedInfo = agentConfigService.updateAgentInfo(agentInfo)
+      console.info("Updated info hooks:", updatedInfo.hooks)
       return c.json(toAgentResponse(updatedInfo))
     } catch (error) {
       console.error("Error updating agent info:", error)
