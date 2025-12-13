@@ -27,7 +27,7 @@ import { toast } from "sonner"
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover.tsx"
 import { CronBuilder } from "./cron-builder.tsx"
 import { BackoffConfig } from "./backoff-config.tsx"
-import { HooksConfig } from "./hooks-config.tsx"
+import { HooksConfigBody } from "./hooks-config.tsx"
 import {
   createSchedule,
   deleteSchedule,
@@ -444,7 +444,15 @@ export default function ScheduleManager() {
               onScheduleChange={setBackoffSchedule}
             />
 
-            <HooksConfig hooks={hooks} onChange={setHooks} />
+            <div className="space-y-3">
+              <div className="space-y-1">
+                <Label>Output Hooks</Label>
+                <p className="text-sm text-muted-foreground">
+                  Send scheduled run results to external services.
+                </p>
+              </div>
+              <HooksConfigBody hooks={hooks} onChange={setHooks} />
+            </div>
           </div>
 
           <div className="flex justify-end gap-2">

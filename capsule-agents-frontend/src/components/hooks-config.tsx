@@ -51,7 +51,8 @@ const HOOK_TYPES: HookTypeOption[] = [
   },
 ]
 
-export function HooksConfig({ hooks, onChange }: HooksConfigProps) {
+// Body-only component (no card wrapper) for embedding inside other layouts/dialogs
+export function HooksConfigBody({ hooks, onChange }: HooksConfigProps) {
   const [showDialog, setShowDialog] = useState(false)
   const [selectedType, setSelectedType] = useState<HookType | null>(null)
   const [webhookUrl, setWebhookUrl] = useState("")
@@ -111,41 +112,26 @@ export function HooksConfig({ hooks, onChange }: HooksConfigProps) {
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <div className="flex items-center justify-between">
-          <div>
-            <CardTitle className="flex items-center gap-2">
-              <Webhook className="h-5 w-5" />
-              Output Hooks
-            </CardTitle>
-            <CardDescription className="mt-1">
-              Send task results to external services when tasks complete
-            </CardDescription>
-          </div>
-        </div>
-      </CardHeader>
-      <CardContent>
-        <ItemsTable
-          items={hooks}
-          columns={[
-            {
-              header: "Type",
-              accessor: (hook) => "Discord",
-            },
-            {
-              header: "Webhook URL",
-              accessor: (hook) => hook.webhookUrl,
-            },
-          ]}
-          getEnabled={(hook) => hook.enabled !== false}
-          onAdd={handleOpenDialog}
-          onEdit={handleEditHook}
-          onDelete={handleRemoveHook}
-          addButtonLabel="Add"
-          emptyMessage="No hooks configured. Add a hook to send task results to external services."
-        />
-      </CardContent>
+    <>
+      <ItemsTable
+        items={hooks}
+        columns={[
+          {
+            header: "Type",
+            accessor: (hook) => "Discord",
+          },
+          {
+            header: "Webhook URL",
+            accessor: (hook) => hook.webhookUrl,
+          },
+        ]}
+        getEnabled={(hook) => hook.enabled !== false}
+        onAdd={handleOpenDialog}
+        onEdit={handleEditHook}
+        onDelete={handleRemoveHook}
+        addButtonLabel="Add"
+        emptyMessage="No hooks configured. Add a hook to send task results to external services."
+      />
 
       {/* Add/Edit Hook Dialog */}
       <Dialog open={showDialog} onOpenChange={setShowDialog}>
@@ -241,6 +227,34 @@ export function HooksConfig({ hooks, onChange }: HooksConfigProps) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+    </>
+  )
+}
+
+export function HooksConfig({ hooks, onChange }: HooksConfigProps) {
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-center justify-between">
+          <div>
+            <CardTitle className="flex items-center gap-2">
+              <Webhook className="h-5 w-5" />
+              Output Hooks
+            </CardTitle>
+            <CardDescription className="mt-1 space-y-1">
+              <p>Send task results to external services whenever a run completes.</p>
+              <p className="text-muted-foreground">
+                Hooks set here travel with this context/schedule. They layer on top of
+                the agent’s defaults so you can override or specialize delivery for this
+                experience without touching the global config.
+              </p>
+            </CardDescription>
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent>
+        <HooksConfigBody hooks={hooks} onChange={onChange} />
+      </CardContent>
     </Card>
   )
 }
