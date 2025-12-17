@@ -1,6 +1,7 @@
 import { z } from "zod"
 import type { AgentInfo } from "./agent-config.ts"
 import { Capability as AgentCapability } from "../lib/capability-types.ts"
+import { HooksArraySchema } from "../hooks/hook-types.ts"
 
 export const ModelConfigSchema = z.object({
   name: z.string().min(1, "Model name is required"),
@@ -49,6 +50,7 @@ export const ScheduleConfigSchema = z.object({
   enabled: z.boolean().default(true),
   context_id: z.string().optional(),
   backoff: ScheduleBackoffConfigSchema.optional().default({ enabled: false }),
+  hooks: HooksArraySchema.optional(),
 })
 
 export const AgentConfigSchema = z.object({
@@ -66,6 +68,7 @@ export const AgentConfigSchema = z.object({
   builtInPrompts: DefaultPromptsConfigSchema.optional().default({
     enabled: true,
   }),
+  hooks: HooksArraySchema.optional(),
 })
 
 export const ConfigFileSchema = z.object({
@@ -178,6 +181,7 @@ export function transformConfigToAgentInfo(
     model_parameters: config.model?.parameters,
     capabilities: capabilities,
     built_in_prompts_enabled: config.builtInPrompts?.enabled ?? true,
+    hooks: config.hooks,
   }
 }
 
@@ -233,6 +237,7 @@ export function transformAgentInfoToConfig(agentInfo: AgentInfo): {
     builtInPrompts: {
       enabled: agentInfo.built_in_prompts_enabled ?? true,
     },
+    hooks: agentInfo.hooks as AgentConfig["hooks"],
   }
 
   if (agentInfo.model_name) {

@@ -58,7 +58,9 @@ COPY --from=frontend-builder --chown=deno:deno /home/app/capsule-agents-frontend
 USER root
 RUN apt-get update \
   && apt-get install -y --no-install-recommends ripgrep \
-  && rm -rf /var/lib/apt/lists/*
+  && rm -rf /var/lib/apt/lists/* \
+  && mkdir -p /app/node_modules /app/data /deno-dir \
+  && chown -R deno:deno /app /deno-dir
 USER deno
 
 # Create default config directory and ensure it's writable

@@ -12,6 +12,7 @@ import {
   transformConfigToAgentInfo,
 } from "./config-schema.ts"
 import { ProviderService } from "./provider-service.ts"
+import type { HookConfig } from "../hooks/hook-types.ts"
 
 // Types for agent configuration
 interface AgentInfoRow {
@@ -21,6 +22,7 @@ interface AgentInfoRow {
   model_parameters: string
   capabilities: string
   built_in_prompts_enabled: number | null
+  hooks: string | null
 }
 
 export type AgentInfo = {
@@ -30,6 +32,7 @@ export type AgentInfo = {
   model_parameters?: Record<string, unknown>
   capabilities: Capability[]
   built_in_prompts_enabled: boolean
+  hooks?: HookConfig[]
 }
 
 export class AgentConfigService {
@@ -119,7 +122,7 @@ export class AgentConfigService {
   getAgentInfo(): AgentInfo {
     try {
       const stmt = this.db.prepare(`
-        SELECT name, description, model_name, model_parameters, tools as capabilities, built_in_prompts_enabled
+        SELECT name, description, model_name, model_parameters, tools as capabilities, built_in_prompts_enabled, hooks
         FROM agent_info WHERE key = 1
       `)
 
@@ -146,6 +149,7 @@ export class AgentConfigService {
 
       const capabilities = JSON.parse(row.capabilities || "[]")
       const modelParameters = JSON.parse(row.model_parameters || "{}")
+      const hooks = row.hooks ? JSON.parse(row.hooks) : undefined
 
       const expandedCapabilities = expandEnvVarsInObject(capabilities)
       const builtInPromptsEnabled = row.built_in_prompts_enabled !== 0
@@ -157,6 +161,7 @@ export class AgentConfigService {
         model_parameters: modelParameters,
         capabilities: expandedCapabilities,
         built_in_prompts_enabled: builtInPromptsEnabled,
+        hooks: hooks,
       }
 
       console.debug("AgentConfigService.getAgentInfo() returning:", {
@@ -186,8 +191,8 @@ export class AgentConfigService {
 
       console.info("Preparing database update...")
       const stmt = this.db.prepare(`
-        INSERT OR REPLACE INTO agent_info(key, name, description, model_name, model_parameters, tools, built_in_prompts_enabled)
-        VALUES(1, ?, ?, ?, ?, ?, ?)
+        INSERT OR REPLACE INTO agent_info(key, name, description, model_name, model_parameters, tools, built_in_prompts_enabled, hooks)
+        VALUES(1, ?, ?, ?, ?, ?, ?, ?)
       `)
 
       console.info("Executing database update...")
@@ -198,6 +203,7 @@ export class AgentConfigService {
         JSON.stringify(info.model_parameters || {}),
         JSON.stringify(info.capabilities),
         builtInPromptsEnabled ? 1 : 0,
+        info.hooks ? JSON.stringify(info.hooks) : null,
       )
 
       console.info("Database update completed successfully")

@@ -177,6 +177,8 @@ function createTables(db: Database) {
 
   ensureMessagesMetadataColumn(db)
   ensureAgentInfoBuiltInPromptsColumn(db)
+  ensureAgentInfoHooksColumn(db)
+  ensureScheduleHooksColumn(db)
 
   console.log("Clean database schema created successfully.")
 }
@@ -218,5 +220,27 @@ function ensureAgentInfoBuiltInPromptsColumn(db: Database) {
     db.exec(
       "ALTER TABLE agent_info ADD COLUMN built_in_prompts_enabled INTEGER NOT NULL DEFAULT 1",
     )
+  }
+}
+
+function ensureAgentInfoHooksColumn(db: Database) {
+  const columns = db.prepare("PRAGMA table_info(agent_info)").all() as {
+    name: string
+  }[]
+
+  const hasHooks = columns.some((column) => column.name === "hooks")
+  if (!hasHooks) {
+    db.exec("ALTER TABLE agent_info ADD COLUMN hooks TEXT")
+  }
+}
+
+function ensureScheduleHooksColumn(db: Database) {
+  const columns = db.prepare("PRAGMA table_info(schedules)").all() as {
+    name: string
+  }[]
+
+  const hasHooks = columns.some((column) => column.name === "hooks")
+  if (!hasHooks) {
+    db.exec("ALTER TABLE schedules ADD COLUMN hooks TEXT")
   }
 }

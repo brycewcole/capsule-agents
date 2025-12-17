@@ -37,6 +37,7 @@ export class ScheduleService {
             contextId: configSchedule.context_id,
             backoffEnabled: configSchedule.backoff?.enabled || false,
             backoffSchedule: configSchedule.backoff?.schedule,
+            hooks: configSchedule.hooks,
           }
           this.scheduleRepository.upsertScheduleByName(scheduleInput)
           console.info(`Loaded schedule from config: ${configSchedule.name}`)
@@ -209,9 +210,26 @@ export class ScheduleService {
       )
 
       // Send message
-      await handler.sendMessage({
+      const result = await handler.sendMessage({
         message,
+        metadata: {
+          source: {
+            type: "schedule",
+            scheduleId: schedule.id,
+            scheduleName: schedule.name,
+          },
+        },
       })
+
+      // Treat non-completed tasks as failures so backoff/retries work correctly
+      if (result && "kind" in result && result.kind === "task") {
+        const state = result.status.state
+        if (state !== "completed") {
+          throw new Error(
+            `Schedule ${schedule.name} produced task ${result.id} in state ${state}`,
+          )
+        }
+      }
 
       // Record successful execution
       this.scheduleRepository.recordExecution(schedule.id, true)
