@@ -1,4 +1,5 @@
 import { parse as parseYaml } from "jsr:@std/yaml@1.0.10"
+import { expandPromptVariables } from "./prompt-variables.ts"
 
 export type ModelFilterConfig = {
   /**
@@ -163,9 +164,10 @@ export function buildSystemPrompt(options: {
   }
 
   const combined = segments.join("\n\n").trim()
+  const expanded = expandPromptVariables(combined)
 
   return {
-    prompt: combined,
+    prompt: expanded,
     prompts: usage,
   }
 }
