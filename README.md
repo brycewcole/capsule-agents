@@ -34,6 +34,8 @@ Capsule Agents is designed to make it as easy as possible to create [Agent-to-Ag
 
 ## Quick Start
 
+For more info, read our docs: https://capsuleagents.com/guides/quick-start!
+
 1. Ensure [Docker](https://docs.docker.com/get-started/get-docker/) is installed on your system
 
 2. **Set up environment variables**
