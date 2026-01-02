@@ -39,6 +39,9 @@ function App() {
 
   // Update document title with agent name
   useEffect(() => {
+    // Only fetch agent info after authentication
+    if (!isAuthenticated) return
+
     const updateTitle = async () => {
       try {
         const agentInfo = await getAgentInfo()
@@ -52,10 +55,13 @@ function App() {
     }
 
     updateTitle()
-  }, [])
+  }, [isAuthenticated])
 
   // Restore last selected chat on first load or fall back to most recent chat
   useEffect(() => {
+    // Only restore chats after authentication
+    if (!isAuthenticated) return
+
     let isActive = true
 
     const restoreLastOrLatest = async () => {
@@ -96,7 +102,7 @@ function App() {
       isActive = false
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [isAuthenticated])
 
   // Persist currently selected chat id
   useEffect(() => {
