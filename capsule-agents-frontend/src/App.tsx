@@ -6,6 +6,7 @@ import ChatInterface from "./components/chat-interface.tsx"
 import AgentEditor from "./components/agent-editor.tsx"
 import ScheduleManager from "./components/schedule-manager.tsx"
 import WorkspaceManager from "./components/workspace-manager.tsx"
+import { HooksManager } from "./components/hooks-manager.tsx"
 import { LoginDialog } from "./components/login-dialog.tsx"
 import { Toaster } from "./components/ui/toaster.tsx"
 import {
@@ -201,6 +202,7 @@ function App() {
                       <div className="flex flex-col gap-6">
                         <WorkspaceManager />
                         <ScheduleManager />
+                        <HooksManager />
                       </div>
                     </div>
                   </div>

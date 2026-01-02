@@ -43,7 +43,6 @@ import {
   updateAgentInfo,
 } from "../lib/api.ts"
 import { CapabilityDialog } from "./capability-dialog.tsx"
-import { HooksConfig } from "./hooks-config.tsx"
 import { ItemsTable } from "./ui/items-table.tsx"
 
 export default function AgentEditor() {
@@ -92,7 +91,6 @@ export default function AgentEditor() {
   const [builtInPromptsEnabled, setDefaultPromptsEnabled] = useState(true)
   const [builtInPrompts, setDefaultPrompts] = useState<DefaultPrompt[]>([])
   const [showDefaultPromptDialog, setShowDefaultPromptDialog] = useState(false)
-  const [hooks, setHooks] = useState<import("../lib/api.ts").HookConfig[]>([])
 
   const handleSaveNameDescription = async () => {
     // Validate agent name before saving
@@ -113,7 +111,6 @@ export default function AgentEditor() {
         modelParameters: {},
         capabilities: capabilities,
         builtInPromptsEnabled,
-        hooks,
       }
       const updated = await updateAgentInfo(agentInfo)
 
@@ -157,7 +154,6 @@ export default function AgentEditor() {
     nextName?: string,
     nextDescription?: string,
     nextDefaultPromptsEnabled?: boolean,
-    nextHooks?: import("../lib/api.ts").HookConfig[],
   ) => {
     try {
       const finalName = nextName ?? name
@@ -166,7 +162,6 @@ export default function AgentEditor() {
       const finalCapabilities = nextCapabilities ?? capabilities
       const finalDefaultPromptsEnabled = nextDefaultPromptsEnabled ??
         builtInPromptsEnabled
-      const finalHooks = nextHooks ?? hooks
 
       const agentInfo: AgentInfo = {
         name: finalName,
@@ -175,7 +170,6 @@ export default function AgentEditor() {
         modelParameters: {},
         capabilities: finalCapabilities,
         builtInPromptsEnabled: finalDefaultPromptsEnabled,
-        hooks: finalHooks,
       }
       const updated = await updateAgentInfo(agentInfo)
 
@@ -228,7 +222,6 @@ export default function AgentEditor() {
           agentInfo.builtInPromptsEnabled ?? true,
         )
         setDefaultPrompts(agentInfo.builtInPrompts ?? [])
-        setHooks(agentInfo.hooks ?? [])
 
         // Update document title with agent name from config
         if (agentInfo.name) {
@@ -926,27 +919,6 @@ export default function AgentEditor() {
             </div>
           </div>
         </section>
-
-        {/* Hooks Configuration */}
-        <HooksConfig
-          hooks={hooks}
-          onChange={(newHooks) => {
-            setHooks(newHooks)
-            toast.success("Hooks updated")
-            setTimeout(
-              () =>
-                autoSaveAgent(
-                  undefined,
-                  undefined,
-                  undefined,
-                  undefined,
-                  undefined,
-                  newHooks,
-                ),
-              0,
-            )
-          }}
-        />
 
         <Dialog
           open={showDefaultPromptDialog}
