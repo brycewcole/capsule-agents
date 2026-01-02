@@ -11,10 +11,7 @@ import {
   FileText,
   HelpCircle,
   Loader2,
-  Pencil,
   Save,
-  Search,
-  Terminal,
   Zap,
 } from "lucide-react"
 import { toast } from "sonner"
@@ -86,11 +83,12 @@ export default function AgentEditor() {
   const [mcpHeaders, setMcpHeaders] = useState<Record<string, string>>({}) // For MCP headers
 
   // Prebuilt capabilities state
-  const [execEnabled, setExecEnabled] = useState(false)
+  const [_execEnabled, setExecEnabled] = useState(false)
   const [memoryEnabled, setMemoryEnabled] = useState(false)
-  const [readFileEnabled, setReadFileEnabled] = useState(false)
-  const [grepFilesEnabled, setGrepFilesEnabled] = useState(false)
-  const [editFileEnabled, setEditFileEnabled] = useState(false)
+  const [_readFileEnabled, setReadFileEnabled] = useState(false)
+  const [_grepFilesEnabled, setGrepFilesEnabled] = useState(false)
+  const [_editFileEnabled, setEditFileEnabled] = useState(false)
+  const [fileSystemEnabled, setFileSystemEnabled] = useState(false)
   const [builtInPromptsEnabled, setDefaultPromptsEnabled] = useState(true)
   const [builtInPrompts, setDefaultPrompts] = useState<DefaultPrompt[]>([])
   const [showDefaultPromptDialog, setShowDefaultPromptDialog] = useState(false)
@@ -239,36 +237,35 @@ export default function AgentEditor() {
 
         // Set prebuilt capability states based on existing capabilities
         const currentCapabilities = agentInfo.capabilities || []
-        setExecEnabled(
-          currentCapabilities.some((capability) =>
-            isPrebuiltCapability(capability) &&
-            capability.subtype === "exec" && capability.enabled
-          ),
+        const exec = currentCapabilities.some((capability) =>
+          isPrebuiltCapability(capability) &&
+          capability.subtype === "exec" && capability.enabled
         )
-        setMemoryEnabled(
-          currentCapabilities.some((capability) =>
-            isPrebuiltCapability(capability) &&
-            capability.subtype === "memory" && capability.enabled
-          ),
+        const memory = currentCapabilities.some((capability) =>
+          isPrebuiltCapability(capability) &&
+          capability.subtype === "memory" && capability.enabled
         )
-        setReadFileEnabled(
-          currentCapabilities.some((capability) =>
-            isPrebuiltCapability(capability) &&
-            capability.subtype === "read_file" && capability.enabled
-          ),
+        const readFile = currentCapabilities.some((capability) =>
+          isPrebuiltCapability(capability) &&
+          capability.subtype === "read_file" && capability.enabled
         )
-        setGrepFilesEnabled(
-          currentCapabilities.some((capability) =>
-            isPrebuiltCapability(capability) &&
-            capability.subtype === "grep_files" && capability.enabled
-          ),
+        const grepFiles = currentCapabilities.some((capability) =>
+          isPrebuiltCapability(capability) &&
+          capability.subtype === "grep_files" && capability.enabled
         )
-        setEditFileEnabled(
-          currentCapabilities.some((capability) =>
-            isPrebuiltCapability(capability) &&
-            capability.subtype === "edit_file" && capability.enabled
-          ),
+        const editFile = currentCapabilities.some((capability) =>
+          isPrebuiltCapability(capability) &&
+          capability.subtype === "edit_file" && capability.enabled
         )
+
+        setExecEnabled(exec)
+        setMemoryEnabled(memory)
+        setReadFileEnabled(readFile)
+        setGrepFilesEnabled(grepFiles)
+        setEditFileEnabled(editFile)
+
+        // Set file system enabled if all file-related capabilities are enabled
+        setFileSystemEnabled(readFile && grepFiles && editFile && exec)
 
         // Set original state for change detection
         setOriginalState({
@@ -559,6 +556,74 @@ export default function AgentEditor() {
     setTimeout(() => autoSaveAgent(newCapabilities), 0)
   }
 
+  // Handle bundled file system capabilities toggle
+  const handleFileSystemToggle = (enabled: boolean) => {
+    let newCapabilities = [...capabilities]
+
+    const subtypes: Array<"exec" | "read_file" | "grep_files" | "edit_file"> = [
+      "exec",
+      "read_file",
+      "grep_files",
+      "edit_file",
+    ]
+
+    subtypes.forEach((subtype) => {
+      const exists = newCapabilities.some((capability) =>
+        isPrebuiltCapability(capability) && capability.subtype === subtype
+      )
+
+      if (enabled) {
+        if (!exists) {
+          const capabilityConfig = {
+            exec: { name: "exec", displayName: "Interactive Shell" },
+            read_file: { name: "read_file", displayName: "Read Files" },
+            grep_files: { name: "grep_files", displayName: "Search Files" },
+            edit_file: { name: "edit_file", displayName: "Edit Files" },
+          }
+          const config = capabilityConfig[subtype]
+          const newCapability: PrebuiltCapability = {
+            name: config.name,
+            enabled: true,
+            type: "prebuilt",
+            subtype: subtype,
+          }
+          newCapabilities.push(newCapability)
+        } else {
+          newCapabilities = newCapabilities.map((capability) =>
+            isPrebuiltCapability(capability) && capability.subtype === subtype
+              ? { ...capability, enabled: true }
+              : capability
+          )
+        }
+      } else {
+        newCapabilities = newCapabilities.map((capability) =>
+          isPrebuiltCapability(capability) && capability.subtype === subtype
+            ? { ...capability, enabled: false }
+            : capability
+        )
+      }
+    })
+
+    setCapabilities(newCapabilities)
+    setExecEnabled(enabled)
+    setReadFileEnabled(enabled)
+    setGrepFilesEnabled(enabled)
+    setEditFileEnabled(enabled)
+    setFileSystemEnabled(enabled)
+
+    toast.success(
+      enabled ? "File system access enabled" : "File system access disabled",
+      {
+        description: enabled
+          ? "Agent can read, edit, search files, and execute shell commands."
+          : "All file system access has been disabled.",
+      },
+    )
+
+    // Auto-save when capability toggles change
+    setTimeout(() => autoSaveAgent(newCapabilities), 0)
+  }
+
   const handleDefaultPromptToggle = (enabled: boolean) => {
     setDefaultPromptsEnabled(enabled)
     toast.success(
@@ -739,19 +804,17 @@ export default function AgentEditor() {
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
-                    <Terminal className="h-5 w-5 text-muted-foreground" />
+                    <FileText className="h-5 w-5 text-muted-foreground" />
                     <div className="space-y-0.5">
-                      <Label className="text-sm">Interactive Shell</Label>
+                      <Label className="text-sm">File System Access</Label>
                       <p className="text-xs text-muted-foreground">
-                        Allows the agent to execute shell commands in its
-                        container
+                        Read, edit, search files, and execute shell commands
                       </p>
                     </div>
                   </div>
                   <Switch
-                    checked={execEnabled}
-                    onCheckedChange={(checked) =>
-                      handlePrebuiltCapabilityToggle("exec", checked)}
+                    checked={fileSystemEnabled}
+                    onCheckedChange={handleFileSystemToggle}
                   />
                 </div>
                 <div className="flex items-center justify-between opacity-60">
@@ -774,54 +837,6 @@ export default function AgentEditor() {
                     onCheckedChange={(checked) =>
                       handlePrebuiltCapabilityToggle("memory", checked)}
                     disabled
-                  />
-                </div>
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <FileText className="h-5 w-5 text-muted-foreground" />
-                    <div className="space-y-0.5">
-                      <Label className="text-sm">Read Files</Label>
-                      <p className="text-xs text-muted-foreground">
-                        Allows the agent to read file contents with pagination
-                      </p>
-                    </div>
-                  </div>
-                  <Switch
-                    checked={readFileEnabled}
-                    onCheckedChange={(checked) =>
-                      handlePrebuiltCapabilityToggle("read_file", checked)}
-                  />
-                </div>
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <Search className="h-5 w-5 text-muted-foreground" />
-                    <div className="space-y-0.5">
-                      <Label className="text-sm">Search Files</Label>
-                      <p className="text-xs text-muted-foreground">
-                        Enables searching for patterns in files using ripgrep
-                      </p>
-                    </div>
-                  </div>
-                  <Switch
-                    checked={grepFilesEnabled}
-                    onCheckedChange={(checked) =>
-                      handlePrebuiltCapabilityToggle("grep_files", checked)}
-                  />
-                </div>
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <Pencil className="h-5 w-5 text-muted-foreground" />
-                    <div className="space-y-0.5">
-                      <Label className="text-sm">Edit Files</Label>
-                      <p className="text-xs text-muted-foreground">
-                        Allows the agent to edit files via string replacement
-                      </p>
-                    </div>
-                  </div>
-                  <Switch
-                    checked={editFileEnabled}
-                    onCheckedChange={(checked) =>
-                      handlePrebuiltCapabilityToggle("edit_file", checked)}
                   />
                 </div>
               </div>
