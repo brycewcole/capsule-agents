@@ -6,6 +6,7 @@ import ChatInterface from "./components/chat-interface.tsx"
 import AgentEditor from "./components/agent-editor.tsx"
 import ScheduleManager from "./components/schedule-manager.tsx"
 import WorkspaceManager from "./components/workspace-manager.tsx"
+import { HooksManager } from "./components/hooks-manager.tsx"
 import { LoginDialog } from "./components/login-dialog.tsx"
 import { Toaster } from "./components/ui/toaster.tsx"
 import {
@@ -39,6 +40,9 @@ function App() {
 
   // Update document title with agent name
   useEffect(() => {
+    // Only fetch agent info after authentication
+    if (!isAuthenticated) return
+
     const updateTitle = async () => {
       try {
         const agentInfo = await getAgentInfo()
@@ -52,10 +56,13 @@ function App() {
     }
 
     updateTitle()
-  }, [])
+  }, [isAuthenticated])
 
   // Restore last selected chat on first load or fall back to most recent chat
   useEffect(() => {
+    // Only restore chats after authentication
+    if (!isAuthenticated) return
+
     let isActive = true
 
     const restoreLastOrLatest = async () => {
@@ -96,7 +103,7 @@ function App() {
       isActive = false
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [isAuthenticated])
 
   // Persist currently selected chat id
   useEffect(() => {
@@ -195,6 +202,7 @@ function App() {
                       <div className="flex flex-col gap-6">
                         <WorkspaceManager />
                         <ScheduleManager />
+                        <HooksManager />
                       </div>
                     </div>
                   </div>
